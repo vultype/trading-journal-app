@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3, FlaskConical, LogOut } from 'lucide-react'
+import { useTheme } from 'next-themes'
+import { LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3, FlaskConical, LogOut, Sun, Moon, ClipboardList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
 
@@ -10,6 +11,7 @@ const nav = [
   { href: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard },
   { href: '/trades',    label: 'Trade',       icon: TrendingUp },
   { href: '/analisis',  label: 'Analisis',    icon: BarChart3 },
+  { href: '/laporan',   label: 'Laporan',     icon: ClipboardList },
   { href: '/simulator', label: 'Simulator',   icon: FlaskConical },
   { href: '/finance',   label: 'Keuangan',    icon: Wallet },
   { href: '/journal',   label: 'Jurnal',      icon: BookOpen },
@@ -19,6 +21,7 @@ const nav = [
 export function Sidebar() {
   const path   = usePathname()
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
 
   async function logout() {
     await createClient().auth.signOut()
@@ -50,13 +53,23 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <button
-        onClick={logout}
-        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-all border border-transparent mt-2"
-      >
-        <LogOut size={15}/>
-        Keluar
-      </button>
+      <div className="flex flex-col gap-1 mt-2">
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all border border-transparent"
+        >
+          {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
+          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+        </button>
+
+        <button
+          onClick={logout}
+          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-all border border-transparent"
+        >
+          <LogOut size={15}/>
+          Keluar
+        </button>
+      </div>
     </aside>
   )
 }

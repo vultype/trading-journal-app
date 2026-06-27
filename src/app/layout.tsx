@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Plus_Jakarta_Sans } from "next/font/google"
+import { ThemeProvider } from "@/components/ThemeProvider"
 import "./globals.css"
 
 const jakarta = Plus_Jakarta_Sans({
@@ -15,9 +16,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id" className={`h-full dark ${jakarta.variable}`}>
+    <html lang="id" className={`h-full ${jakarta.variable}`} suppressHydrationWarning>
       <body className="h-full bg-background text-foreground font-sans antialiased">
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   )

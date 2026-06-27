@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Plus, TrendingUp, TrendingDown, Filter, Check, X } from 'lucide-react'
 import type { Trade } from '@/types'
 
@@ -115,8 +116,10 @@ export default function TradesPage() {
 
               {/* Date + Time */}
               <div className="grid grid-cols-2 gap-3">
-                <div><Label className="text-xs">Tanggal</Label>
-                  <Input type="date" value={form.date} onChange={e => set('date', e.target.value)} required /></div>
+                <div>
+                  <Label className="text-xs">Tanggal</Label>
+                  <DatePicker value={form.date} onChange={v => set('date', v)} required />
+                </div>
                 <div><Label className="text-xs">Jam Masuk</Label>
                   <Input type="time" value={form.entry_time} onChange={e => set('entry_time', e.target.value)} /></div>
               </div>
