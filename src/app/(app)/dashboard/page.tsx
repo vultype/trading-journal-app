@@ -1,0 +1,184 @@
+'use client'
+
+import { useStore } from '@/lib/store'
+import { calcStats, buildEquityCurve, formatCurrency } from '@/lib/calculations'
+import { EquityCurve } from '@/components/charts/EquityCurve'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { TrendingUp, TrendingDown, Wallet, Target, BarChart2, Activity, CalendarCheck, CalendarDays, CalendarRange } from 'lucide-react'
+
+function StatCard({ label, value, sub, positive, icon: Icon }: {
+  label: string; value: string; sub?: string; positive?: boolean | null; icon?: React.ElementType
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground font-medium mb-1">{label}</p>
+            <p className={`text-2xl font-bold ${positive === true ? 'text-emerald-600' : positive === false ? 'text-red-500' : ''}`}>
+              {value}
+            </p>
+            {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+          </div>
+          {Icon && <div className="p-2 rounded-lg bg-muted"><Icon size={16} className="text-muted-foreground" /></div>}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export default function DashboardPage() {
+  const { trades, transfers, settings } = useStore()
+  const stats = calcStats(trades, transfers)
+  const fmt = (n: number) => formatCurrency(n, settings.currency)
+  const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)))
+  const recentTrades = [...trades].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6)
+
+  // Target progress
+  const today    = new Date()
+  const todayStr = today.toISOString().split('T')[0]
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay())
+  const monthStr  = todayStr.slice(0, 7)
+  const todayPnl  = trades.filter(t => t.date === todayStr).reduce((s, t) => s + t.pnl, 0)
+  const weekPnl   = trades.filter(t => new Date(t.date) >= weekStart).reduce((s, t) => s + t.pnl, 0)
+  const monthPnl  = trades.filter(t => t.date.startsWith(monthStr)).reduce((s, t) => s + t.pnl, 0)
+  const { targetHarian = 0, targetMingguan = 0, targetBulanan = 0 } = settings
+  const hasTargets = targetHarian > 0 || targetMingguan > 0 || targetBulanan > 0
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div>
+        <h1 className="text-xl font-bold">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Ringkasan performa trading kamu</p>
+      </div>
+
+      {trades.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center">
+            <BarChart2 size={32} className="mx-auto mb-3 text-muted-foreground" />
+            <p className="font-medium text-muted-foreground">Belum ada trade</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Mulai dari menu <strong>Trade</strong> untuk catat posisi pertamamu
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Modal Trading" value={fmt(stats.trading_capital)} sub={`Deposit ${fmt(stats.total_deposited)}`} icon={Wallet} />
+            <StatCard label="Profit Bersih" value={fmt(stats.net_profit)} sub="Withdraw − Deposit" positive={stats.net_profit >= 0} icon={TrendingUp} />
+            <StatCard label="Total P&L" value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
+            <StatCard label="Win Rate" value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} trade`} positive={stats.win_rate >= 50} icon={Target} />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Profit Factor" value={stats.profit_factor === Infinity ? '∞' : stats.profit_factor.toFixed(2)} positive={stats.profit_factor >= 1.5} />
+            <StatCard label="Avg Win" value={fmt(stats.avg_win)} positive={true} />
+            <StatCard label="Max Drawdown" value={fmt(stats.max_drawdown)} positive={false} />
+            <StatCard label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" positive={stats.expectancy > 0} />
+          </div>
+
+          {/* Target Progress */}
+          {hasTargets && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Target size={14}/> Target Profit</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {targetHarian > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1 text-muted-foreground"><CalendarCheck size={11}/> Harian</span>
+                        <span className={todayPnl >= targetHarian ? 'text-emerald-400 font-bold' : ''}>
+                          {Math.min(100, Math.max(0, Math.round(todayPnl / targetHarian * 100)))}%
+                        </span>
+                      </div>
+                      <Progress value={Math.min(100, Math.max(0, todayPnl / targetHarian * 100))} className="h-2"/>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{fmt(todayPnl)}</span>
+                        <span>{fmt(targetHarian)}</span>
+                      </div>
+                    </div>
+                  )}
+                  {targetMingguan > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1 text-muted-foreground"><CalendarDays size={11}/> Mingguan</span>
+                        <span className={weekPnl >= targetMingguan ? 'text-emerald-400 font-bold' : ''}>
+                          {Math.min(100, Math.max(0, Math.round(weekPnl / targetMingguan * 100)))}%
+                        </span>
+                      </div>
+                      <Progress value={Math.min(100, Math.max(0, weekPnl / targetMingguan * 100))} className="h-2"/>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{fmt(weekPnl)}</span>
+                        <span>{fmt(targetMingguan)}</span>
+                      </div>
+                    </div>
+                  )}
+                  {targetBulanan > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-1 text-muted-foreground"><CalendarRange size={11}/> Bulanan</span>
+                        <span className={monthPnl >= targetBulanan ? 'text-emerald-400 font-bold' : ''}>
+                          {Math.min(100, Math.max(0, Math.round(monthPnl / targetBulanan * 100)))}%
+                        </span>
+                      </div>
+                      <Progress value={Math.min(100, Math.max(0, monthPnl / targetBulanan * 100))} className="h-2"/>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{fmt(monthPnl)}</span>
+                        <span>{fmt(targetBulanan)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Equity Curve</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {curve.length > 1
+                ? <EquityCurve data={curve} />
+                : <p className="text-sm text-muted-foreground text-center py-8">Butuh minimal 2 trade untuk tampilkan grafik</p>
+              }
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Trade Terakhir</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {recentTrades.map(t => (
+                  <div key={t.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                    <div className="flex items-center gap-3">
+                      <Badge variant={t.direction === 'long' ? 'default' : 'destructive'} className="text-xs gap-1">
+                        {t.direction === 'long' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                        {t.direction.toUpperCase()}
+                      </Badge>
+                      <div>
+                        <p className="font-semibold">{t.pair}</p>
+                        <p className="text-xs text-muted-foreground">{t.date}{t.strategy ? ` · ${t.strategy}` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold ${t.pnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(t.pnl)}</p>
+                      {t.rr_ratio != null && <p className="text-xs text-muted-foreground">RR {t.rr_ratio.toFixed(1)}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
