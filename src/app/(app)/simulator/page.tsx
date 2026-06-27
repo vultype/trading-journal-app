@@ -92,7 +92,6 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
 
   // Save-plan form
   const [saveName,   setSaveName]   = useState('')
-  const [saveWR,     setSaveWR]     = useState(50)
   const [saveTrades, setSaveTrades] = useState(20)
   const [savedMsg,   setSavedMsg]   = useState(false)
 
@@ -101,7 +100,11 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
   const riskBase  = compound === 'compound' ? currentEq : initEquity
   const lossAmt   = riskBase * riskPct / 100
   const winAmt    = lossAmt * rrFixed
-  const saveRR    = rrMode === 'random' ? +((rrMin + rrMax) / 2).toFixed(1) : rrFixed
+  // Actual average RR from session trades (more accurate than (min+max)/2 in random mode)
+  const avgRR  = trades.length > 0
+    ? +(trades.reduce((s, t) => s + t.rr, 0) / trades.length).toFixed(2)
+    : rrMode === 'random' ? +((rrMin + rrMax) / 2).toFixed(1) : rrFixed
+  const saveRR = avgRR
 
   const stats = useMemo(() => {
     if (trades.length === 0) return { wins: 0, losses: 0, winRate: 0, pf: 0, netProfit: 0, returnPct: 0, maxDD: 0, gProfit: 0, gLoss: 0 }
@@ -121,10 +124,10 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
     return { wins: wins.length, losses: losses.length, winRate, pf, netProfit: net, returnPct: net / initEquity * 100, maxDD, gProfit, gLoss }
   }, [trades, currentEq, initEquity])
 
-  // Pre-fill save win rate from session
+  // Sync trades/month with session count as user runs trades
   useEffect(() => {
-    if (trades.length > 0) setSaveWR(Math.round(stats.winRate))
-  }, [trades.length, stats.winRate])
+    if (trades.length > 0) setSaveTrades(trades.length)
+  }, [trades.length])
 
   function getRR() {
     if (rrMode === 'fixed') return rrFixed
@@ -141,13 +144,13 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
   function reset() { setTrades([]) }
 
   function handleSavePlan() {
-    if (!saveName.trim() || plans.length >= 5) return
+    if (!saveName.trim() || plans.length >= 5 || trades.length === 0) return
     const newPlan: Plan = {
       id: Math.random().toString(36).slice(2),
       name: saveName.trim(),
       equity: initEquity,
-      winRate: saveWR,
-      rrRatio: saveRR,
+      winRate: +stats.winRate.toFixed(1),   // from actual session
+      rrRatio: saveRR,                        // actual avg RR from session trades
       riskPct,
       tradesPerMonth: saveTrades,
       compound: compound === 'compound',
@@ -155,7 +158,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
     setPlans(prev => [...prev, newPlan])
     setSavedMsg(true)
     setSaveName('')
-    setTimeout(() => setSavedMsg(false), 3000)
+    setTimeout(() => setSavedMsg(false), 3500)
   }
 
   const chartData = useMemo(() => [
@@ -287,71 +290,98 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
         <Card className="border-primary/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <BookMarked size={13} className="text-primary"/> Save Plan
-              {plans.length >= 5 && <span className="ml-auto text-[10px] text-muted-foreground">Max 5 plans</span>}
+              <BookMarked size={13} className="text-primary"/> Save as Plan
+              {plans.length >= 5 && <span className="ml-auto text-[10px] text-orange-400 font-normal">Max 5 reached</span>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {/* Current params summary */}
-            <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-xs space-y-1">
-              <p className="text-muted-foreground font-medium mb-1.5">Current parameters:</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                <span className="text-muted-foreground">Equity</span>
-                <span className="font-semibold text-right">{fmt(initEquity)}</span>
-                <span className="text-muted-foreground">Risk/trade</span>
-                <span className="font-semibold text-right">{riskPct}% (−{fmt(lossAmt)})</span>
-                <span className="text-muted-foreground">RR Ratio</span>
-                <span className="font-semibold text-right">
-                  1:{rrMode === 'fixed' ? rrFixed : `${rrMin}–${rrMax} (avg ${saveRR})`}
-                </span>
-                <span className="text-muted-foreground">Capital</span>
-                <span className="font-semibold text-right capitalize">{compound}</span>
-                {trades.length > 0 && (
-                  <>
-                    <span className="text-muted-foreground">Session WR</span>
-                    <span className={`font-semibold text-right ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {stats.winRate.toFixed(1)}% ({trades.length} trades)
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <div>
-                <Label className="text-xs">Plan Name</Label>
-                <Input
-                  value={saveName}
-                  onChange={e => setSaveName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSavePlan()}
-                  placeholder="e.g. Breakout 1:2"
-                  className="mt-1"
-                />
+            {trades.length === 0 ? (
+              /* No trades yet */
+              <div className="rounded-lg border border-dashed border-border/50 py-6 text-center text-xs text-muted-foreground space-y-1">
+                <Zap size={18} className="mx-auto opacity-30 mb-2"/>
+                <p>Run your backtest first.</p>
+                <p>Click WIN / LOSE above to simulate trades,</p>
+                <p>then save the results as a plan.</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs">
-                    Target Win Rate (%)
-                    {trades.length > 0 && (
-                      <span className="text-muted-foreground ml-1">← from session</span>
-                    )}
-                  </Label>
-                  <Input type="number" step="1" min="1" max="99" value={saveWR}
-                    onChange={e => setSaveWR(Math.min(99, Math.max(1, +e.target.value || 50)))}
-                    className="mt-1"/>
+            ) : (
+              <>
+                {/* Backtest results → will be saved */}
+                <div className="rounded-lg border border-border/40 overflow-hidden text-xs">
+                  <div className="bg-muted/50 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Backtest results (auto-filled)
+                  </div>
+                  <div className="divide-y divide-border/30">
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Win Rate</span>
+                      <span className={`font-bold ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {stats.winRate.toFixed(1)}%
+                        <span className="text-muted-foreground font-normal ml-1">({stats.wins}W / {stats.losses}L)</span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Avg RR</span>
+                      <span className="font-semibold">
+                        1:{saveRR}
+                        {rrMode === 'random' && <span className="text-muted-foreground font-normal ml-1">(avg of {trades.length} trades)</span>}
+                      </span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Risk / Trade</span>
+                      <span className="font-semibold">{riskPct}%</span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Capital</span>
+                      <span className="font-semibold capitalize">{compound}</span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Starting Equity</span>
+                      <span className="font-semibold">{fmt(initEquity)}</span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Profit Factor</span>
+                      <span className={`font-semibold ${stats.pf >= 1.5 ? 'text-emerald-400' : stats.pf >= 1 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {stats.pf === Infinity ? '∞' : stats.pf.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between px-3 py-2">
+                      <span className="text-muted-foreground">Net P&L</span>
+                      <span className={`font-semibold ${stats.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {stats.netProfit >= 0 ? '+' : ''}{fmt(stats.netProfit)}
+                        <span className="text-muted-foreground font-normal ml-1">({stats.returnPct >= 0 ? '+' : ''}{stats.returnPct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-xs">Trades / Month</Label>
-                  <Input type="number" step="1" min="1" value={saveTrades}
-                    onChange={e => setSaveTrades(+e.target.value || 1)}
-                    className="mt-1"/>
+
+                {/* Only editable fields */}
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">Plan Name</Label>
+                    <Input
+                      value={saveName}
+                      onChange={e => setSaveName(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleSavePlan()}
+                      placeholder="e.g. Breakout 1:2"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">
+                      Trades / Month
+                      <span className="text-muted-foreground font-normal ml-1">(auto: {trades.length} from session)</span>
+                    </Label>
+                    <Input type="number" step="1" min="1" value={saveTrades}
+                      onChange={e => setSaveTrades(+e.target.value || 1)}
+                      className="mt-1"/>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {savedMsg ? (
               <div className="space-y-2">
-                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium py-1">
+                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium py-0.5">
                   <CheckCircle2 size={15}/> Plan saved!
                 </div>
                 <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={onGoToCompare}>
@@ -361,7 +391,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
             ) : (
               <Button
                 onClick={handleSavePlan}
-                disabled={!saveName.trim() || plans.length >= 5}
+                disabled={!saveName.trim() || plans.length >= 5 || trades.length === 0}
                 className="w-full gap-2"
                 size="sm"
               >
