@@ -20,22 +20,29 @@ export default function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setError('')
-    const sb = createClient()
 
-    if (mode === 'signup') {
-      const { data, error: err } = await sb.auth.signUp({ email, password: pass })
-      if (err) { setError(err.message); setBusy(false); return }
-      if (data.session) {
-        router.replace('/dashboard')
+    try {
+      const sb = createClient()
+
+      if (mode === 'signup') {
+        const { data, error: err } = await sb.auth.signUp({ email, password: pass })
+        if (err) { setError(err.message); setBusy(false); return }
+        if (data.session) {
+          router.replace('/dashboard')
+          return
+        }
+        setDone(true); setBusy(false)
         return
       }
-      setDone(true); setBusy(false)
-      return
-    }
 
-    const { error: err } = await sb.auth.signInWithPassword({ email, password: pass })
-    if (err) { setError('Email atau password salah.'); setBusy(false); return }
-    router.replace('/dashboard')
+      const { error: err } = await sb.auth.signInWithPassword({ email, password: pass })
+      if (err) { setError('Email atau password salah.'); setBusy(false); return }
+      router.replace('/dashboard')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan. Coba lagi.'
+      setError(msg)
+      setBusy(false)
+    }
   }
 
   return (
