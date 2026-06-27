@@ -23,8 +23,12 @@ export default function LoginPage() {
     const sb = createClient()
 
     if (mode === 'signup') {
-      const { error: err } = await sb.auth.signUp({ email, password: pass })
+      const { data, error: err } = await sb.auth.signUp({ email, password: pass })
       if (err) { setError(err.message); setBusy(false); return }
+      if (data.session) {
+        router.replace('/dashboard')
+        return
+      }
       setDone(true); setBusy(false)
       return
     }
