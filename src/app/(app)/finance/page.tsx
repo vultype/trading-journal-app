@@ -90,17 +90,9 @@ export default function FinancePage() {
   const worstMonth = byMonth.length > 0 ? byMonth.reduce((a,b) => b.pnl < a.pnl ? b : a, byMonth[0]) : null
   const avgMonthly = byMonth.length > 0 ? byMonth.reduce((s,m) => s+m.pnl, 0) / byMonth.length : 0
 
-  // Target progress
-  const today   = new Date()
-  const todayStr = today.toISOString().split('T')[0]
-  const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay())
-  const monthStr  = todayStr.slice(0,7)
-
-  const todayPnl  = trades.filter(t => t.date === todayStr).reduce((s,t) => s+t.pnl, 0)
-  const weekPnl   = trades.filter(t => new Date(t.date) >= weekStart).reduce((s,t) => s+t.pnl, 0)
-  const monthPnl  = trades.filter(t => t.date.startsWith(monthStr)).reduce((s,t) => s+t.pnl, 0)
-
-  const { targetHarian = 0, targetMingguan = 0, targetBulanan = 0 } = settings
+  const monthStr = new Date().toISOString().slice(0,7)
+  const monthPnl = trades.filter(t => t.date.startsWith(monthStr)).reduce((s,t) => s+t.pnl, 0)
+  const { targetBulanan = 0 } = settings
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -177,46 +169,22 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* ── Target Progress ── */}
-      {(targetHarian > 0 || targetMingguan > 0 || targetBulanan > 0) && (
+      {/* Monthly Target */}
+      {targetBulanan > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2"><Target size={14}/> Progres Target Profit</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><Target size={14}/> Monthly Target</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {targetHarian > 0 && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Harian</span>
-                  <span className={todayPnl >= targetHarian ? 'text-emerald-400 font-bold' : 'text-muted-foreground'}>
-                    {fmt(todayPnl)} / {fmt(targetHarian)} ({Math.min(100,Math.max(0,Math.round(todayPnl/targetHarian*100)))}%)
-                  </span>
-                </div>
-                <Progress value={Math.min(100,Math.max(0,todayPnl/targetHarian*100))} className="h-2"/>
+          <CardContent>
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{monthStr}</span>
+                <span className={monthPnl >= targetBulanan ? 'text-emerald-400 font-bold' : 'text-muted-foreground'}>
+                  {fmt(monthPnl)} / {fmt(targetBulanan)} ({Math.min(100,Math.max(0,Math.round(monthPnl/targetBulanan*100)))}%)
+                </span>
               </div>
-            )}
-            {targetMingguan > 0 && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Mingguan</span>
-                  <span className={weekPnl >= targetMingguan ? 'text-emerald-400 font-bold' : 'text-muted-foreground'}>
-                    {fmt(weekPnl)} / {fmt(targetMingguan)} ({Math.min(100,Math.max(0,Math.round(weekPnl/targetMingguan*100)))}%)
-                  </span>
-                </div>
-                <Progress value={Math.min(100,Math.max(0,weekPnl/targetMingguan*100))} className="h-2"/>
-              </div>
-            )}
-            {targetBulanan > 0 && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Bulanan ({monthStr})</span>
-                  <span className={monthPnl >= targetBulanan ? 'text-emerald-400 font-bold' : 'text-muted-foreground'}>
-                    {fmt(monthPnl)} / {fmt(targetBulanan)} ({Math.min(100,Math.max(0,Math.round(monthPnl/targetBulanan*100)))}%)
-                  </span>
-                </div>
-                <Progress value={Math.min(100,Math.max(0,monthPnl/targetBulanan*100))} className="h-2"/>
-              </div>
-            )}
+              <Progress value={Math.min(100,Math.max(0,monthPnl/targetBulanan*100))} className="h-2"/>
+            </div>
           </CardContent>
         </Card>
       )}

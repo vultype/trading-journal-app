@@ -17,17 +17,13 @@ export default function SettingsPage() {
 
   // ─── Pengaturan Umum ───
   const [currency, setCurrency] = useState<AppSettings['currency']>(settings.currency)
-  const [targetH, setTargetH]   = useState(String(settings.targetHarian   ?? ''))
-  const [targetW, setTargetW]   = useState(String(settings.targetMingguan  ?? ''))
-  const [targetM, setTargetM]   = useState(String(settings.targetBulanan   ?? ''))
+  const [targetM, setTargetM]   = useState(String(settings.targetBulanan ?? ''))
   const [saved, setSaved] = useState(false)
 
   function handleSaveSettings() {
     saveSettings({
       currency,
-      targetHarian:   targetH   ? parseFloat(targetH)   : undefined,
-      targetMingguan: targetW   ? parseFloat(targetW)   : undefined,
-      targetBulanan:  targetM   ? parseFloat(targetM)   : undefined,
+      targetBulanan: targetM ? parseFloat(targetM) : undefined,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -87,90 +83,84 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-xl font-bold">Setting</h1>
-        <p className="text-sm text-muted-foreground">Konfigurasi aplikasi, strategi, dan akun</p>
+        <h1 className="text-xl font-bold">Settings</h1>
+        <p className="text-sm text-muted-foreground">App configuration, strategies, and accounts</p>
       </div>
 
-      {/* ── Pengaturan Umum ── */}
+      {/* General */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Pengaturan Umum</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label className="text-xs">Mata Uang Default</Label>
+        <CardHeader><CardTitle className="text-sm">General</CardTitle></CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Default Currency</Label>
             <Select value={currency} onValueChange={(v) => setCurrency((v ?? 'USD') as AppSettings['currency'])}>
-              <SelectTrigger className="w-48 mt-1"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="USD">🇺🇸 USD — US Dollar</SelectItem>
-                <SelectItem value="IDR">🇮🇩 IDR — Rupiah</SelectItem>
+                <SelectItem value="IDR">🇮🇩 IDR — Indonesian Rupiah</SelectItem>
                 <SelectItem value="EUR">🇪🇺 EUR — Euro</SelectItem>
                 <SelectItem value="USDT">💵 USDT — Tether</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">Mempengaruhi tampilan semua angka P&L di seluruh app</p>
+            <p className="text-xs text-muted-foreground">Affects all P&L figures across the app</p>
           </div>
-          <div className="border-t border-border/50 pt-4 mt-2">
-            <p className="text-xs font-medium mb-3 text-muted-foreground uppercase tracking-wider">Target Profit</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">Target Harian</Label>
-                <Input type="number" step="any" placeholder="0" value={targetH} onChange={e => setTargetH(e.target.value)} className="mt-1"/>
-              </div>
-              <div>
-                <Label className="text-xs">Target Mingguan</Label>
-                <Input type="number" step="any" placeholder="0" value={targetW} onChange={e => setTargetW(e.target.value)} className="mt-1"/>
-              </div>
-              <div>
-                <Label className="text-xs">Target Bulanan</Label>
-                <Input type="number" step="any" placeholder="0" value={targetM} onChange={e => setTargetM(e.target.value)} className="mt-1"/>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1.5">Nominal dalam {currency} — progress ditampilkan di dashboard & keuangan</p>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Monthly Profit Target ({currency})</Label>
+            <Input
+              type="number" step="any" placeholder="0"
+              value={targetM}
+              onChange={e => setTargetM(e.target.value)}
+              className="w-52"
+            />
+            <p className="text-xs text-muted-foreground">Progress shown on Dashboard</p>
           </div>
+
           <Button onClick={handleSaveSettings} size="sm" className="gap-2">
-            {saved ? <><CheckCircle2 size={13} /> Tersimpan!</> : <><Save size={13} /> Simpan Pengaturan</>}
+            {saved ? <><CheckCircle2 size={13} /> Saved!</> : <><Save size={13} /> Save Settings</>}
           </Button>
         </CardContent>
       </Card>
 
-      {/* ── Strategi ── */}
+      {/* Strategies */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Manajemen Strategi</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Strategies</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {settings.strategies.map(s => (
-              <span key={s} className="flex items-center gap-1.5 text-xs bg-muted rounded-full px-3 py-1 font-medium">
+              <span key={s} className="flex items-center gap-1.5 text-xs bg-muted rounded-full px-3 py-1.5 font-medium">
                 {s}
-                <button onClick={() => removeStrategy(s)} className="text-muted-foreground hover:text-destructive transition-colors ml-0.5">
+                <button onClick={() => removeStrategy(s)} className="text-muted-foreground hover:text-destructive transition-colors">
                   <Trash2 size={10} />
                 </button>
               </span>
             ))}
             {settings.strategies.length === 0 && (
-              <p className="text-xs text-muted-foreground">Belum ada strategi</p>
+              <p className="text-xs text-muted-foreground">No strategies yet</p>
             )}
           </div>
           <div className="flex gap-2">
             <Input
-              placeholder="Nama strategi baru…"
+              placeholder="New strategy name…"
               value={newStrategy}
               onChange={e => setNewStrategy(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addStrategy())}
               className="text-sm"
             />
             <Button size="sm" onClick={addStrategy} className="gap-1.5 shrink-0">
-              <Plus size={13} /> Tambah
+              <Plus size={13} /> Add
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── Akun ── */}
+      {/* Saved Accounts */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Akun Tersimpan</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Accounts</CardTitle></CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-border/50">
             {accounts.map(a => (
-              <div key={a.id} className="flex items-center justify-between px-4 py-3">
+              <div key={a.id} className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${a.type === 'personal' ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
                     {a.type === 'personal' ? <Wallet size={14} className="text-blue-400" /> : <TrendingUp size={14} className="text-emerald-400" />}
@@ -181,9 +171,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={a.type === 'personal' ? 'secondary' : 'default'} className="text-xs">{a.type}</Badge>
+                  <Badge variant={a.type === 'personal' ? 'secondary' : 'default'} className="text-xs capitalize">{a.type}</Badge>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    disabled={!canDelete(a.id)} title={!canDelete(a.id) ? 'Sedang digunakan' : 'Hapus'}
+                    disabled={!canDelete(a.id)} title={!canDelete(a.id) ? 'In use' : 'Delete'}
                     onClick={() => deleteAccount(a.id)}>
                     <Trash2 size={12} />
                   </Button>
@@ -194,18 +184,18 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Tambah Akun */}
+      {/* Add Account */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Tambah Akun Baru</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Add Account</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={submitAccount} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Nama Akun</Label>
-                <Input placeholder="Broker XYZ" value={accName} onChange={e => setAccName(e.target.value)} required />
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Account Name</Label>
+                <Input placeholder="My Broker" value={accName} onChange={e => setAccName(e.target.value)} required />
               </div>
-              <div>
-                <Label className="text-xs">Tipe</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Type</Label>
                 <Select value={accType} onValueChange={(v) => setAccType((v ?? 'trading') as AccountType)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -216,12 +206,12 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Broker / Platform</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Broker / Platform</Label>
                 <Input placeholder="MT4, MT5, Bybit…" value={accBroker} onChange={e => setAccBroker(e.target.value)} />
               </div>
-              <div>
-                <Label className="text-xs">Mata Uang</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Currency</Label>
                 <Select value={accCur} onValueChange={(v) => setAccCur(v ?? 'USD')}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -233,35 +223,34 @@ export default function SettingsPage() {
                 </Select>
               </div>
             </div>
-            <Button type="submit" size="sm" className="gap-2"><Plus size={13} /> Tambah Akun</Button>
+            <Button type="submit" size="sm" className="gap-2"><Plus size={13} /> Add Account</Button>
           </form>
         </CardContent>
       </Card>
 
       <Separator />
 
-      {/* Export */}
+      {/* Data Backup */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Backup Data</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
+        <CardHeader><CardTitle className="text-sm">Data Backup</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-3 text-center text-sm">
-            <div className="rounded-lg bg-muted p-3">
+            <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-2xl font-bold">{trades.length}</p>
-              <p className="text-xs text-muted-foreground">Trade</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Trades</p>
             </div>
-            <div className="rounded-lg bg-muted p-3">
+            <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-2xl font-bold">{transfers.length}</p>
-              <p className="text-xs text-muted-foreground">Transfer</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Transfers</p>
             </div>
-            <div className="rounded-lg bg-muted p-3">
+            <div className="rounded-lg bg-muted/50 p-4">
               <p className="text-2xl font-bold">{settings.strategies.length}</p>
-              <p className="text-xs text-muted-foreground">Strategi</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Strategies</p>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">Data tersimpan di browser. Export rutin sebagai backup.</p>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={exportJSON} className="flex-1">Export JSON</Button>
-            <Button variant="outline" size="sm" onClick={exportCSV}  className="flex-1">Export CSV Trade</Button>
+            <Button variant="outline" size="sm" onClick={exportCSV}  className="flex-1">Export CSV</Button>
           </div>
         </CardContent>
       </Card>

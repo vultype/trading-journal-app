@@ -96,11 +96,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (s.data) {
         setSettings({
-          currency:       (s.data.currency as AppSettings['currency']) ?? 'IDR',
-          strategies:     (s.data.strategies as string[]) ?? DEFAULT_SETTINGS.strategies,
-          targetHarian:   s.data.target_harian  ?? undefined,
-          targetMingguan: s.data.target_mingguan ?? undefined,
-          targetBulanan:  s.data.target_bulanan  ?? undefined,
+          currency:     (s.data.currency as AppSettings['currency']) ?? 'IDR',
+          strategies:   (s.data.strategies as string[]) ?? DEFAULT_SETTINGS.strategies,
+          targetBulanan: s.data.target_bulanan ?? undefined,
         })
       }
       setLoading(false)
@@ -216,9 +214,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         user_id:         userId,
         currency:        next.currency,
         strategies:      next.strategies,
-        target_harian:   next.targetHarian  ?? null,
-        target_mingguan: next.targetMingguan ?? null,
-        target_bulanan:  next.targetBulanan  ?? null,
+        target_bulanan:  next.targetBulanan ?? null,
         updated_at:      new Date().toISOString(),
       }, { onConflict: 'user_id' })
         .then(({ error }) => { if (error) console.error('[saveSettings]', error) })
