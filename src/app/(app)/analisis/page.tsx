@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useCurrency } from '@/hooks/useCurrency'
+import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { calcStats, buildEquityCurve, pnlByGroup, DAYS } from '@/lib/calculations'
 import { EquityCurve } from '@/components/charts/EquityCurve'
 import { PnLCalendar } from '@/components/charts/PnLCalendar'
@@ -43,7 +44,7 @@ function MiniStat({ label, value, sub, green, red }: { label: string; value: Rea
 }
 
 export default function AnalisisPage() {
-  const { trades, transfers } = useStore()
+  const { trades, transfers, deleteTrade } = useStore()
   const fmt   = useCurrency()
   const sorted = useMemo(() => [...trades].sort((a, b) => a.date.localeCompare(b.date)), [trades])
   const stats  = useMemo(() => calcStats(trades, transfers), [trades, transfers])
@@ -51,6 +52,7 @@ export default function AnalisisPage() {
 
   const [calDayTrades, setCalDayTrades] = useState<Trade[] | null>(null)
   const [calDayDate,   setCalDayDate]   = useState('')
+  const [detailTrade,  setDetailTrade]  = useState<Trade | null>(null)
 
   const byStrategy  = useMemo(() => pnlByGroup(trades, t => t.strategy ?? '—').sort((a,b) => b.total - a.total), [trades])
   const byPair      = useMemo(() => pnlByGroup(trades, t => t.pair).sort((a,b) => b.total - a.total).slice(0,8), [trades])
@@ -556,11 +558,15 @@ export default function AnalisisPage() {
       <Dialog open={calDayTrades !== null} onOpenChange={v => !v && setCalDayTrades(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-sm">Trade tanggal {calDayDate}</DialogTitle>
+            <DialogTitle className="text-sm">Trades on {calDayDate}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2 mt-2">
             {calDayTrades?.map(t => (
-              <div key={t.id} className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
+              <button
+                key={t.id}
+                onClick={() => setDetailTrade(t)}
+                className="w-full flex items-center justify-between rounded-lg bg-muted/50 hover:bg-muted px-3 py-2 text-sm transition-colors text-left"
+              >
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-bold ${t.direction==='long'?'text-emerald-400':'text-red-400'}`}>
                     {t.direction==='long'?'▲':'▼'} {t.pair}
@@ -571,7 +577,7 @@ export default function AnalisisPage() {
                   <p className={`font-bold ${t.pnl>=0?'text-emerald-400':'text-red-400'}`}>{t.pnl>=0?'+':''}{fmt(t.pnl)}</p>
                   <Badge variant={t.result==='win'?'default':t.result==='loss'?'destructive':'secondary'} className="text-[9px]">{t.result.toUpperCase()}</Badge>
                 </div>
-              </div>
+              </button>
             ))}
             {calDayTrades && (
               <div className="flex justify-between text-sm font-bold pt-1 border-t border-border/50">
@@ -581,9 +587,25 @@ export default function AnalisisPage() {
                 </span>
               </div>
             )}
+            {calDayTrades && calDayTrades.length > 1 && (
+              <p className="text-[10px] text-muted-foreground text-center pt-1">Tap a trade to see details</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Full trade detail dialog (opened from calendar day) */}
+      <TradeDetailDialog
+        trade={detailTrade}
+        open={detailTrade !== null}
+        onClose={() => setDetailTrade(null)}
+        onDelete={(id) => {
+          deleteTrade(id)
+          setDetailTrade(null)
+          setCalDayTrades(prev => prev ? prev.filter(t => t.id !== id) : null)
+        }}
+        fmt={fmt}
+      />
     </div>
   )
 }
