@@ -74,6 +74,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sb.from('journal_notes').select('*').eq('user_id', userId).order('date'),
       sb.from('user_settings').select('*').eq('user_id', userId).single(),
     ]).then(async ([a, t, x, j, s]) => {
+      if (a.error && a.error.code === '42P01') {
+        console.error('Tabel belum dibuat. Jalankan SQL schema di Supabase.')
+        setLoading(false)
+        return
+      }
       // Buat akun default jika belum ada
       let accs: Account[] = a.data ?? []
       if (accs.length === 0) {
@@ -98,6 +103,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           targetBulanan:  s.data.target_bulanan  ?? undefined,
         })
       }
+      setLoading(false)
+    }).catch(err => {
+      console.error('[store] load error:', err)
       setLoading(false)
     })
   }, [userId])
