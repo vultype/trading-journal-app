@@ -13,6 +13,7 @@ import {
 import {
   TrendingUp, TrendingDown, RotateCcw, Shuffle, FlaskConical,
   Activity, Target, Zap, BookMarked, Trophy, Plus, Trash2,
+  CheckCircle2, ArrowRight,
 } from 'lucide-react'
 
 const TooltipStyle = {
@@ -23,11 +24,63 @@ const TooltipStyle = {
 }
 
 // ─────────────────────────────────────────────
+// Shared: Plan type + computation (used by both tabs)
+// ─────────────────────────────────────────────
+const PLAN_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+
+export type Plan = {
+  id: string
+  name: string
+  equity: number
+  winRate: number
+  rrRatio: number
+  riskPct: number
+  tradesPerMonth: number
+  compound: boolean
+}
+
+function calcPlanStats(p: Plan) {
+  const wr               = p.winRate / 100
+  const expectancy       = wr * p.rrRatio - (1 - wr)
+  const profitFactor     = (1 - wr) > 0 ? (wr * p.rrRatio) / (1 - wr) : Infinity
+  const breakEvenWR      = 1 / (1 + p.rrRatio) * 100
+  const isViable         = expectancy > 0
+  const monthlyReturnPct = p.tradesPerMonth * expectancy * p.riskPct
+
+  let eq = p.equity
+  const curve: number[] = [eq]
+  for (let m = 0; m < 12; m++) {
+    const base   = p.compound ? eq : p.equity
+    const risk   = base * p.riskPct / 100
+    const netPnl = p.tradesPerMonth * (wr * risk * p.rrRatio - (1 - wr) * risk)
+    eq += netPnl
+    curve.push(eq)
+  }
+
+  return {
+    expectancy, profitFactor, breakEvenWR, isViable,
+    monthlyReturnPct,
+    annualReturnPct:  monthlyReturnPct * 12,
+    finalEquity12m:   eq,
+    totalReturn12m:   p.equity > 0 ? (eq - p.equity) / p.equity * 100 : 0,
+    curve,
+  }
+}
+type PlanStats = ReturnType<typeof calcPlanStats>
+
+// ─────────────────────────────────────────────
 // Manual Simulator
 // ─────────────────────────────────────────────
 type SimTrade = { id: number; result: 'win' | 'loss'; rr: number; pnl: number; balance: number }
 
-function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
+type ManualProps = {
+  fmt:      (n: number) => string
+  plans:    Plan[]
+  setPlans: React.Dispatch<React.SetStateAction<Plan[]>>
+  onGoToCompare: () => void
+}
+
+function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
   const [initEquity, setInitEquity] = useState(10_000_000)
   const [riskPct,    setRiskPct]    = useState(1)
   const [rrFixed,    setRrFixed]    = useState(2)
@@ -37,26 +90,18 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
   const [compound,   setCompound]   = useState<'fixed' | 'compound'>('fixed')
   const [trades,     setTrades]     = useState<SimTrade[]>([])
 
+  // Save-plan form
+  const [saveName,   setSaveName]   = useState('')
+  const [saveWR,     setSaveWR]     = useState(50)
+  const [saveTrades, setSaveTrades] = useState(20)
+  const [savedMsg,   setSavedMsg]   = useState(false)
+
   const currentEq = trades.length > 0 ? trades[trades.length - 1].balance : initEquity
   const isProfit  = currentEq >= initEquity
-
-  const riskBase = compound === 'compound' ? currentEq : initEquity
-  const lossAmt  = riskBase * riskPct / 100
-  const winAmt   = lossAmt * rrFixed
-
-  function getRR() {
-    if (rrMode === 'fixed') return rrFixed
-    return parseFloat((rrMin + Math.random() * (rrMax - rrMin)).toFixed(2))
-  }
-
-  function execute(result: 'win' | 'loss') {
-    const rr   = getRR()
-    const risk = (compound === 'compound' ? currentEq : initEquity) * riskPct / 100
-    const pnl  = result === 'win' ? risk * rr : -risk
-    setTrades(prev => [...prev, { id: prev.length + 1, result, rr, pnl, balance: currentEq + pnl }])
-  }
-
-  function reset() { setTrades([]) }
+  const riskBase  = compound === 'compound' ? currentEq : initEquity
+  const lossAmt   = riskBase * riskPct / 100
+  const winAmt    = lossAmt * rrFixed
+  const saveRR    = rrMode === 'random' ? +((rrMin + rrMax) / 2).toFixed(1) : rrFixed
 
   const stats = useMemo(() => {
     if (trades.length === 0) return { wins: 0, losses: 0, winRate: 0, pf: 0, netProfit: 0, returnPct: 0, maxDD: 0, gProfit: 0, gLoss: 0 }
@@ -76,6 +121,43 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
     return { wins: wins.length, losses: losses.length, winRate, pf, netProfit: net, returnPct: net / initEquity * 100, maxDD, gProfit, gLoss }
   }, [trades, currentEq, initEquity])
 
+  // Pre-fill save win rate from session
+  useEffect(() => {
+    if (trades.length > 0) setSaveWR(Math.round(stats.winRate))
+  }, [trades.length, stats.winRate])
+
+  function getRR() {
+    if (rrMode === 'fixed') return rrFixed
+    return parseFloat((rrMin + Math.random() * (rrMax - rrMin)).toFixed(2))
+  }
+
+  function execute(result: 'win' | 'loss') {
+    const rr   = getRR()
+    const risk = (compound === 'compound' ? currentEq : initEquity) * riskPct / 100
+    const pnl  = result === 'win' ? risk * rr : -risk
+    setTrades(prev => [...prev, { id: prev.length + 1, result, rr, pnl, balance: currentEq + pnl }])
+  }
+
+  function reset() { setTrades([]) }
+
+  function handleSavePlan() {
+    if (!saveName.trim() || plans.length >= 5) return
+    const newPlan: Plan = {
+      id: Math.random().toString(36).slice(2),
+      name: saveName.trim(),
+      equity: initEquity,
+      winRate: saveWR,
+      rrRatio: saveRR,
+      riskPct,
+      tradesPerMonth: saveTrades,
+      compound: compound === 'compound',
+    }
+    setPlans(prev => [...prev, newPlan])
+    setSavedMsg(true)
+    setSaveName('')
+    setTimeout(() => setSavedMsg(false), 3000)
+  }
+
   const chartData = useMemo(() => [
     { id: 0, balance: initEquity },
     ...trades.map(t => ({ id: t.id, balance: t.balance })),
@@ -91,12 +173,12 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* ── Left: Settings + Execute ── */}
+      {/* ── Left: Settings + Execute + Save ── */}
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center justify-between">
-              <span className="flex items-center gap-2"><Activity size={13}/> Pengaturan Sesi</span>
+              <span className="flex items-center gap-2"><Activity size={13}/> Session Settings</span>
               <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={reset}>
                 <RotateCcw size={11}/> Reset
               </Button>
@@ -104,14 +186,14 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label className="text-xs">Ekuitas Awal (Rp)</Label>
+              <Label className="text-xs">Starting Equity</Label>
               <Input type="number" step="any" value={initEquity}
                 onChange={e => { setInitEquity(+e.target.value || 0); setTrades([]) }}
                 className="mt-1"/>
             </div>
 
             <div>
-              <Label className="text-xs">Risiko / Trade (%)</Label>
+              <Label className="text-xs">Risk / Trade (%)</Label>
               <Input type="number" step="0.1" min="0.1" max="100" value={riskPct}
                 onChange={e => setRiskPct(+e.target.value || 1)} className="mt-1"/>
               <p className="text-xs text-red-400 mt-1 font-medium">Loss: −{fmt(lossAmt)}</p>
@@ -119,13 +201,13 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <Label className="text-xs">Reward Rasio (1 : X)</Label>
+                <Label className="text-xs">Reward Ratio (1 : X)</Label>
                 <Button
                   variant={rrMode === 'random' ? 'default' : 'outline'}
                   size="sm" className="h-6 px-2 gap-1 text-xs"
                   onClick={() => setRrMode(m => m === 'fixed' ? 'random' : 'fixed')}
                 >
-                  <Shuffle size={10}/> Acak
+                  <Shuffle size={10}/> Random
                 </Button>
               </div>
               {rrMode === 'fixed' ? (
@@ -151,20 +233,20 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
                         onChange={e => setRrMax(+e.target.value || 3)} className="mt-0.5"/>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Acak {rrMin} – {rrMax} tiap trade</p>
+                  <p className="text-xs text-muted-foreground mt-1">Random {rrMin}–{rrMax} per trade</p>
                 </>
               )}
             </div>
 
             <div>
-              <Label className="text-xs">Tipe Kompon (Perhitungan Risiko)</Label>
+              <Label className="text-xs">Risk Calculation</Label>
               <div className="flex gap-2 mt-1">
                 <Button type="button" size="sm" className="flex-1 text-xs"
                   variant={compound === 'fixed' ? 'default' : 'outline'}
-                  onClick={() => setCompound('fixed')}>Tetap (Fixed)</Button>
+                  onClick={() => setCompound('fixed')}>Fixed</Button>
                 <Button type="button" size="sm" className="flex-1 text-xs"
                   variant={compound === 'compound' ? 'default' : 'outline'}
-                  onClick={() => setCompound('compound')}>Majemuk</Button>
+                  onClick={() => setCompound('compound')}>Compound</Button>
               </div>
             </div>
           </CardContent>
@@ -174,7 +256,7 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
         <Card className={isProfit ? 'border-emerald-500/25' : 'border-red-500/25'}>
           <CardContent className="pt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Saldo Aktif</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Active Balance</p>
               <p className={`text-lg font-black ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(currentEq)}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -195,8 +277,96 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
             </div>
             {trades.length > 0 && (
               <p className="text-center text-xs text-muted-foreground">
-                {trades.length} trade · {stats.wins}W {stats.losses}L
+                {trades.length} trades · {stats.wins}W {stats.losses}L
               </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Save Plan ── */}
+        <Card className="border-primary/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <BookMarked size={13} className="text-primary"/> Save Plan
+              {plans.length >= 5 && <span className="ml-auto text-[10px] text-muted-foreground">Max 5 plans</span>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Current params summary */}
+            <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-xs space-y-1">
+              <p className="text-muted-foreground font-medium mb-1.5">Current parameters:</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                <span className="text-muted-foreground">Equity</span>
+                <span className="font-semibold text-right">{fmt(initEquity)}</span>
+                <span className="text-muted-foreground">Risk/trade</span>
+                <span className="font-semibold text-right">{riskPct}% (−{fmt(lossAmt)})</span>
+                <span className="text-muted-foreground">RR Ratio</span>
+                <span className="font-semibold text-right">
+                  1:{rrMode === 'fixed' ? rrFixed : `${rrMin}–${rrMax} (avg ${saveRR})`}
+                </span>
+                <span className="text-muted-foreground">Capital</span>
+                <span className="font-semibold text-right capitalize">{compound}</span>
+                {trades.length > 0 && (
+                  <>
+                    <span className="text-muted-foreground">Session WR</span>
+                    <span className={`font-semibold text-right ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {stats.winRate.toFixed(1)}% ({trades.length} trades)
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <Label className="text-xs">Plan Name</Label>
+                <Input
+                  value={saveName}
+                  onChange={e => setSaveName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSavePlan()}
+                  placeholder="e.g. Breakout 1:2"
+                  className="mt-1"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">
+                    Target Win Rate (%)
+                    {trades.length > 0 && (
+                      <span className="text-muted-foreground ml-1">← from session</span>
+                    )}
+                  </Label>
+                  <Input type="number" step="1" min="1" max="99" value={saveWR}
+                    onChange={e => setSaveWR(Math.min(99, Math.max(1, +e.target.value || 50)))}
+                    className="mt-1"/>
+                </div>
+                <div>
+                  <Label className="text-xs">Trades / Month</Label>
+                  <Input type="number" step="1" min="1" value={saveTrades}
+                    onChange={e => setSaveTrades(+e.target.value || 1)}
+                    className="mt-1"/>
+                </div>
+              </div>
+            </div>
+
+            {savedMsg ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium py-1">
+                  <CheckCircle2 size={15}/> Plan saved!
+                </div>
+                <Button size="sm" variant="outline" className="w-full gap-2 text-xs" onClick={onGoToCompare}>
+                  View in Plan Comparison <ArrowRight size={12}/>
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={handleSavePlan}
+                disabled={!saveName.trim() || plans.length >= 5}
+                className="w-full gap-2"
+                size="sm"
+              >
+                <BookMarked size={13}/> Save to Plan Comparison
+              </Button>
             )}
           </CardContent>
         </Card>
@@ -204,7 +374,6 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
 
       {/* ── Right: Stats + Chart + History ── */}
       <div className="lg:col-span-2 space-y-4">
-        {/* Stats row */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {statCards.map((s, i) => (
             <Card key={i} className="border-border/40">
@@ -217,16 +386,15 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
           ))}
         </div>
 
-        {/* Equity Curve */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2"><Activity size={13}/> Kurva Ekuitas Sesi Ini</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2"><Activity size={13}/> Equity Curve</CardTitle>
           </CardHeader>
           <CardContent>
             {chartData.length < 2 ? (
               <div className="h-44 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
                 <Zap size={24} className="opacity-40"/>
-                Klik WIN atau LOSE untuk mulai simulasi
+                Click WIN or LOSE to start the simulation
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={200}>
@@ -240,9 +408,9 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.3}/>
                   <XAxis dataKey="id" tick={{fontSize:9}} tickLine={false} axisLine={false}/>
                   <YAxis tick={{fontSize:9}} tickLine={false} axisLine={false} width={65} tickFormatter={v=>fmt(v)}/>
-                  <Tooltip contentStyle={TooltipStyle} formatter={(v)=>[fmt(Number(v)),'Ekuitas']}/>
+                  <Tooltip contentStyle={TooltipStyle} formatter={(v)=>[fmt(Number(v)),'Equity']}/>
                   <ReferenceLine y={initEquity} stroke="var(--border)" strokeDasharray="4 4"
-                    label={{value:'Modal Awal',position:'right',fontSize:9,fill:'var(--muted-foreground)'}}/>
+                    label={{value:'Start',position:'right',fontSize:9,fill:'var(--muted-foreground)'}}/>
                   <Area type="monotone" dataKey="balance"
                     stroke={isProfit ? '#10b981' : '#ef4444'} strokeWidth={2}
                     fill="url(#simGrad)"
@@ -253,22 +421,21 @@ function ManualSimulator({ fmt }: { fmt: (n: number) => string }) {
           </CardContent>
         </Card>
 
-        {/* Trade History */}
         {trades.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Riwayat Trade</CardTitle>
+              <CardTitle className="text-sm">Trade History</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="max-h-52 overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/50 z-10">
                     <tr>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">No</th>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Hasil</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">#</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Result</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">RR</th>
-                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">P/L (Rp)</th>
-                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Saldo Akhir</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">P&L</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Balance</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
@@ -344,19 +511,17 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
   const isViable    = evUnit > 0
   const bestMonth   = projection.length > 0 ? projection.reduce((a, b) => b.netPnl > a.netPnl ? b : a, projection[0]) : null
   const worstMonth  = projection.length > 0 ? projection.reduce((a, b) => b.netPnl < a.netPnl ? b : a, projection[0]) : null
-
-  const chartData = projection.map(r => ({ month: `M${r.month}`, equity: r.closeEq, pnl: r.netPnl }))
-  const isPositive = totalReturn >= 0
+  const chartData   = projection.map(r => ({ month: `M${r.month}`, equity: r.closeEq }))
+  const isPositive  = totalReturn >= 0
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* ── Input Panel ── */}
         <Card>
-          <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Target size={13}/> Parameter KPI</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Target size={13}/> KPI Parameters</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <Label className="text-xs">Ekuitas Awal</Label>
+              <Label className="text-xs">Starting Equity</Label>
               <Input type="number" step="any" value={equity} onChange={e => setEquity(+e.target.value || 0)} className="mt-1"/>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -366,42 +531,40 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
                   onChange={e => setWinRate(Math.min(99, Math.max(1, +e.target.value || 50)))} className="mt-1"/>
               </div>
               <div>
-                <Label className="text-xs">Risiko / Trade (%)</Label>
+                <Label className="text-xs">Risk / Trade (%)</Label>
                 <Input type="number" step="0.1" min="0.1" value={riskPct}
                   onChange={e => setRiskPct(+e.target.value || 1)} className="mt-1"/>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-xs">Reward Ratio (RR)</Label>
+                <Label className="text-xs">RR Ratio</Label>
                 <Input type="number" step="0.1" min="0.1" value={rrRatio}
                   onChange={e => setRrRatio(+e.target.value || 1)} className="mt-1"/>
               </div>
               <div>
-                <Label className="text-xs">Trade / Bulan</Label>
+                <Label className="text-xs">Trades / Month</Label>
                 <Input type="number" step="1" min="1" value={tradesM}
                   onChange={e => setTradesM(+e.target.value || 1)} className="mt-1"/>
               </div>
             </div>
             <div>
-              <Label className="text-xs">Proyeksi (Bulan)</Label>
+              <Label className="text-xs">Projection (Months)</Label>
               <Input type="number" step="1" min="1" max="120" value={months}
                 onChange={e => setMonths(Math.min(120, Math.max(1, +e.target.value || 12)))} className="mt-1"/>
             </div>
             <div>
-              <Label className="text-xs">Tipe Kompon</Label>
+              <Label className="text-xs">Compounding</Label>
               <div className="flex gap-2 mt-1">
                 <Button type="button" size="sm" className="flex-1 text-xs"
-                  variant={compound === 'fixed' ? 'default' : 'outline'} onClick={() => setCompound('fixed')}>Tetap</Button>
+                  variant={compound === 'fixed' ? 'default' : 'outline'} onClick={() => setCompound('fixed')}>Fixed</Button>
                 <Button type="button" size="sm" className="flex-1 text-xs"
-                  variant={compound === 'compound' ? 'default' : 'outline'} onClick={() => setCompound('compound')}>Majemuk</Button>
+                  variant={compound === 'compound' ? 'default' : 'outline'} onClick={() => setCompound('compound')}>Compound</Button>
               </div>
             </div>
-
-            {/* EV Insight */}
             <div className={`rounded-xl p-3 text-xs border ${isViable ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-red-500/10 border-red-500/25'}`}>
               <p className={`font-bold mb-1.5 ${isViable ? 'text-emerald-400' : 'text-red-400'}`}>
-                {isViable ? '✅ Strategi Viable' : '❌ Strategi Merugi'}
+                {isViable ? '✅ Viable strategy' : '❌ Losing strategy'}
               </p>
               <p className="text-muted-foreground">EV/trade: <span className={`font-semibold ${evUnit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{(evUnit * 100).toFixed(2)}% risk</span></p>
               <p className="text-muted-foreground mt-0.5">Break-even WR: <span className="font-semibold text-foreground">{bePct.toFixed(1)}%</span></p>
@@ -409,22 +572,20 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
           </CardContent>
         </Card>
 
-        {/* ── Results ── */}
         <div className="lg:col-span-3 space-y-4">
-          {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card className={isPositive ? 'border-emerald-500/25' : 'border-red-500/25'}>
               <CardContent className="pt-3 pb-3 px-3">
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Return Total</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Total Return</p>
                 <p className={`text-2xl font-black ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
                   {totalReturn >= 0 ? '+' : ''}{totalReturn.toFixed(1)}%
                 </p>
-                <p className="text-[9px] text-muted-foreground">{months} bulan</p>
+                <p className="text-[9px] text-muted-foreground">{months} months</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="pt-3 pb-3 px-3">
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Ekuitas Akhir</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Final Equity</p>
                 <p className={`text-base font-black ${lastRow && lastRow.closeEq >= equity ? 'text-emerald-400' : 'text-red-400'}`}>
                   {lastRow ? fmt(lastRow.closeEq) : fmt(equity)}
                 </p>
@@ -435,7 +596,7 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
             </Card>
             <Card>
               <CardContent className="pt-3 pb-3 px-3">
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Rata-rata / Bulan</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Avg / Month</p>
                 <p className={`text-2xl font-black ${avgMonthly >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {avgMonthly >= 0 ? '+' : ''}{avgMonthly.toFixed(2)}%
                 </p>
@@ -448,29 +609,27 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
                 <p className={`text-2xl font-black ${winRate >= bePct ? 'text-emerald-400' : 'text-red-400'}`}>
                   {bePct.toFixed(1)}%
                 </p>
-                <p className="text-[9px] text-muted-foreground">WR kamu: <span className={winRate >= bePct ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span></p>
+                <p className="text-[9px] text-muted-foreground">Yours: <span className={winRate >= bePct ? 'text-emerald-400' : 'text-red-400'}>{winRate}%</span></p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Extra stats */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-card border border-border/40 p-3 text-xs">
-              <p className="text-muted-foreground mb-1">Bulan Terbaik</p>
+              <p className="text-muted-foreground mb-1">Best Month</p>
               <p className="text-emerald-400 font-bold text-sm">{bestMonth ? fmt(bestMonth.netPnl) : '—'}</p>
-              {bestMonth && <p className="text-muted-foreground">{bestMonth.retPct.toFixed(2)}% return · Bulan {bestMonth.month}</p>}
+              {bestMonth && <p className="text-muted-foreground">{bestMonth.retPct.toFixed(2)}% · Month {bestMonth.month}</p>}
             </div>
             <div className="rounded-xl bg-card border border-border/40 p-3 text-xs">
-              <p className="text-muted-foreground mb-1">Bulan Terburuk</p>
+              <p className="text-muted-foreground mb-1">Worst Month</p>
               <p className="text-red-400 font-bold text-sm">{worstMonth ? fmt(worstMonth.netPnl) : '—'}</p>
-              {worstMonth && <p className="text-muted-foreground">{worstMonth.retPct.toFixed(2)}% return · Bulan {worstMonth.month}</p>}
+              {worstMonth && <p className="text-muted-foreground">{worstMonth.retPct.toFixed(2)}% · Month {worstMonth.month}</p>}
             </div>
           </div>
 
-          {/* Equity Projection Chart */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Proyeksi Ekuitas — {months} Bulan ({compound === 'compound' ? 'Majemuk' : 'Tetap'})</CardTitle>
+              <CardTitle className="text-sm">Equity Projection — {months} Months ({compound === 'compound' ? 'Compound' : 'Fixed'})</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
@@ -485,9 +644,9 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
                   <XAxis dataKey="month" tick={{fontSize:9}} tickLine={false} axisLine={false}
                     interval={Math.max(0, Math.floor(months / 8) - 1)}/>
                   <YAxis tick={{fontSize:9}} tickLine={false} axisLine={false} width={70} tickFormatter={v=>fmt(v)}/>
-                  <Tooltip contentStyle={TooltipStyle} formatter={(v)=>[fmt(Number(v)),'Ekuitas']}/>
+                  <Tooltip contentStyle={TooltipStyle} formatter={(v)=>[fmt(Number(v)),'Equity']}/>
                   <ReferenceLine y={equity} stroke="var(--border)" strokeDasharray="4 4"
-                    label={{value:'Modal Awal',position:'right',fontSize:9,fill:'var(--muted-foreground)'}}/>
+                    label={{value:'Start',position:'right',fontSize:9,fill:'var(--muted-foreground)'}}/>
                   <Area type="monotone" dataKey="equity"
                     stroke={isPositive ? '#10b981' : '#ef4444'} strokeWidth={2}
                     fill="url(#kpiGrad)"
@@ -497,28 +656,25 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
             </CardContent>
           </Card>
 
-          {/* Monthly Table */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Rincian Per Bulan</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">Monthly Breakdown</CardTitle></CardHeader>
             <CardContent className="p-0">
               <div className="max-h-64 overflow-auto">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/50 z-10">
                     <tr>
-                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Bulan</th>
-                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Modal Awal</th>
+                      <th className="text-left px-3 py-2 text-muted-foreground font-medium">Month</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Open Eq.</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">W / L</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">Net P&L</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">Return</th>
-                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Saldo Akhir</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Close Eq.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
                     {projection.map(r => (
                       <tr key={r.month} className="hover:bg-muted/20">
-                        <td className="px-3 py-2 font-medium">Bln {r.month}</td>
+                        <td className="px-3 py-2 font-medium">M{r.month}</td>
                         <td className="px-3 py-2 text-right text-muted-foreground">{fmt(r.openEq)}</td>
                         <td className="px-3 py-2 text-right">
                           <span className="text-emerald-400">{r.wins}</span>
@@ -528,7 +684,7 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
                         <td className={`px-3 py-2 text-right font-bold ${r.netPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                           {r.netPnl >= 0 ? '+' : ''}{fmt(r.netPnl)}
                         </td>
-                        <td className={`px-3 py-2 text-right font-medium ${r.retPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <td className={`px-3 py-2 text-right ${r.retPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                           {r.retPct >= 0 ? '+' : ''}{r.retPct.toFixed(2)}%
                         </td>
                         <td className="px-3 py-2 text-right font-bold">{fmt(r.closeEq)}</td>
@@ -560,61 +716,14 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
 // ─────────────────────────────────────────────
 // Plan Comparison
 // ─────────────────────────────────────────────
-const PLAN_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
-
-type Plan = {
-  id: string
-  name: string
-  equity: number
-  winRate: number
-  rrRatio: number
-  riskPct: number
-  tradesPerMonth: number
-  compound: boolean
+type CompareProps = {
+  fmt:      (n: number) => string
+  plans:    Plan[]
+  setPlans: React.Dispatch<React.SetStateAction<Plan[]>>
 }
 
-function calcPlanStats(p: Plan) {
-  const wr               = p.winRate / 100
-  const expectancy       = wr * p.rrRatio - (1 - wr)
-  const profitFactor     = (1 - wr) > 0 ? (wr * p.rrRatio) / (1 - wr) : Infinity
-  const breakEvenWR      = 1 / (1 + p.rrRatio) * 100
-  const isViable         = expectancy > 0
-  // Fixed-capital monthly expected return %
-  const monthlyReturnPct = p.tradesPerMonth * expectancy * p.riskPct
-
-  // 12-month equity curve (compound if enabled)
-  let eq = p.equity
-  const curve: number[] = [eq]
-  for (let m = 0; m < 12; m++) {
-    const base   = p.compound ? eq : p.equity
-    const risk   = base * p.riskPct / 100
-    const netPnl = p.tradesPerMonth * (wr * risk * p.rrRatio - (1 - wr) * risk)
-    eq += netPnl
-    curve.push(eq)
-  }
-
-  return {
-    expectancy, profitFactor, breakEvenWR, isViable,
-    monthlyReturnPct,
-    annualReturnPct:  monthlyReturnPct * 12,
-    finalEquity12m:   eq,
-    totalReturn12m:   p.equity > 0 ? (eq - p.equity) / p.equity * 100 : 0,
-    curve,
-  }
-}
-
-type PlanStats = ReturnType<typeof calcPlanStats>
-
-function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
-  const [plans, setPlans] = useState<Plan[]>(() => {
-    try { return JSON.parse(localStorage.getItem('sim_plans') ?? '[]') } catch { return [] }
-  })
-
-  useEffect(() => {
-    localStorage.setItem('sim_plans', JSON.stringify(plans))
-  }, [plans])
-
-  // ── Form state ──
+function PlanComparison({ fmt, plans, setPlans }: CompareProps) {
+  // Form for adding plans directly in this tab
   const [fname,   setFname]   = useState('Plan A')
   const [fequity, setFequity] = useState(10_000_000)
   const [fwr,     setFwr]     = useState(55)
@@ -631,8 +740,7 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
         name: fname.trim(), equity: fequity, winRate: fwr,
         rrRatio: frr, riskPct: frisk, tradesPerMonth: ftrades, compound: fcomp,
       }]
-      const letter = String.fromCharCode(65 + next.length)
-      setFname(`Plan ${letter}`)
+      setFname(`Plan ${String.fromCharCode(65 + next.length)}`)
       return next
     })
   }
@@ -642,7 +750,6 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
     [plans]
   )
 
-  // ── Chart data: 13 points (M0–M12) ──
   const chartData = useMemo(() =>
     Array.from({ length: 13 }, (_, i) => {
       const pt: Record<string, string | number> = { month: i === 0 ? 'Start' : `M${i}` }
@@ -650,7 +757,6 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
       return pt
     }), [allStats])
 
-  // ── Comparison table metric rows ──
   type Row = {
     label: string
     val:  (p: Plan, s: PlanStats) => string
@@ -658,17 +764,17 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
     best?: 'high' | 'low'
   }
   const rows: Row[] = [
-    { label: 'Win Rate',            val: p     => `${p.winRate}%`,                                                              num: p     => p.winRate,                                                   best: 'high' },
-    { label: 'RR Ratio',            val: p     => `1 : ${p.rrRatio}`,                                                           num: p     => p.rrRatio,                                                   best: 'high' },
-    { label: 'Risk / Trade',        val: p     => `${p.riskPct}%`,                                                              num: p     => p.riskPct                                                              },
-    { label: 'Trades / Month',      val: p     => `${p.tradesPerMonth}`,                                                        num: p     => p.tradesPerMonth                                                       },
-    { label: 'Expectancy (R)',       val: (_,s) => `${s.expectancy >= 0 ? '+' : ''}${s.expectancy.toFixed(3)}R`,                num: (_,s) => s.expectancy,                                                best: 'high' },
-    { label: 'Profit Factor',       val: (_,s) => s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2),               num: (_,s) => s.profitFactor === Infinity ? 9999 : s.profitFactor,        best: 'high' },
-    { label: 'Break-even WR',       val: (_,s) => `${s.breakEvenWR.toFixed(1)}%`,                                              num: (_,s) => s.breakEvenWR,                                              best: 'low'  },
-    { label: 'Monthly Return (est)',val: (_,s) => `${s.monthlyReturnPct >= 0 ? '+' : ''}${s.monthlyReturnPct.toFixed(2)}%`,    num: (_,s) => s.monthlyReturnPct,                                          best: 'high' },
-    { label: 'Annual Return (est)', val: (_,s) => `${s.annualReturnPct >= 0 ? '+' : ''}${s.annualReturnPct.toFixed(1)}%`,      num: (_,s) => s.annualReturnPct,                                           best: 'high' },
-    { label: '12M Total Return',    val: (_,s) => `${s.totalReturn12m >= 0 ? '+' : ''}${s.totalReturn12m.toFixed(1)}%`,        num: (_,s) => s.totalReturn12m,                                            best: 'high' },
-    { label: '12M Final Equity',    val: (_,s) => fmt(s.finalEquity12m),                                                       num: (_,s) => s.finalEquity12m,                                            best: 'high' },
+    { label: 'Win Rate',             val: p     => `${p.winRate}%`,                                                           num: p     => p.winRate,                                             best: 'high' },
+    { label: 'RR Ratio',             val: p     => `1 : ${p.rrRatio}`,                                                        num: p     => p.rrRatio,                                             best: 'high' },
+    { label: 'Risk / Trade',         val: p     => `${p.riskPct}%`,                                                           num: p     => p.riskPct                                                           },
+    { label: 'Trades / Month',       val: p     => `${p.tradesPerMonth}`,                                                     num: p     => p.tradesPerMonth                                                    },
+    { label: 'Expectancy (R)',        val: (_,s) => `${s.expectancy >= 0 ? '+' : ''}${s.expectancy.toFixed(3)}R`,             num: (_,s) => s.expectancy,                                          best: 'high' },
+    { label: 'Profit Factor',        val: (_,s) => s.profitFactor === Infinity ? '∞' : s.profitFactor.toFixed(2),            num: (_,s) => s.profitFactor === Infinity ? 9999 : s.profitFactor,   best: 'high' },
+    { label: 'Break-even WR',        val: (_,s) => `${s.breakEvenWR.toFixed(1)}%`,                                           num: (_,s) => s.breakEvenWR,                                         best: 'low'  },
+    { label: 'Monthly Return (est)', val: (_,s) => `${s.monthlyReturnPct >= 0 ? '+' : ''}${s.monthlyReturnPct.toFixed(2)}%`, num: (_,s) => s.monthlyReturnPct,                                    best: 'high' },
+    { label: 'Annual Return (est)',  val: (_,s) => `${s.annualReturnPct >= 0 ? '+' : ''}${s.annualReturnPct.toFixed(1)}%`,   num: (_,s) => s.annualReturnPct,                                     best: 'high' },
+    { label: '12M Total Return',     val: (_,s) => `${s.totalReturn12m >= 0 ? '+' : ''}${s.totalReturn12m.toFixed(1)}%`,     num: (_,s) => s.totalReturn12m,                                      best: 'high' },
+    { label: '12M Final Equity',     val: (_,s) => fmt(s.finalEquity12m),                                                    num: (_,s) => s.finalEquity12m,                                      best: 'high' },
   ]
 
   function getBestIdx(row: Row): number | null {
@@ -680,14 +786,12 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
     ).i
   }
 
-  // ── Live preview for form ──
   const fwrN    = fwr / 100
   const fev     = fwrN * frr - (1 - fwrN)
   const fpf     = (1 - fwrN) > 0 ? fwrN * frr / (1 - fwrN) : Infinity
   const fviable = fev > 0
   const fmonth  = ftrades * fev * frisk
 
-  // ── Conclusion ──
   const conclusion = useMemo(() => {
     if (allStats.length < 2) return null
     const viable    = allStats.filter(x => x.stats.isViable)
@@ -695,13 +799,12 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
 
     if (viable.length === 0) return {
       grade: 'danger' as const,
-      insights: ['All plans have negative expected value (EV < 0). Increase your win rate or RR ratio before trading live.'],
+      insights: ['All plans have negative expected value. Increase win rate or RR ratio.'],
       recommendation: null,
-      winnerColor: PLAN_COLORS[0],
     }
 
-    const byEV  = [...viable].sort((a, b) => b.stats.expectancy       - a.stats.expectancy)
-    const byRet = [...viable].sort((a, b) => b.stats.totalReturn12m   - a.stats.totalReturn12m)
+    const byEV  = [...viable].sort((a, b) => b.stats.expectancy - a.stats.expectancy)
+    const byRet = [...viable].sort((a, b) => b.stats.totalReturn12m - a.stats.totalReturn12m)
     const byPF  = [...viable].sort((a, b) => {
       const av = a.stats.profitFactor === Infinity ? 9999 : a.stats.profitFactor
       const bv = b.stats.profitFactor === Infinity ? 9999 : b.stats.profitFactor
@@ -713,40 +816,40 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
     const topPF  = byPF[0]
 
     const insights: string[] = [
-      `🏆 Best expectancy: ${topEV.plan.name} (+${topEV.stats.expectancy.toFixed(3)}R/trade) — returns the most per unit of risk on average.`,
-      `📈 Best 12-month projection: ${topRet.plan.name} (+${topRet.stats.totalReturn12m.toFixed(1)}% → ${fmt(topRet.stats.finalEquity12m)} after 12 months${topRet.plan.compound ? ' compound' : ''}).`,
+      `🏆 Best expectancy: ${topEV.plan.name} (+${topEV.stats.expectancy.toFixed(3)}R/trade) — highest average return per unit of risk.`,
+      `📈 Best 12-month projection: ${topRet.plan.name} (+${topRet.stats.totalReturn12m.toFixed(1)}% → ${fmt(topRet.stats.finalEquity12m)}).`,
     ]
-
     if (topPF.plan.id !== topEV.plan.id) {
-      insights.push(`🛡️ Strongest statistical edge: ${topPF.plan.name} (PF ${topPF.stats.profitFactor === Infinity ? '∞' : topPF.stats.profitFactor.toFixed(2)}) — most consistent win/loss ratio.`)
+      insights.push(`🛡️ Strongest edge: ${topPF.plan.name} (PF ${topPF.stats.profitFactor === Infinity ? '∞' : topPF.stats.profitFactor.toFixed(2)}) — most consistent win/loss ratio.`)
     }
-
     if (nonViable.length > 0) {
-      insights.push(`⚠️ Negative EV plans (avoid): ${nonViable.map(x => x.plan.name).join(', ')} — these lose money long-term regardless of short-term luck.`)
+      insights.push(`⚠️ Avoid: ${nonViable.map(x => x.plan.name).join(', ')} — negative EV, loses money long-term.`)
     }
 
-    // Pick overall winner: prefer the one that is best in both EV and return, else go by EV
-    const winner = topEV.plan.id === topRet.plan.id ? topEV : topEV
-    const recommendation = `${winner.plan.name} is the recommended primary plan — ${winner.plan.winRate}% win rate with 1:${winner.plan.rrRatio} RR gives +${winner.stats.monthlyReturnPct.toFixed(2)}%/month expected return and an expectancy of +${winner.stats.expectancy.toFixed(3)}R per trade.`
+    const winner = topEV
+    const recommendation = `${winner.plan.name} is the recommended plan — ${winner.plan.winRate}% WR × 1:${winner.plan.rrRatio} RR gives +${winner.stats.monthlyReturnPct.toFixed(2)}%/month with +${winner.stats.expectancy.toFixed(3)}R expectancy per trade.`
 
-    return { grade: nonViable.length === 0 ? 'success' as const : 'warning' as const, insights, recommendation, winner, winnerColor: winner.color }
+    return {
+      grade: nonViable.length === 0 ? 'success' as const : 'warning' as const,
+      insights, recommendation,
+    }
   }, [allStats, fmt])
 
   return (
     <div className="space-y-5">
-      {/* ── Add Plan ── */}
+      {/* ── Add Plan (for plans not from Manual Session) ── */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
-            <BookMarked size={13}/> Add Trading Plan
-            <span className="ml-auto text-xs text-muted-foreground font-normal">{plans.length} / 5 plans saved</span>
+            <BookMarked size={13}/> Add Plan Manually
+            <span className="ml-auto text-xs text-muted-foreground font-normal">{plans.length} / 5</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <Label className="text-xs">Plan Name</Label>
-              <Input value={fname} onChange={e => setFname(e.target.value)} className="mt-1" placeholder="e.g. Breakout 2R"/>
+              <Input value={fname} onChange={e => setFname(e.target.value)} className="mt-1" placeholder="e.g. Scalping 1.5R"/>
             </div>
             <div>
               <Label className="text-xs">Starting Equity</Label>
@@ -787,18 +890,16 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
               </Button>
             </div>
           </div>
-
-          {/* Live EV preview */}
           <div className={`rounded-lg px-4 py-2.5 text-xs border flex flex-wrap items-center gap-x-4 gap-y-1 ${fviable ? 'bg-emerald-500/8 border-emerald-500/25 text-emerald-400' : 'bg-red-500/8 border-red-500/25 text-red-400'}`}>
             <span className="font-bold">{fviable ? '✅ Viable' : '❌ Not viable'}</span>
             <span className="text-muted-foreground">Expectancy: <strong className={fviable ? 'text-emerald-400' : 'text-red-400'}>{fev >= 0 ? '+' : ''}{fev.toFixed(3)}R</strong></span>
-            <span className="text-muted-foreground">Profit Factor: <strong className={fviable ? 'text-emerald-400' : 'text-red-400'}>{fpf === Infinity ? '∞' : fpf.toFixed(2)}</strong></span>
+            <span className="text-muted-foreground">PF: <strong className={fviable ? 'text-emerald-400' : 'text-red-400'}>{fpf === Infinity ? '∞' : fpf.toFixed(2)}</strong></span>
             <span className="text-muted-foreground">Monthly est: <strong className={fviable ? 'text-emerald-400' : 'text-red-400'}>{fmonth >= 0 ? '+' : ''}{fmonth.toFixed(2)}%</strong></span>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── Plan chips ── */}
+      {/* ── Saved plan chips ── */}
       {plans.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {allStats.map(({ plan, color }) => (
@@ -807,7 +908,7 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }}/>
               {plan.name}
               <span className="text-muted-foreground font-normal">
-                {plan.winRate}% WR · 1:{plan.rrRatio} RR · {plan.riskPct}% risk
+                {plan.winRate}%WR · 1:{plan.rrRatio}RR · {plan.riskPct}%risk
               </span>
               <button onClick={() => setPlans(p => p.filter(x => x.id !== plan.id))}
                 className="ml-1 opacity-50 hover:opacity-100 transition-opacity">
@@ -824,7 +925,9 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
           <CardContent className="py-16 text-center">
             <BookMarked size={28} className="mx-auto mb-3 text-muted-foreground/40"/>
             <p className="font-medium text-muted-foreground">No plans saved yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Add at least 2 plans above to start comparing them</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Save a plan from the <strong>Manual Session</strong> tab, or add one manually above
+            </p>
           </CardContent>
         </Card>
       )}
@@ -863,7 +966,6 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
                     </tr>
                   )
                 })}
-                {/* Viability row */}
                 <tr className="hover:bg-muted/10">
                   <td className="px-4 py-2.5 text-muted-foreground font-medium">Viable?</td>
                   {allStats.map(({ plan, stats }) => (
@@ -880,15 +982,12 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
         </Card>
       )}
 
-      {/* ── 12-Month Equity Chart ── */}
+      {/* ── 12-Month Chart ── */}
       {plans.length >= 1 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Activity size={13}/> 12-Month Equity Projection
-              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
-                ({plans.some(p => p.compound) ? 'compound where enabled' : 'fixed capital'})
-              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -899,10 +998,7 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
                 <YAxis tick={{fontSize:9}} tickLine={false} axisLine={false} width={70} tickFormatter={v=>fmt(v)}/>
                 <Tooltip
                   contentStyle={TooltipStyle}
-                  formatter={(v, name) => {
-                    const plan = plans.find(p => p.id === String(name))
-                    return [fmt(Number(v)), plan?.name ?? String(name)]
-                  }}
+                  formatter={(v, name) => [fmt(Number(v)), plans.find(p => p.id === String(name))?.name ?? String(name)]}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
@@ -956,15 +1052,22 @@ function PlanComparison({ fmt }: { fmt: (n: number) => string }) {
 }
 
 // ─────────────────────────────────────────────
-// Page
+// Page — holds shared plans state
 // ─────────────────────────────────────────────
 export default function SimulatorPage() {
   const fmt = useCurrency()
   const [tab, setTab] = useState<'manual' | 'kpi' | 'compare'>('manual')
 
+  // Shared across Manual + Compare tabs
+  const [plans, setPlans] = useState<Plan[]>(() => {
+    try { return JSON.parse(localStorage.getItem('sim_plans') ?? '[]') } catch { return [] }
+  })
+  useEffect(() => {
+    localStorage.setItem('sim_plans', JSON.stringify(plans))
+  }, [plans])
+
   return (
     <div className="space-y-5 max-w-6xl">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-primary/10">
@@ -975,7 +1078,7 @@ export default function SimulatorPage() {
             <p className="text-sm text-muted-foreground">Test, simulate, and compare your trading plans</p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
           <Button size="sm" variant={tab === 'manual'  ? 'default' : 'outline'} onClick={() => setTab('manual')}>
             Manual Session
           </Button>
@@ -984,14 +1087,20 @@ export default function SimulatorPage() {
           </Button>
           <Button size="sm" variant={tab === 'compare' ? 'default' : 'outline'} onClick={() => setTab('compare')}
             className="gap-1.5">
-            <BookMarked size={13}/> Plan Comparison
+            <BookMarked size={13}/>
+            Plan Comparison
+            {plans.length > 0 && (
+              <span className="ml-1 bg-primary/20 text-primary rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                {plans.length}
+              </span>
+            )}
           </Button>
         </div>
       </div>
 
-      {tab === 'manual'  && <ManualSimulator fmt={fmt}/>}
+      {tab === 'manual'  && <ManualSimulator fmt={fmt} plans={plans} setPlans={setPlans} onGoToCompare={() => setTab('compare')}/>}
       {tab === 'kpi'     && <KpiProjector    fmt={fmt}/>}
-      {tab === 'compare' && <PlanComparison  fmt={fmt}/>}
+      {tab === 'compare' && <PlanComparison  fmt={fmt} plans={plans} setPlans={setPlans}/>}
     </div>
   )
 }
