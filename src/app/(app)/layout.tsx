@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { Toaster } from '@/components/ui/toaster'
 import { Loader2, AlertTriangle, X, RefreshCw } from 'lucide-react'
 
 function SyncErrorBanner() {
@@ -74,6 +75,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <StoreProvider>
       <AppContent>{children}</AppContent>
+      <Toaster />
     </StoreProvider>
   )
 }

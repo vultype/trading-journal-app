@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { Account, Trade, Transfer, JournalNote, AppSettings } from '@/types'
 import { createClient } from '@/lib/supabase'
+import { toast } from '@/lib/toast'
 
 const DEFAULT_SETTINGS: AppSettings = {
   currency: 'IDR',
@@ -138,6 +139,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const id = uid(); const created_at = new Date().toISOString()
     const row: Account = { ...a, id, created_at }
     setAccounts(p => [...p, row])
+    toast.success('Akun berhasil ditambahkan')
     sb().from('accounts').insert({ ...a, id, user_id: userId, created_at })
       .then(({ error }) => onSaveError('addAccount', error))
   }, [userId])
@@ -145,6 +147,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteAccount = useCallback((id: string) => {
     if (!userId) return
     setAccounts(p => p.filter(a => a.id !== id))
+    toast.success('Akun dihapus')
     sb().from('accounts').delete().eq('id', id).eq('user_id', userId)
       .then(({ error }) => onSaveError('deleteAccount', error))
   }, [userId])
@@ -154,6 +157,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!userId) return
     const id = uid(); const created_at = new Date().toISOString()
     setTrades(p => [...p, { ...t, id, created_at }])
+    toast.success('Trade berhasil dicatat')
     sb().from('trades').insert({
       id, user_id: userId, created_at,
       account_id:     t.account_id,
@@ -174,6 +178,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const updateTrade = useCallback((id: string, t: Partial<Trade>) => {
     if (!userId) return
     setTrades(p => p.map(x => x.id === id ? { ...x, ...t } : x))
+    toast.success('Trade diperbarui')
     sb().from('trades').update(t).eq('id', id).eq('user_id', userId)
       .then(({ error }) => onSaveError('updateTrade', error))
   }, [userId])
@@ -181,6 +186,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteTrade = useCallback((id: string) => {
     if (!userId) return
     setTrades(p => p.filter(x => x.id !== id))
+    toast.success('Trade dihapus')
     sb().from('trades').delete().eq('id', id).eq('user_id', userId)
       .then(({ error }) => onSaveError('deleteTrade', error))
   }, [userId])
@@ -190,6 +196,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!userId) return
     const id = uid(); const created_at = new Date().toISOString()
     setTransfers(p => [...p, { ...t, id, created_at }])
+    toast.success(t.type === 'deposit' ? 'Deposit dicatat' : 'Withdraw dicatat')
     sb().from('transfers').insert({
       id, user_id: userId, created_at,
       from_account_id: t.from_account_id,
@@ -204,6 +211,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteTransfer = useCallback((id: string) => {
     if (!userId) return
     setTransfers(p => p.filter(x => x.id !== id))
+    toast.success('Transfer dihapus')
     sb().from('transfers').delete().eq('id', id).eq('user_id', userId)
       .then(({ error }) => onSaveError('deleteTransfer', error))
   }, [userId])
@@ -217,11 +225,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         sb().from('journal_notes').update({ content: note.content, mood: note.mood })
           .eq('user_id', userId).eq('date', note.date)
           .then(({ error }) => onSaveError('saveJournal update', error))
+        toast.success('Jurnal diperbarui')
         return p.map(n => n.date === note.date ? { ...n, ...note } : n)
       }
       const id = uid(); const created_at = new Date().toISOString()
       sb().from('journal_notes').insert({ id, user_id: userId, created_at, ...note })
         .then(({ error }) => onSaveError('saveJournal insert', error))
+      toast.success('Jurnal tersimpan')
       return [{ ...note, id, created_at }, ...p]
     })
   }, [userId])
@@ -231,6 +241,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!userId) return
     setSettings(p => {
       const next = { ...p, ...s }
+      toast.success('Pengaturan disimpan')
       sb().from('user_settings').upsert({
         user_id:         userId,
         currency:        next.currency,

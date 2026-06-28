@@ -14,12 +14,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { Plus, TrendingUp, TrendingDown, Filter, Check, X } from 'lucide-react'
+import { CurrencyInput } from '@/components/ui/currency-input'
 import type { Trade } from '@/types'
 
 type FormData = {
   account_id: string; date: string; entry_time: string
   pair: string; direction: 'long' | 'short'
-  result: 'win' | 'loss' | 'breakeven'; pnl: string; strategy: string
+  result: 'win' | 'loss' | 'breakeven'; pnl: number | ''; strategy: string
   followed_plan: 'yes' | 'no' | ''; know_direction: 'yes' | 'no' | ''
   screenshot_url: string; note: string
 }
@@ -73,14 +74,14 @@ export default function TradesPage() {
     }
   }, [tradingAccounts.length])
 
-  function set(key: keyof FormData, val: string) {
+  function set<K extends keyof FormData>(key: K, val: FormData[K]) {
     setForm(p => ({ ...p, [key]: val }))
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    const pnlVal = parseFloat(form.pnl)
-    if (!form.pnl || isNaN(pnlVal)) return
+    const pnlVal = Number(form.pnl)
+    if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
     addTrade({
       account_id:     form.account_id || tradingAccounts[0]?.id || '',
       date:           form.date,
@@ -212,7 +213,7 @@ export default function TradesPage() {
                 <Label className="text-xs text-muted-foreground">Result</Label>
                 <ToggleGroup
                   value={form.result}
-                  onChange={v => set('result', v)}
+                  onChange={v => set('result', v as FormData['result'])}
                   options={[
                     { value: 'win',       label: '✓ Win',        color: 'green' },
                     { value: 'loss',      label: '✗ Loss',       color: 'red' },
@@ -226,14 +227,13 @@ export default function TradesPage() {
                 <Label className="text-xs text-muted-foreground">
                   P&L Amount ({settings.currency})
                 </Label>
-                <Input
-                  type="number" step="any"
-                  placeholder={settings.currency === 'IDR' ? '150000' : '75.00'}
+                <CurrencyInput
                   value={form.pnl}
-                  onChange={e => set('pnl', e.target.value)}
+                  onChange={v => set('pnl', v)}
+                  placeholder={settings.currency === 'IDR' ? '150.000' : '75.00'}
                   required
                 />
-                <p className="text-xs text-muted-foreground">Enter positive number — sign is set automatically from Result</p>
+                <p className="text-xs text-muted-foreground">Masukkan angka positif — tanda +/− otomatis dari Result</p>
               </div>
 
               {/* Strategy */}

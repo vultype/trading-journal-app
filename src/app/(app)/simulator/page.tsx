@@ -5,6 +5,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { CurrencyInput } from '@/components/ui/currency-input'
 import { Label } from '@/components/ui/label'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -190,9 +191,12 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
           <CardContent className="space-y-4">
             <div>
               <Label className="text-xs">Starting Equity</Label>
-              <Input type="number" step="any" value={initEquity}
-                onChange={e => { setInitEquity(+e.target.value || 0); setTrades([]) }}
-                className="mt-1"/>
+              <CurrencyInput
+                value={initEquity || ''}
+                onChange={v => { setInitEquity(Number(v) || 0); setTrades([]) }}
+                className="mt-1"
+                placeholder="10.000.000"
+              />
             </div>
 
             <div>
@@ -552,7 +556,12 @@ function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
           <CardContent className="space-y-3">
             <div>
               <Label className="text-xs">Starting Equity</Label>
-              <Input type="number" step="any" value={equity} onChange={e => setEquity(+e.target.value || 0)} className="mt-1"/>
+              <CurrencyInput
+                value={equity || ''}
+                onChange={v => setEquity(Number(v) || 0)}
+                className="mt-1"
+                placeholder="10.000.000"
+              />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>

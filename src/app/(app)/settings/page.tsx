@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2 } from 'lucide-react'
+import { CurrencyInput } from '@/components/ui/currency-input'
 import type { AccountType, AppSettings } from '@/types'
 
 export default function SettingsPage() {
@@ -17,13 +18,13 @@ export default function SettingsPage() {
 
   // ─── Pengaturan Umum ───
   const [currency, setCurrency] = useState<AppSettings['currency']>(settings.currency)
-  const [targetM, setTargetM]   = useState(String(settings.targetBulanan ?? ''))
+  const [targetM, setTargetM]   = useState<number | ''>(settings.targetBulanan ?? '')
   const [saved, setSaved] = useState(false)
 
   function handleSaveSettings() {
     saveSettings({
       currency,
-      targetBulanan: targetM ? parseFloat(targetM) : undefined,
+      targetBulanan: targetM !== '' ? Number(targetM) : undefined,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -107,10 +108,10 @@ export default function SettingsPage() {
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Monthly Profit Target ({currency})</Label>
-            <Input
-              type="number" step="any" placeholder="0"
+            <CurrencyInput
               value={targetM}
-              onChange={e => setTargetM(e.target.value)}
+              onChange={setTargetM}
+              placeholder="0"
               className="w-52"
             />
             <p className="text-xs text-muted-foreground">Progress shown on Dashboard</p>
