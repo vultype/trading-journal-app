@@ -14,6 +14,7 @@ function uid() { return Math.random().toString(36).slice(2) + Date.now().toStrin
 type Store = {
   loading: boolean
   userId: string | null
+  syncError: string | null
   accounts: Account[]
   trades: Trade[]
   transfers: Transfer[]
@@ -28,6 +29,8 @@ type Store = {
   deleteTransfer: (id: string) => void
   saveJournal: (note: Omit<JournalNote, 'id' | 'created_at'>) => void
   saveSettings: (s: Partial<AppSettings>) => void
+  clearSyncError: () => void
+  refetch: () => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -35,6 +38,8 @@ const Ctx = createContext<Store | null>(null)
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [loading,      setLoading]      = useState(true)
   const [userId,       setUserId]       = useState<string | null>(null)
+  const [syncError,    setSyncError]    = useState<string | null>(null)
+  const [fetchKey,     setFetchKey]     = useState(0)
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [trades,       setTrades]       = useState<Trade[]>([])
   const [transfers,    setTransfers]    = useState<Transfer[]>([])
@@ -61,10 +66,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Load data when user logs in ──────────────────────────────────────
+  // ── Load data when user logs in (also re-runs on manual refetch) ──────
   useEffect(() => {
     if (!userId) return
     setLoading(true)
+    setSyncError(null)
     const sb = createClient()
 
     Promise.all([
@@ -104,12 +110,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
     }).catch(err => {
       console.error('[store] load error:', err)
+      setSyncError('Failed to load data from Supabase. Check your connection.')
       setLoading(false)
     })
-  }, [userId])
+  }, [userId, fetchKey])
 
   // ── Helpers ───────────────────────────────────────────────────────────
   function sb() { return createClient() }
+
+  // Surface Supabase save errors so the user knows data wasn't persisted
+  function onSaveError(label: string, error: { message?: string; code?: string } | null) {
+    if (!error) return
+    console.error(`[${label}]`, error)
+    const msg = error.message ?? 'Unknown error'
+    // RLS violation → most common root cause of silent data loss
+    const hint = error.code === '42501' || msg.includes('row-level security')
+      ? ' (RLS policy issue — re-run the SQL schema in Supabase)'
+      : ''
+    setSyncError(`Failed to save (${label}): ${msg}${hint}`)
+  }
+
+  function refetch() { setFetchKey(k => k + 1) }
 
   // ── Account actions ───────────────────────────────────────────────────
   const addAccount = useCallback((a: Omit<Account, 'id' | 'created_at'>) => {
@@ -118,14 +139,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const row: Account = { ...a, id, created_at }
     setAccounts(p => [...p, row])
     sb().from('accounts').insert({ ...a, id, user_id: userId, created_at })
-      .then(({ error }) => { if (error) console.error('[addAccount]', error) })
+      .then(({ error }) => onSaveError('addAccount', error))
   }, [userId])
 
   const deleteAccount = useCallback((id: string) => {
     if (!userId) return
     setAccounts(p => p.filter(a => a.id !== id))
     sb().from('accounts').delete().eq('id', id).eq('user_id', userId)
-      .then(({ error }) => { if (error) console.error('[deleteAccount]', error) })
+      .then(({ error }) => onSaveError('deleteAccount', error))
   }, [userId])
 
   // ── Trade actions ─────────────────────────────────────────────────────
@@ -147,21 +168,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       know_direction: t.know_direction,
       screenshot_url: t.screenshot_url,
       note:           t.note,
-    }).then(({ error }) => { if (error) console.error('[addTrade]', error) })
+    }).then(({ error }) => onSaveError('addTrade', error))
   }, [userId])
 
   const updateTrade = useCallback((id: string, t: Partial<Trade>) => {
     if (!userId) return
     setTrades(p => p.map(x => x.id === id ? { ...x, ...t } : x))
     sb().from('trades').update(t).eq('id', id).eq('user_id', userId)
-      .then(({ error }) => { if (error) console.error('[updateTrade]', error) })
+      .then(({ error }) => onSaveError('updateTrade', error))
   }, [userId])
 
   const deleteTrade = useCallback((id: string) => {
     if (!userId) return
     setTrades(p => p.filter(x => x.id !== id))
     sb().from('trades').delete().eq('id', id).eq('user_id', userId)
-      .then(({ error }) => { if (error) console.error('[deleteTrade]', error) })
+      .then(({ error }) => onSaveError('deleteTrade', error))
   }, [userId])
 
   // ── Transfer actions ──────────────────────────────────────────────────
@@ -177,14 +198,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       amount:          t.amount,
       note:            t.note,
       date:            t.date,
-    }).then(({ error }) => { if (error) console.error('[addTransfer]', error) })
+    }).then(({ error }) => onSaveError('addTransfer', error))
   }, [userId])
 
   const deleteTransfer = useCallback((id: string) => {
     if (!userId) return
     setTransfers(p => p.filter(x => x.id !== id))
     sb().from('transfers').delete().eq('id', id).eq('user_id', userId)
-      .then(({ error }) => { if (error) console.error('[deleteTransfer]', error) })
+      .then(({ error }) => onSaveError('deleteTransfer', error))
   }, [userId])
 
   // ── Journal actions ───────────────────────────────────────────────────
@@ -195,12 +216,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (ex) {
         sb().from('journal_notes').update({ content: note.content, mood: note.mood })
           .eq('user_id', userId).eq('date', note.date)
-          .then(({ error }) => { if (error) console.error('[saveJournal update]', error) })
+          .then(({ error }) => onSaveError('saveJournal update', error))
         return p.map(n => n.date === note.date ? { ...n, ...note } : n)
       }
       const id = uid(); const created_at = new Date().toISOString()
       sb().from('journal_notes').insert({ id, user_id: userId, created_at, ...note })
-        .then(({ error }) => { if (error) console.error('[saveJournal insert]', error) })
+        .then(({ error }) => onSaveError('saveJournal insert', error))
       return [{ ...note, id, created_at }, ...p]
     })
   }, [userId])
@@ -217,16 +238,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         target_bulanan:  next.targetBulanan ?? null,
         updated_at:      new Date().toISOString(),
       }, { onConflict: 'user_id' })
-        .then(({ error }) => { if (error) console.error('[saveSettings]', error) })
+        .then(({ error }) => onSaveError('saveSettings', error))
       return next
     })
   }, [userId])
 
+  const clearSyncError = useCallback(() => setSyncError(null), [])
+
   return (
     <Ctx.Provider value={{
-      loading, userId, accounts, trades, transfers, journalNotes, settings,
+      loading, userId, syncError, accounts, trades, transfers, journalNotes, settings,
       addAccount, deleteAccount, addTrade, updateTrade, deleteTrade,
       addTransfer, deleteTransfer, saveJournal, saveSettings,
+      clearSyncError, refetch,
     }}>
       {children}
     </Ctx.Provider>
