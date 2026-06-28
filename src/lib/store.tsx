@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   strategies: ['Breakout', 'Retest', 'Trend Follow', 'Reversal', 'Scalping'],
 }
 
-function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36) }
+function uid() { return crypto.randomUUID() }
 
 type Store = {
   loading: boolean
