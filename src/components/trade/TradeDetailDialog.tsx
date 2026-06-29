@@ -121,6 +121,19 @@ export function TradeDetailDialog({ trade: t, open, onClose, onDelete, fmt }: Pr
             </span>
           }/>
           <Row label="Strategi" value={t.strategy ?? '—'}/>
+          {t.market_structure && (
+            <Row label="Market Structure" value={
+              <span className={
+                t.market_structure === 'bullish' ? 'text-emerald-400 font-semibold'
+                : t.market_structure === 'bearish' ? 'text-red-400 font-semibold'
+                : 'text-yellow-400 font-semibold'
+              }>
+                {t.market_structure === 'bullish' ? '🐂 Bullish'
+                  : t.market_structure === 'bearish' ? '🐻 Bearish'
+                  : '↔ Ranging'}
+              </span>
+            }/>
+          )}
           <Row label="Ikut Trading Plan" value={
             t.followed_plan === true  ? <span className="text-emerald-400 flex items-center gap-1 justify-end"><Check size={12}/> Ya</span>
             : t.followed_plan === false ? <span className="text-red-400 flex items-center gap-1 justify-end"><X size={12}/> Tidak</span>

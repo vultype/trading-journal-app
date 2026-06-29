@@ -39,6 +39,7 @@ export type Trade = {
   know_direction?: boolean   // yes = tahu arah pasar
   screenshot_url?: string
   note?: string
+  market_structure?: 'bullish' | 'bearish' | 'ranging'
   created_at: string
   // legacy fields (kept optional for backward compat)
   entry_price?: number

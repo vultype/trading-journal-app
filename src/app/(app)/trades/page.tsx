@@ -13,14 +13,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
-import { Plus, TrendingUp, TrendingDown, Filter, Check, X } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/currency-input'
+import { Plus, TrendingUp, TrendingDown, Filter, Check, X, Sparkles, Loader2, TrendingUp as BullIcon } from 'lucide-react'
+import { toast } from '@/lib/toast'
 import type { Trade } from '@/types'
+
+type MarketStructure = 'bullish' | 'bearish' | 'ranging' | ''
 
 type FormData = {
   account_id: string; date: string; entry_time: string
   pair: string; direction: 'long' | 'short'
   result: 'win' | 'loss' | 'breakeven'; pnl: number | ''; strategy: string
+  market_structure: MarketStructure
   followed_plan: 'yes' | 'no' | ''; know_direction: 'yes' | 'no' | ''
   screenshot_url: string; note: string
 }
@@ -28,18 +32,20 @@ type FormData = {
 const empty: FormData = {
   account_id: '', date: new Date().toISOString().split('T')[0], entry_time: '',
   pair: 'XAUUSD', direction: 'long', result: 'win', pnl: '', strategy: '',
+  market_structure: '',
   followed_plan: '', know_direction: '', screenshot_url: '', note: '',
 }
 
 function ToggleGroup({ value, onChange, options }: {
   value: string
   onChange: (v: string) => void
-  options: { value: string; label: string; color?: 'green' | 'red' | 'yellow' }[]
+  options: { value: string; label: string; color?: 'green' | 'red' | 'yellow' | 'blue' }[]
 }) {
   const colorMap = {
     green:  'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     red:    'bg-red-500/10 border-red-500/30 text-red-400',
     yellow: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
+    blue:   'bg-blue-500/10 border-blue-500/30 text-blue-400',
   }
   return (
     <div className="flex gap-2">
@@ -65,6 +71,7 @@ export default function TradesPage() {
   const [filterResult, setFilterResult] = useState('all')
   const [search, setSearch]     = useState('')
   const [detail, setDetail]     = useState<Trade | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
 
   const tradingAccounts = accounts.filter(a => a.type === 'trading')
 
@@ -78,23 +85,55 @@ export default function TradesPage() {
     setForm(p => ({ ...p, [key]: val }))
   }
 
+  async function analyzeWithAI() {
+    setAiLoading(true)
+    try {
+      const res = await fetch('/api/analyze-trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pair:             form.pair,
+          direction:        form.direction,
+          result:           form.result,
+          pnl:              form.pnl,
+          strategy:         form.strategy,
+          market_structure: form.market_structure,
+          followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : null,
+          know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : null,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        toast.error(data.error)
+      } else {
+        set('note', data.analysis)
+        toast.success('Analisa AI berhasil dibuat')
+      }
+    } catch {
+      toast.error('Gagal menghubungi AI')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault()
     const pnlVal = Number(form.pnl)
     if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
     addTrade({
-      account_id:     form.account_id || tradingAccounts[0]?.id || '',
-      date:           form.date,
-      entry_time:     form.entry_time || undefined,
-      pair:           form.pair,
-      direction:      form.direction,
-      result:         form.result,
-      pnl:            form.result === 'loss' ? -Math.abs(pnlVal) : Math.abs(pnlVal),
-      strategy:       form.strategy || undefined,
-      followed_plan:  form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
-      know_direction: form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : undefined,
-      screenshot_url: form.screenshot_url || undefined,
-      note:           form.note || undefined,
+      account_id:       form.account_id || tradingAccounts[0]?.id || '',
+      date:             form.date,
+      entry_time:       form.entry_time || undefined,
+      pair:             form.pair,
+      direction:        form.direction,
+      result:           form.result,
+      pnl:              form.result === 'loss' ? -Math.abs(pnlVal) : Math.abs(pnlVal),
+      strategy:         form.strategy || undefined,
+      market_structure: form.market_structure || undefined,
+      followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
+      know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : undefined,
+      screenshot_url:   form.screenshot_url || undefined,
+      note:             form.note || undefined,
     })
     setForm({ ...empty, account_id: form.account_id })
     setOpen(false)
@@ -113,6 +152,12 @@ export default function TradesPage() {
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0)
 
   const selectedAccount = tradingAccounts.find(a => a.id === form.account_id) || tradingAccounts[0]
+
+  const msLabel: Record<string, string> = {
+    bullish: '🐂 Bullish',
+    bearish: '🐻 Bearish',
+    ranging: '↔ Ranging',
+  }
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -189,6 +234,31 @@ export default function TradesPage() {
                 </div>
               )}
 
+              {/* Market Structure */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Market Structure</Label>
+                <div className="flex gap-2">
+                  {([
+                    { val: 'bullish', label: '🐂 Bullish', color: 'green' },
+                    { val: 'bearish', label: '🐻 Bearish', color: 'red' },
+                    { val: 'ranging', label: '↔ Ranging',  color: 'yellow' },
+                  ] as const).map(({ val, label, color }) => {
+                    const colorMap = {
+                      green:  'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                      red:    'bg-red-500/10 border-red-500/30 text-red-400',
+                      yellow: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
+                    }
+                    return (
+                      <button key={val} type="button" onClick={() => set('market_structure', form.market_structure === val ? '' : val)}
+                        className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-all
+                          ${form.market_structure === val ? colorMap[color] : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {/* Direction */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Direction</Label>
@@ -215,18 +285,16 @@ export default function TradesPage() {
                   value={form.result}
                   onChange={v => set('result', v as FormData['result'])}
                   options={[
-                    { value: 'win',       label: '✓ Win',        color: 'green' },
-                    { value: 'loss',      label: '✗ Loss',       color: 'red' },
-                    { value: 'breakeven', label: '= Breakeven',  color: 'yellow' },
+                    { value: 'win',       label: '✓ Win',       color: 'green' },
+                    { value: 'loss',      label: '✗ Loss',      color: 'red' },
+                    { value: 'breakeven', label: '= Breakeven', color: 'yellow' },
                   ]}
                 />
               </div>
 
               {/* P&L */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  P&L Amount ({settings.currency})
-                </Label>
+                <Label className="text-xs text-muted-foreground">P&L Amount ({settings.currency})</Label>
                 <CurrencyInput
                   value={form.pnl}
                   onChange={v => set('pnl', v)}
@@ -254,7 +322,7 @@ export default function TradesPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Followed Plan?</Label>
                   <div className="flex gap-2">
-                    {(['yes','no'] as const).map(v => (
+                    {(['yes', 'no'] as const).map(v => (
                       <button key={v} type="button" onClick={() => set('followed_plan', v)}
                         className={`flex-1 flex items-center justify-center gap-1 rounded-lg border py-2 text-xs font-semibold transition-all
                           ${form.followed_plan === v
@@ -268,7 +336,7 @@ export default function TradesPage() {
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Know Direction?</Label>
                   <div className="flex gap-2">
-                    {(['yes','no'] as const).map(v => (
+                    {(['yes', 'no'] as const).map(v => (
                       <button key={v} type="button" onClick={() => set('know_direction', v)}
                         className={`flex-1 flex items-center justify-center gap-1 rounded-lg border py-2 text-xs font-semibold transition-all
                           ${form.know_direction === v
@@ -291,15 +359,30 @@ export default function TradesPage() {
                 />
               </div>
 
-              {/* Notes */}
+              {/* Notes + AI Analyze */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Notes</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Catatan / Analisa</Label>
+                  <button
+                    type="button"
+                    onClick={analyzeWithAI}
+                    disabled={aiLoading}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-400/50 bg-purple-500/5 hover:bg-purple-500/10 px-2.5 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {aiLoading
+                      ? <><Loader2 size={11} className="animate-spin"/> Menganalisa...</>
+                      : <><Sparkles size={11}/> Analisa AI</>}
+                  </button>
+                </div>
                 <Textarea
-                  placeholder="Setup, entry reason, lessons learned…"
+                  placeholder="Setup, entry reason, lessons learned… atau klik Analisa AI untuk diisi otomatis ✨"
                   value={form.note}
                   onChange={e => set('note', e.target.value)}
-                  rows={3}
+                  rows={4}
                 />
+                {form.note && (
+                  <p className="text-[10px] text-muted-foreground/60">Kamu bisa edit teks di atas sebelum menyimpan</p>
+                )}
               </div>
 
               <Button type="submit" className="w-full">Save Trade</Button>
@@ -359,8 +442,8 @@ export default function TradesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] text-muted-foreground">
-                    {['Date','Pair','Direction','Strategy','P&L','Result','Plan','Direction?',''].map(h => (
-                      <th key={h} className={`px-4 py-3 font-semibold ${h === 'P&L' ? 'text-right' : h === 'Result' ? 'text-center' : 'text-left'}`}>{h}</th>
+                    {['Date','Pair','MS','Direction','Strategy','P&L','Result','Plan','Arah?',''].map(h => (
+                      <th key={h} className={`px-3 py-3 font-semibold ${h === 'P&L' ? 'text-right' : h === 'Result' ? 'text-center' : 'text-left'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -369,39 +452,45 @@ export default function TradesPage() {
                     <tr key={t.id}
                       className="hover:bg-muted/20 cursor-pointer transition-colors group"
                       onClick={() => setDetail(t)}>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <div className="text-xs font-medium">{t.date}</div>
                         {t.entry_time && <div className="text-[10px] text-muted-foreground/60">{t.entry_time}</div>}
                       </td>
-                      <td className="px-4 py-3 font-bold">{t.pair}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3 font-bold">{t.pair}</td>
+                      <td className="px-3 py-3 text-xs">
+                        {t.market_structure === 'bullish' && <span className="text-emerald-400">🐂</span>}
+                        {t.market_structure === 'bearish' && <span className="text-red-400">🐻</span>}
+                        {t.market_structure === 'ranging' && <span className="text-yellow-400">↔</span>}
+                        {!t.market_structure && <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                      <td className="px-3 py-3">
                         <span className={`flex items-center gap-1 w-fit text-xs font-bold ${t.direction === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
                           {t.direction === 'long' ? <TrendingUp size={11}/> : <TrendingDown size={11}/>}
                           {t.direction === 'long' ? 'LONG' : 'SHORT'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{t.strategy ?? '—'}</td>
-                      <td className={`px-4 py-3 text-right font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <td className="px-3 py-3 text-xs text-muted-foreground">{t.strategy ?? '—'}</td>
+                      <td className={`px-3 py-3 text-right font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {t.pnl >= 0 ? '+' : ''}{fmt(t.pnl)}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-3 py-3 text-center">
                         <Badge
                           variant={t.result === 'win' ? 'default' : t.result === 'loss' ? 'destructive' : 'secondary'}
                           className="text-[10px]">
                           {t.result === 'win' ? 'WIN' : t.result === 'loss' ? 'LOSS' : 'BE'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-center text-xs">
+                      <td className="px-3 py-3 text-center text-xs">
                         {t.followed_plan === true  ? <span className="text-emerald-400">✓</span>
                           : t.followed_plan === false ? <span className="text-red-400">✗</span>
                           : <span className="text-muted-foreground/30">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-center text-xs">
+                      <td className="px-3 py-3 text-center text-xs">
                         {t.know_direction === true  ? <span className="text-emerald-400">✓</span>
                           : t.know_direction === false ? <span className="text-red-400">✗</span>
                           : <span className="text-muted-foreground/30">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Detail →</td>
+                      <td className="px-3 py-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Detail →</td>
                     </tr>
                   ))}
                 </tbody>

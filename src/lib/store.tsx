@@ -168,10 +168,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       result:         t.result,
       pnl:            t.pnl,
       strategy:       t.strategy,
-      followed_plan:  t.followed_plan,
-      know_direction: t.know_direction,
-      screenshot_url: t.screenshot_url,
-      note:           t.note,
+      followed_plan:    t.followed_plan,
+      know_direction:   t.know_direction,
+      screenshot_url:   t.screenshot_url,
+      note:             t.note,
+      market_structure: t.market_structure,
     }).then(({ error }) => onSaveError('addTrade', error))
   }, [userId])
 
