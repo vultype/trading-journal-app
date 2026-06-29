@@ -146,13 +146,31 @@ export function TradeDetailDialog({ trade: t, open, onClose, onDelete, fmt }: Pr
           }/>
         </div>
 
-        {/* Notes */}
-        {t.note && (
-          <div className="rounded-lg bg-muted/50 border border-border/50 p-3">
-            <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Catatan</p>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{t.note}</p>
-          </div>
-        )}
+        {/* Notes + Analisa by Claude */}
+        {t.note && (() => {
+          const separator = '--- Analisa by Claude ---'
+          const idx = t.note.indexOf(separator)
+          const catatan  = idx !== -1 ? t.note.slice(0, idx).trim() : t.note
+          const analisa  = idx !== -1 ? t.note.slice(idx + separator.length).trim() : ''
+          return (
+            <>
+              {catatan && (
+                <div className="rounded-lg bg-muted/50 border border-border/50 p-3">
+                  <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wider font-semibold">Catatan</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{catatan}</p>
+                </div>
+              )}
+              {analisa && (
+                <div className="rounded-lg bg-purple-500/5 border border-purple-500/20 p-3">
+                  <p className="text-[10px] text-purple-400 mb-1.5 uppercase tracking-wider font-semibold flex items-center gap-1">
+                    <span>✦</span> Analisa by Claude
+                  </p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">{analisa}</p>
+                </div>
+              )}
+            </>
+          )
+        })()}
 
         <Separator/>
 

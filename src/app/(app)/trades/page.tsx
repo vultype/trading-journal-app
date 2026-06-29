@@ -14,8 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { Plus, TrendingUp, TrendingDown, Filter, Check, X, Sparkles, Loader2, TrendingUp as BullIcon } from 'lucide-react'
-import { toast } from '@/lib/toast'
+import { Plus, TrendingUp, TrendingDown, Filter, Check, X } from 'lucide-react'
 import type { Trade } from '@/types'
 
 type MarketStructure = 'bullish' | 'bearish' | 'ranging' | ''
@@ -26,26 +25,25 @@ type FormData = {
   result: 'win' | 'loss' | 'breakeven'; pnl: number | ''; strategy: string
   market_structure: MarketStructure
   followed_plan: 'yes' | 'no' | ''; know_direction: 'yes' | 'no' | ''
-  screenshot_url: string; note: string
+  screenshot_url: string; note: string; ai_analysis: string
 }
 
 const empty: FormData = {
   account_id: '', date: new Date().toISOString().split('T')[0], entry_time: '',
   pair: 'XAUUSD', direction: 'long', result: 'win', pnl: '', strategy: '',
   market_structure: '',
-  followed_plan: '', know_direction: '', screenshot_url: '', note: '',
+  followed_plan: '', know_direction: '', screenshot_url: '', note: '', ai_analysis: '',
 }
 
 function ToggleGroup({ value, onChange, options }: {
   value: string
   onChange: (v: string) => void
-  options: { value: string; label: string; color?: 'green' | 'red' | 'yellow' | 'blue' }[]
+  options: { value: string; label: string; color?: 'green' | 'red' | 'yellow' }[]
 }) {
   const colorMap = {
     green:  'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     red:    'bg-red-500/10 border-red-500/30 text-red-400',
     yellow: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
-    blue:   'bg-blue-500/10 border-blue-500/30 text-blue-400',
   }
   return (
     <div className="flex gap-2">
@@ -65,13 +63,12 @@ function ToggleGroup({ value, onChange, options }: {
 export default function TradesPage() {
   const { trades, accounts, settings, addTrade, deleteTrade } = useStore()
   const fmt = useCurrency()
-  const [open, setOpen]         = useState(false)
-  const [form, setForm]         = useState<FormData>(empty)
-  const [filterDir, setFilterDir]       = useState('all')
-  const [filterResult, setFilterResult] = useState('all')
-  const [search, setSearch]     = useState('')
-  const [detail, setDetail]     = useState<Trade | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
+  const [open, setOpen]                   = useState(false)
+  const [form, setForm]                   = useState<FormData>(empty)
+  const [filterDir, setFilterDir]         = useState('all')
+  const [filterResult, setFilterResult]   = useState('all')
+  const [search, setSearch]               = useState('')
+  const [detail, setDetail]               = useState<Trade | null>(null)
 
   const tradingAccounts = accounts.filter(a => a.type === 'trading')
 
@@ -85,41 +82,15 @@ export default function TradesPage() {
     setForm(p => ({ ...p, [key]: val }))
   }
 
-  async function analyzeWithAI() {
-    setAiLoading(true)
-    try {
-      const res = await fetch('/api/analyze-trade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pair:             form.pair,
-          direction:        form.direction,
-          result:           form.result,
-          pnl:              form.pnl,
-          strategy:         form.strategy,
-          market_structure: form.market_structure,
-          followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : null,
-          know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : null,
-        }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        toast.error(data.error)
-      } else {
-        set('note', data.analysis)
-        toast.success('Analisa AI berhasil dibuat')
-      }
-    } catch {
-      toast.error('Gagal menghubungi AI')
-    } finally {
-      setAiLoading(false)
-    }
-  }
-
   function submit(e: React.FormEvent) {
     e.preventDefault()
     const pnlVal = Number(form.pnl)
     if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
+
+    // Combine catatan + analisa ke field note
+    const parts = [form.note, form.ai_analysis ? `--- Analisa by Claude ---\n${form.ai_analysis}` : ''].filter(Boolean)
+    const combinedNote = parts.join('\n\n')
+
     addTrade({
       account_id:       form.account_id || tradingAccounts[0]?.id || '',
       date:             form.date,
@@ -133,7 +104,7 @@ export default function TradesPage() {
       followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
       know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : undefined,
       screenshot_url:   form.screenshot_url || undefined,
-      note:             form.note || undefined,
+      note:             combinedNote || undefined,
     })
     setForm({ ...empty, account_id: form.account_id })
     setOpen(false)
@@ -152,12 +123,6 @@ export default function TradesPage() {
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0)
 
   const selectedAccount = tradingAccounts.find(a => a.id === form.account_id) || tradingAccounts[0]
-
-  const msLabel: Record<string, string> = {
-    bullish: '🐂 Bullish',
-    bearish: '🐻 Bearish',
-    ranging: '↔ Ranging',
-  }
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -239,23 +204,17 @@ export default function TradesPage() {
                 <Label className="text-xs text-muted-foreground">Market Structure</Label>
                 <div className="flex gap-2">
                   {([
-                    { val: 'bullish', label: '🐂 Bullish', color: 'green' },
-                    { val: 'bearish', label: '🐻 Bearish', color: 'red' },
-                    { val: 'ranging', label: '↔ Ranging',  color: 'yellow' },
-                  ] as const).map(({ val, label, color }) => {
-                    const colorMap = {
-                      green:  'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-                      red:    'bg-red-500/10 border-red-500/30 text-red-400',
-                      yellow: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
-                    }
-                    return (
-                      <button key={val} type="button" onClick={() => set('market_structure', form.market_structure === val ? '' : val)}
-                        className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-all
-                          ${form.market_structure === val ? colorMap[color] : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
-                        {label}
-                      </button>
-                    )
-                  })}
+                    { val: 'bullish', label: '🐂 Bullish', activeClass: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' },
+                    { val: 'bearish', label: '🐻 Bearish', activeClass: 'bg-red-500/10 border-red-500/30 text-red-400' },
+                    { val: 'ranging', label: '↔ Ranging',  activeClass: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' },
+                  ] as const).map(({ val, label, activeClass }) => (
+                    <button key={val} type="button"
+                      onClick={() => set('market_structure', form.market_structure === val ? '' : val)}
+                      className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-all
+                        ${form.market_structure === val ? activeClass : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -264,14 +223,12 @@ export default function TradesPage() {
                 <Label className="text-xs text-muted-foreground">Direction</Label>
                 <div className="flex gap-2">
                   {([
-                    { val: 'long',  label: '↑ Long / Buy',  color: 'green' },
-                    { val: 'short', label: '↓ Short / Sell', color: 'red' },
-                  ] as const).map(({ val, label, color }) => (
+                    { val: 'long',  label: '↑ Long / Buy',   activeClass: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' },
+                    { val: 'short', label: '↓ Short / Sell', activeClass: 'bg-red-500/10 border-red-500/30 text-red-400' },
+                  ] as const).map(({ val, label, activeClass }) => (
                     <button key={val} type="button" onClick={() => set('direction', val)}
                       className={`flex-1 rounded-lg border py-2.5 text-sm font-semibold transition-all
-                        ${form.direction === val
-                          ? color === 'green' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
-                          : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
+                        ${form.direction === val ? activeClass : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
                       {label}
                     </button>
                   ))}
@@ -359,30 +316,29 @@ export default function TradesPage() {
                 />
               </div>
 
-              {/* Notes + AI Analyze */}
+              {/* Catatan */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Catatan / Analisa</Label>
-                  <button
-                    type="button"
-                    onClick={analyzeWithAI}
-                    disabled={aiLoading}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-400/50 bg-purple-500/5 hover:bg-purple-500/10 px-2.5 py-1 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {aiLoading
-                      ? <><Loader2 size={11} className="animate-spin"/> Menganalisa...</>
-                      : <><Sparkles size={11}/> Analisa AI</>}
-                  </button>
-                </div>
+                <Label className="text-xs text-muted-foreground">Catatan</Label>
                 <Textarea
-                  placeholder="Setup, entry reason, lessons learned… atau klik Analisa AI untuk diisi otomatis ✨"
+                  placeholder="Setup, entry reason, lessons learned…"
                   value={form.note}
                   onChange={e => set('note', e.target.value)}
-                  rows={4}
+                  rows={2}
                 />
-                {form.note && (
-                  <p className="text-[10px] text-muted-foreground/60">Kamu bisa edit teks di atas sebelum menyimpan</p>
-                )}
+              </div>
+
+              {/* Analisa by Claude */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <span className="text-purple-400">✦</span> Analisa by Claude
+                </Label>
+                <Textarea
+                  placeholder="Paste analisa dari Claude di sini…"
+                  value={form.ai_analysis}
+                  onChange={e => set('ai_analysis', e.target.value)}
+                  rows={4}
+                  className="text-xs"
+                />
               </div>
 
               <Button type="submit" className="w-full">Save Trade</Button>
@@ -457,10 +413,10 @@ export default function TradesPage() {
                         {t.entry_time && <div className="text-[10px] text-muted-foreground/60">{t.entry_time}</div>}
                       </td>
                       <td className="px-3 py-3 font-bold">{t.pair}</td>
-                      <td className="px-3 py-3 text-xs">
-                        {t.market_structure === 'bullish' && <span className="text-emerald-400">🐂</span>}
-                        {t.market_structure === 'bearish' && <span className="text-red-400">🐻</span>}
-                        {t.market_structure === 'ranging' && <span className="text-yellow-400">↔</span>}
+                      <td className="px-3 py-3 text-center">
+                        {t.market_structure === 'bullish' && <span title="Bullish">🐂</span>}
+                        {t.market_structure === 'bearish' && <span title="Bearish">🐻</span>}
+                        {t.market_structure === 'ranging' && <span title="Ranging">↔</span>}
                         {!t.market_structure && <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="px-3 py-3">
