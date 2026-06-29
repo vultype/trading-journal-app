@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,6 +16,35 @@ import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { Plus, TrendingUp, TrendingDown, Filter, Check, X } from 'lucide-react'
 import type { Trade } from '@/types'
+
+function AutoTextarea({ value, onChange, placeholder, className }: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  className?: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (!ref.current) return
+    ref.current.style.height = 'auto'
+    ref.current.style.height = ref.current.scrollHeight + 'px'
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={3}
+      className={[
+        'flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors',
+        'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+        'disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden',
+        className,
+      ].filter(Boolean).join(' ')}
+    />
+  )
+}
 
 type MarketStructure = 'bullish' | 'bearish' | 'ranging' | ''
 
@@ -332,12 +361,11 @@ export default function TradesPage() {
                 <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                   <span className="text-purple-400">✦</span> Analisa by Claude
                 </Label>
-                <Textarea
-                  placeholder="Paste analisa dari Claude di sini…"
+                <AutoTextarea
                   value={form.ai_analysis}
-                  onChange={e => set('ai_analysis', e.target.value)}
-                  rows={4}
-                  className="text-xs"
+                  onChange={v => set('ai_analysis', v)}
+                  placeholder="Paste analisa dari Claude di sini…"
+                  className="text-xs min-h-[80px]"
                 />
               </div>
 
