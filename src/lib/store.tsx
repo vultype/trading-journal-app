@@ -173,6 +173,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       screenshot_url:   t.screenshot_url,
       note:             t.note,
       market_structure: t.market_structure,
+      is_overtrade:     t.is_overtrade ?? false,
     }).then(({ error }) => onSaveError('addTrade', error))
   }, [userId])
 

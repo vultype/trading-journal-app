@@ -38,6 +38,7 @@ type EditForm = {
   screenshot_url: string
   note: string
   ai_analysis: string
+  is_overtrade: boolean
 }
 
 const SEPARATOR = '--- Analisa by Claude ---'
@@ -73,6 +74,7 @@ function toEditForm(t: Trade): EditForm {
     screenshot_url:   t.screenshot_url ?? '',
     note:             catatan,
     ai_analysis:      analisa,
+    is_overtrade:     t.is_overtrade ?? false,
   }
 }
 
@@ -344,13 +346,14 @@ function Inner({ t, onClose, onDelete, fmt }: {
       entry_time:       ef.entry_time || undefined,
       direction:        ef.direction,
       result:           ef.result,
-      pnl:              ef.result === 'loss' ? -Math.abs(pnlVal) : Math.abs(pnlVal),
+      pnl:              ef.result === 'loss' || ef.is_overtrade ? -Math.abs(pnlVal) : Math.abs(pnlVal),
       strategy:         ef.strategy || undefined,
       market_structure: ef.market_structure || undefined,
       followed_plan:    ef.followed_plan === 'yes' ? true : ef.followed_plan === 'no' ? false : undefined,
       know_direction:   ef.know_direction === 'yes' ? true : ef.know_direction === 'no' ? false : undefined,
       screenshot_url:   ef.screenshot_url || undefined,
       note:             buildNote(ef.note, ef.ai_analysis) || undefined,
+      is_overtrade:     ef.is_overtrade,
     })
     setEditing(false)
   }
@@ -437,6 +440,26 @@ function Inner({ t, onClose, onDelete, fmt }: {
             onClick={() => set('result', 'breakeven')}>{`= Breakeven`}</Tog>
         </div>
       </div>
+
+      {/* Overtrade toggle */}
+      <button
+        type="button"
+        onClick={() => set('is_overtrade', !ef.is_overtrade)}
+        className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 transition-all text-left
+          ${ef.is_overtrade
+            ? 'bg-orange-500/10 border-orange-500/40'
+            : 'border-border/50 hover:bg-muted/40'}`}
+      >
+        <div>
+          <p className={`text-sm font-bold ${ef.is_overtrade ? 'text-orange-400' : 'text-foreground/70'}`}>
+            ⚠️ Overtrade
+          </p>
+          <p className="text-xs mt-0.5 text-muted-foreground">Equity berkurang, tidak masuk statistik trading</p>
+        </div>
+        <div className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${ef.is_overtrade ? 'bg-orange-500' : 'bg-border'}`}>
+          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${ef.is_overtrade ? 'translate-x-5' : 'translate-x-0.5'}`}/>
+        </div>
+      </button>
 
       {/* P&L */}
       <div className="space-y-1.5">
@@ -544,6 +567,11 @@ function Inner({ t, onClose, onDelete, fmt }: {
         >
           {t.result === 'win' ? '✓ WIN' : t.result === 'loss' ? '✗ LOSS' : '= BE'}
         </Badge>
+        {t.is_overtrade && (
+          <span className="text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded-md px-2 py-0.5">
+            ⚠️ OVERTRADE
+          </span>
+        )}
       </div>
 
       {/* P&L Hero */}

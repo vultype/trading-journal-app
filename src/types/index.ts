@@ -40,6 +40,7 @@ export type Trade = {
   screenshot_url?: string
   note?: string
   market_structure?: 'bullish' | 'bearish' | 'ranging'
+  is_overtrade?: boolean
   created_at: string
   // legacy fields (kept optional for backward compat)
   entry_price?: number

@@ -55,6 +55,7 @@ type FormData = {
   market_structure: MarketStructure
   followed_plan: 'yes' | 'no' | ''; know_direction: 'yes' | 'no' | ''
   screenshot_url: string; note: string; ai_analysis: string
+  is_overtrade: boolean
 }
 
 const empty: FormData = {
@@ -62,6 +63,7 @@ const empty: FormData = {
   pair: 'XAUUSD', direction: 'long', result: 'win', pnl: '', strategy: '',
   market_structure: '',
   followed_plan: '', know_direction: '', screenshot_url: '', note: '', ai_analysis: '',
+  is_overtrade: false,
 }
 
 function ToggleGroup({ value, onChange, options }: {
@@ -127,13 +129,14 @@ export default function TradesPage() {
       pair:             form.pair,
       direction:        form.direction,
       result:           form.result,
-      pnl:              form.result === 'loss' ? -Math.abs(pnlVal) : Math.abs(pnlVal),
+      pnl:              form.result === 'loss' || form.is_overtrade ? -Math.abs(pnlVal) : Math.abs(pnlVal),
       strategy:         form.strategy || undefined,
       market_structure: form.market_structure || undefined,
       followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
       know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : undefined,
       screenshot_url:   form.screenshot_url || undefined,
       note:             combinedNote || undefined,
+      is_overtrade:     form.is_overtrade,
     })
     setForm({ ...empty, account_id: form.account_id })
     setOpen(false)
@@ -147,9 +150,10 @@ export default function TradesPage() {
     return true
   }).sort((a, b) => b.date.localeCompare(a.date))
 
-  const wins     = trades.filter(t => t.result === 'win').length
-  const losses   = trades.filter(t => t.result === 'loss').length
-  const totalPnl = trades.reduce((s, t) => s + t.pnl, 0)
+  const normalTrades = trades.filter(t => !t.is_overtrade)
+  const wins         = normalTrades.filter(t => t.result === 'win').length
+  const losses       = normalTrades.filter(t => t.result === 'loss').length
+  const totalPnl     = trades.reduce((s, t) => s + t.pnl, 0)
 
   const selectedAccount = tradingAccounts.find(a => a.id === form.account_id) || tradingAccounts[0]
 
@@ -277,6 +281,30 @@ export default function TradesPage() {
                   ]}
                 />
               </div>
+
+              {/* Overtrade toggle */}
+              <button
+                type="button"
+                onClick={() => set('is_overtrade', !form.is_overtrade)}
+                className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 transition-all text-left
+                  ${form.is_overtrade
+                    ? 'bg-orange-500/10 border-orange-500/40 text-orange-400'
+                    : 'border-border/50 text-muted-foreground hover:bg-muted/40'}`}
+              >
+                <div>
+                  <p className={`text-sm font-bold ${form.is_overtrade ? 'text-orange-400' : 'text-foreground/70'}`}>
+                    ⚠️ Overtrade
+                  </p>
+                  <p className="text-xs mt-0.5 text-muted-foreground">
+                    Equity berkurang, tidak masuk statistik trading
+                  </p>
+                </div>
+                <div className={`w-10 h-5 rounded-full transition-colors relative shrink-0
+                  ${form.is_overtrade ? 'bg-orange-500' : 'bg-border'}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform
+                    ${form.is_overtrade ? 'translate-x-5' : 'translate-x-0.5'}`}/>
+                </div>
+              </button>
 
               {/* P&L */}
               <div className="space-y-1.5">
@@ -440,7 +468,14 @@ export default function TradesPage() {
                         <div className="text-xs font-medium">{t.date}</div>
                         {t.entry_time && <div className="text-[10px] text-muted-foreground/60">{t.entry_time}</div>}
                       </td>
-                      <td className="px-3 py-3 font-bold">{t.pair}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold">{t.pair}</span>
+                          {t.is_overtrade && (
+                            <span className="text-[9px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded px-1 py-0.5 leading-none">OT</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-3 py-3 text-center">
                         {t.market_structure === 'bullish' && <span title="Bullish">🐂</span>}
                         {t.market_structure === 'bearish' && <span title="Bearish">🐻</span>}
