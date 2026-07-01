@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useCurrency } from '@/hooks/useCurrency'
+import { toast } from '@/lib/toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -140,6 +141,11 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
     const risk = (compound === 'compound' ? currentEq : initEquity) * riskPct / 100
     const pnl  = result === 'win' ? risk * rr : -risk
     setTrades(prev => [...prev, { id: prev.length + 1, result, rr, pnl, balance: currentEq + pnl }])
+    if (result === 'win') {
+      toast.success(`WIN +${fmt(pnl)} · 1:${rr}`)
+    } else {
+      toast.error(`LOSE −${fmt(Math.abs(pnl))} · 1:${rr}`)
+    }
   }
 
   function reset() { setTrades([]) }
