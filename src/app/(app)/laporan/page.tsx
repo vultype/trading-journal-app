@@ -43,17 +43,18 @@ export default function LaporanPage() {
   const mondayStr = toStr(monday)
   const sundayStr = toStr(sunday)
 
-  const weekTrades = trades.filter(t => t.date >= mondayStr && t.date <= sundayStr)
-  const wins   = weekTrades.filter(t => t.result === 'win').length
-  const losses = weekTrades.filter(t => t.result === 'loss').length
-  const bes    = weekTrades.filter(t => t.result === 'breakeven').length
-  const totalPnl = weekTrades.reduce((s, t) => s + t.pnl, 0)
-  const winRate  = weekTrades.length > 0 ? (wins / weekTrades.length * 100) : 0
-  const grossWin  = weekTrades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)
-  const grossLoss = Math.abs(weekTrades.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0))
+  const weekTrades  = trades.filter(t => t.date >= mondayStr && t.date <= sundayStr)
+  const normalWeek  = weekTrades.filter(t => !t.is_overtrade)
+  const wins   = normalWeek.filter(t => t.result === 'win').length
+  const losses = normalWeek.filter(t => t.result === 'loss').length
+  const bes    = normalWeek.filter(t => t.result === 'breakeven').length
+  const totalPnl = weekTrades.reduce((s, t) => s + t.pnl, 0)  // all → equity
+  const winRate  = normalWeek.length > 0 ? (wins / normalWeek.length * 100) : 0
+  const grossWin  = normalWeek.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)
+  const grossLoss = Math.abs(normalWeek.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0))
   const pf = grossLoss > 0 ? (grossWin / grossLoss) : grossWin > 0 ? Infinity : 0
-  const bestTrade  = weekTrades.length > 0 ? weekTrades.reduce((a, b) => a.pnl > b.pnl ? a : b) : null
-  const worstTrade = weekTrades.length > 0 ? weekTrades.reduce((a, b) => a.pnl < b.pnl ? a : b) : null
+  const bestTrade  = normalWeek.length > 0 ? normalWeek.reduce((a, b) => a.pnl > b.pnl ? a : b) : null
+  const worstTrade = normalWeek.length > 0 ? normalWeek.reduce((a, b) => a.pnl < b.pnl ? a : b) : null
 
   // Day-by-day breakdown
   const dayData = Array.from({ length: 7 }, (_, i) => {
@@ -61,13 +62,14 @@ export default function LaporanPage() {
     d.setDate(monday.getDate() + i)
     const ds = toStr(d)
     const dayTrades = weekTrades.filter(t => t.date === ds)
+    const normalDay = dayTrades.filter(t => !t.is_overtrade)
     return {
       label: DAYS_ID[d.getDay()].slice(0, 3),
       date: ds,
-      pnl: dayTrades.reduce((s, t) => s + t.pnl, 0),
-      count: dayTrades.length,
-      wins: dayTrades.filter(t => t.result === 'win').length,
-      losses: dayTrades.filter(t => t.result === 'loss').length,
+      pnl: dayTrades.reduce((s, t) => s + t.pnl, 0),  // all → equity
+      count: normalDay.length,
+      wins:   normalDay.filter(t => t.result === 'win').length,
+      losses: normalDay.filter(t => t.result === 'loss').length,
     }
   })
 

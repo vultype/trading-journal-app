@@ -1,12 +1,15 @@
 import type { Trade, Transfer, DashboardStats, AppSettings } from '@/types'
 
 export function calcStats(trades: Trade[], transfers: Transfer[]): DashboardStats {
-  const total_trades = trades.length
-  const wins   = trades.filter(t => t.result === 'win')
-  const losses = trades.filter(t => t.result === 'loss')
+  // Overtrades affect equity (total_pnl) but are excluded from all performance metrics
+  const normal = trades.filter(t => !t.is_overtrade)
+
+  const total_trades = normal.length
+  const wins   = normal.filter(t => t.result === 'win')
+  const losses = normal.filter(t => t.result === 'loss')
 
   const win_rate     = total_trades > 0 ? (wins.length / total_trades) * 100 : 0
-  const total_pnl    = trades.reduce((s, t) => s + t.pnl, 0)
+  const total_pnl    = trades.reduce((s, t) => s + t.pnl, 0)   // all trades → equity
   const gross_profit = wins.reduce((s, t) => s + t.pnl, 0)
   const gross_loss   = Math.abs(losses.reduce((s, t) => s + t.pnl, 0))
   const avg_win      = wins.length   > 0 ? gross_profit / wins.length   : 0
@@ -14,7 +17,7 @@ export function calcStats(trades: Trade[], transfers: Transfer[]): DashboardStat
   const profit_factor = gross_loss > 0 ? gross_profit / gross_loss : gross_profit > 0 ? Infinity : 0
   const expectancy   = total_trades > 0 ? (win_rate / 100) * avg_win - ((100 - win_rate) / 100) * avg_loss : 0
 
-  // Drawdown
+  // Drawdown uses all trades (equity impact)
   let peak = 0, max_drawdown = 0, running = 0
   for (const t of trades) {
     running += t.pnl
@@ -23,9 +26,9 @@ export function calcStats(trades: Trade[], transfers: Transfer[]): DashboardStat
     if (dd > max_drawdown) max_drawdown = dd
   }
 
-  // Streaks
+  // Streaks use only normal trades
   let win_streak = 0, loss_streak = 0, cur = 0, curType: 'win' | 'loss' | 'none' = 'none'
-  const sorted = [...trades].sort((a, b) => a.date.localeCompare(b.date))
+  const sorted = [...normal].sort((a, b) => a.date.localeCompare(b.date))
   for (const t of sorted) {
     if (t.result === 'win') {
       cur = curType === 'win' ? cur + 1 : 1; curType = 'win'
@@ -70,7 +73,7 @@ export function formatCurrency(amount: number, currency: AppSettings['currency']
 
 export function pnlByGroup(trades: Trade[], groupFn: (t: Trade) => string) {
   const map: Record<string, { wins: number; losses: number; pnl: number; total: number }> = {}
-  for (const t of trades) {
+  for (const t of trades.filter(t => !t.is_overtrade)) {
     const key = groupFn(t) || '—'
     if (!map[key]) map[key] = { wins: 0, losses: 0, pnl: 0, total: 0 }
     map[key].total++

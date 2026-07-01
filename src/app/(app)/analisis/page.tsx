@@ -46,6 +46,8 @@ function MiniStat({ label, value, sub, green, red }: { label: string; value: Rea
 export default function AnalisisPage() {
   const { trades, transfers, deleteTrade } = useStore()
   const fmt   = useCurrency()
+  // Overtrades excluded from all analytics — only affect equity curve
+  const normalTrades = useMemo(() => trades.filter(t => !t.is_overtrade), [trades])
   const sorted = useMemo(() => [...trades].sort((a, b) => a.date.localeCompare(b.date)), [trades])
   const stats  = useMemo(() => calcStats(trades, transfers), [trades, transfers])
   const curve  = useMemo(() => buildEquityCurve(sorted), [sorted])
@@ -54,24 +56,24 @@ export default function AnalisisPage() {
   const [calDayDate,   setCalDayDate]   = useState('')
   const [detailTrade,  setDetailTrade]  = useState<Trade | null>(null)
 
-  const byStrategy  = useMemo(() => pnlByGroup(trades, t => t.strategy ?? '—').sort((a,b) => b.total - a.total), [trades])
-  const byPair      = useMemo(() => pnlByGroup(trades, t => t.pair).sort((a,b) => b.total - a.total).slice(0,8), [trades])
-  const byDirection = useMemo(() => pnlByGroup(trades, t => t.direction), [trades])
+  const byStrategy  = useMemo(() => pnlByGroup(normalTrades, t => t.strategy ?? '—').sort((a,b) => b.total - a.total), [normalTrades])
+  const byPair      = useMemo(() => pnlByGroup(normalTrades, t => t.pair).sort((a,b) => b.total - a.total).slice(0,8), [normalTrades])
+  const byDirection = useMemo(() => pnlByGroup(normalTrades, t => t.direction), [normalTrades])
 
   const byDay = useMemo(() => {
     const map: Record<string, { pnl: number; total: number; wins: number }> = {}
     DAYS.forEach(d => { map[d] = { pnl: 0, total: 0, wins: 0 } })
-    for (const t of trades) {
+    for (const t of normalTrades) {
       const day = DAYS[new Date(t.date + 'T00:00:00').getDay()]
       map[day].pnl += t.pnl; map[day].total++
       if (t.result === 'win') map[day].wins++
     }
     return DAYS.map(d => ({ name: d, pnl: map[d].pnl, total: map[d].total, winRate: map[d].total > 0 ? Math.round(map[d].wins / map[d].total * 100) : 0 }))
-  }, [trades])
+  }, [normalTrades])
 
   const byMonth = useMemo(() => {
     const map: Record<string, { pnl: number; wins: number; total: number }> = {}
-    for (const t of trades) {
+    for (const t of normalTrades) {
       const key = t.date.slice(0,7)
       if (!map[key]) map[key] = { pnl: 0, wins: 0, total: 0 }
       map[key].pnl += t.pnl; map[key].total++
@@ -79,38 +81,38 @@ export default function AnalisisPage() {
     }
     return Object.entries(map).sort(([a],[b]) => a.localeCompare(b))
       .map(([k,v]) => ({ name: k.slice(5), pnl: v.pnl, winRate: v.total > 0 ? Math.round(v.wins/v.total*100) : 0, total: v.total }))
-  }, [trades])
+  }, [normalTrades])
 
   const planStats = useMemo(() => {
-    const withPlan    = trades.filter(t => t.followed_plan !== undefined)
+    const withPlan    = normalTrades.filter(t => t.followed_plan !== undefined)
     const followed    = withPlan.filter(t => t.followed_plan === true)
     const notFollowed = withPlan.filter(t => t.followed_plan === false)
     const wrF = followed.length    > 0 ? Math.round(followed.filter(t => t.result==='win').length / followed.length * 100) : null
     const wrN = notFollowed.length > 0 ? Math.round(notFollowed.filter(t => t.result==='win').length / notFollowed.length * 100) : null
     return { followed: followed.length, notFollowed: notFollowed.length, wrF, wrN,
       pnlF: followed.reduce((s,t)=>s+t.pnl,0), pnlN: notFollowed.reduce((s,t)=>s+t.pnl,0) }
-  }, [trades])
+  }, [normalTrades])
 
   const dirStats = useMemo(() => {
-    const known  = trades.filter(t => t.know_direction === true)
-    const unsure = trades.filter(t => t.know_direction === false)
+    const known  = normalTrades.filter(t => t.know_direction === true)
+    const unsure = normalTrades.filter(t => t.know_direction === false)
     return {
       known: known.length, unsure: unsure.length,
       wrK: known.length  > 0 ? Math.round(known.filter(t=>t.result==='win').length / known.length * 100) : null,
       wrU: unsure.length > 0 ? Math.round(unsure.filter(t=>t.result==='win').length / unsure.length * 100) : null,
       pnlK: known.reduce((s,t)=>s+t.pnl,0), pnlU: unsure.reduce((s,t)=>s+t.pnl,0),
     }
-  }, [trades])
+  }, [normalTrades])
 
   const piePnL = useMemo(() => [
-    { name: 'Win',  value: trades.filter(t=>t.result==='win').length,       color: C_WIN  },
-    { name: 'Loss', value: trades.filter(t=>t.result==='loss').length,      color: C_LOSS },
-    { name: 'BE',   value: trades.filter(t=>t.result==='breakeven').length, color: '#f59e0b' },
-  ].filter(x=>x.value>0), [trades])
+    { name: 'Win',  value: normalTrades.filter(t=>t.result==='win').length,       color: C_WIN  },
+    { name: 'Loss', value: normalTrades.filter(t=>t.result==='loss').length,      color: C_LOSS },
+    { name: 'BE',   value: normalTrades.filter(t=>t.result==='breakeven').length, color: '#f59e0b' },
+  ].filter(x=>x.value>0), [normalTrades])
 
   // Stats for Win/Loss/PF cards
-  const wins         = trades.filter(t => t.result === 'win')
-  const losses       = trades.filter(t => t.result === 'loss')
+  const wins         = normalTrades.filter(t => t.result === 'win')
+  const losses       = normalTrades.filter(t => t.result === 'loss')
   const grossProfit  = wins.reduce((s,t) => s + t.pnl, 0)
   const grossLoss    = Math.abs(losses.reduce((s,t) => s + t.pnl, 0))
   const largestWin   = wins.length > 0   ? Math.max(...wins.map(t=>t.pnl))   : 0
