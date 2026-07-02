@@ -33,7 +33,8 @@ export default function DashboardPage() {
   const { trades, transfers, settings } = useStore()
   const stats = calcStats(trades, transfers)
   const fmt = (n: number) => formatCurrency(n, settings.currency)
-  const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)))
+  const startBalance = stats.total_deposited - stats.total_withdrawn
+  const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)), startBalance)
   const recentTrades = [...trades].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6)
 
   // Monthly target progress
@@ -105,7 +106,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {curve.length > 1
-                ? <EquityCurve data={curve} />
+                ? <EquityCurve data={curve} fmt={fmt} startBalance={startBalance} />
                 : <p className="text-sm text-muted-foreground text-center py-8">Butuh minimal 2 trade untuk tampilkan grafik</p>
               }
             </CardContent>

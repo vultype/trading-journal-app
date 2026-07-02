@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useStore } from '@/lib/store'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Card, CardContent } from '@/components/ui/card'
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { Plus, TrendingUp, TrendingDown, Filter, Check, X } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw } from 'lucide-react'
 import type { Trade } from '@/types'
 
 function AutoTextarea({ value, onChange, placeholder, className }: {
@@ -43,6 +43,30 @@ function AutoTextarea({ value, onChange, placeholder, className }: {
         className,
       ].filter(Boolean).join(' ')}
     />
+  )
+}
+
+function ChipBtn({ active, color, onClick, children }: {
+  active: boolean
+  color: 'green' | 'red' | 'teal' | 'orange'
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  const activeMap = {
+    green:  'bg-emerald-500/20 border-emerald-500/50 text-emerald-400',
+    red:    'bg-red-500/20 border-red-500/50 text-red-400',
+    teal:   'bg-teal-500/20 border-teal-500/50 text-teal-400',
+    orange: 'bg-orange-500/20 border-orange-500/50 text-orange-400',
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all
+        ${active ? activeMap[color] : 'border-border/40 text-muted-foreground hover:border-border hover:text-foreground'}`}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -94,14 +118,27 @@ function ToggleGroup({ value, onChange, options }: {
 export default function TradesPage() {
   const { trades, accounts, settings, addTrade, deleteTrade } = useStore()
   const fmt = useCurrency()
-  const [open, setOpen]                   = useState(false)
-  const [form, setForm]                   = useState<FormData>(empty)
-  const [filterDir, setFilterDir]         = useState('all')
-  const [filterResult, setFilterResult]   = useState('all')
-  const [search, setSearch]               = useState('')
-  const [detail, setDetail]               = useState<Trade | null>(null)
+  const [open, setOpen]         = useState(false)
+  const [form, setForm]         = useState<FormData>(empty)
+  const [detail, setDetail]     = useState<Trade | null>(null)
+
+  // Filter states
+  const [quickFilter, setQuickFilter]         = useState<'' | 'winners' | 'losers' | 'bigwin' | 'bigloss'>('')
+  const [filterResult, setFilterResult]       = useState('all')
+  const [filterDir, setFilterDir]             = useState('all')
+  const [filterPair, setFilterPair]           = useState('all')
+  const [filterStrategy, setFilterStrategy]   = useState('all')
+  const [filterStartDate, setFilterStartDate] = useState('')
+  const [filterEndDate, setFilterEndDate]     = useState('')
+  const [filterMinProfit, setFilterMinProfit] = useState('')
+  const [filterMaxLoss, setFilterMaxLoss]     = useState('')
 
   const tradingAccounts = accounts.filter(a => a.type === 'trading')
+  const allPairs = useMemo(() => [...new Set(trades.map(t => t.pair))].sort(), [trades])
+  const allStrategies = useMemo(() => {
+    const fromTrades = trades.map(t => t.strategy).filter(Boolean) as string[]
+    return [...new Set([...settings.strategies, ...fromTrades])].sort()
+  }, [trades, settings.strategies])
 
   useEffect(() => {
     if (!form.account_id && tradingAccounts.length > 0) {
@@ -118,10 +155,7 @@ export default function TradesPage() {
     const pnlVal = Number(form.pnl)
     if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
 
-    // Combine catatan + analisa ke field note
     const parts = [form.note, form.ai_analysis ? `--- Analisa by Claude ---\n${form.ai_analysis}` : ''].filter(Boolean)
-    const combinedNote = parts.join('\n\n')
-
     addTrade({
       account_id:       form.account_id || tradingAccounts[0]?.id || '',
       date:             form.date,
@@ -135,21 +169,60 @@ export default function TradesPage() {
       followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
       know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : undefined,
       screenshot_url:   form.screenshot_url || undefined,
-      note:             combinedNote || undefined,
+      note:             parts.join('\n\n') || undefined,
       is_overtrade:     form.is_overtrade,
     })
     setForm({ ...empty, account_id: form.account_id })
     setOpen(false)
   }
 
+  const hasFilter = !!(
+    quickFilter || filterResult !== 'all' || filterDir !== 'all' ||
+    filterPair !== 'all' || filterStrategy !== 'all' ||
+    filterStartDate || filterEndDate || filterMinProfit || filterMaxLoss
+  )
+
+  function resetFilters() {
+    setQuickFilter(''); setFilterResult('all'); setFilterDir('all')
+    setFilterPair('all'); setFilterStrategy('all')
+    setFilterStartDate(''); setFilterEndDate('')
+    setFilterMinProfit(''); setFilterMaxLoss('')
+  }
+
+  const BIG = 1_000_000
+
   const filtered = trades.filter(t => {
-    if (filterDir    !== 'all' && t.direction !== filterDir) return false
-    if (filterResult !== 'all' && t.result    !== filterResult) return false
-    if (search && !t.pair.toLowerCase().includes(search.toLowerCase()) &&
-        !(t.strategy ?? '').toLowerCase().includes(search.toLowerCase())) return false
+    // Quick chips override the result filter
+    if (quickFilter === 'winners') { if (t.result !== 'win') return false }
+    else if (quickFilter === 'losers') { if (t.result !== 'loss') return false }
+    else if (quickFilter === 'bigwin') { if (t.result !== 'win' || t.pnl < BIG) return false }
+    else if (quickFilter === 'bigloss') { if (t.result !== 'loss' || t.pnl > -BIG) return false }
+    else {
+      if (filterResult !== 'all' && t.result !== filterResult) return false
+    }
+
+    if (filterDir !== 'all' && t.direction !== filterDir) return false
+    if (filterPair !== 'all' && t.pair !== filterPair) return false
+    if (filterStrategy !== 'all' && (t.strategy ?? '') !== filterStrategy) return false
+    if (filterStartDate && t.date < filterStartDate) return false
+    if (filterEndDate && t.date > filterEndDate) return false
+    if (filterMinProfit !== '' && !isNaN(Number(filterMinProfit)) && t.pnl < Number(filterMinProfit)) return false
+    if (filterMaxLoss !== '' && !isNaN(Number(filterMaxLoss))) {
+      const threshold = Math.abs(Number(filterMaxLoss))
+      if (t.pnl > -threshold) return false
+    }
+
     return true
   }).sort((a, b) => b.date.localeCompare(a.date))
 
+  // Stats from filtered trades
+  const filteredNormal   = filtered.filter(t => !t.is_overtrade)
+  const filteredWins     = filteredNormal.filter(t => t.result === 'win')
+  const filteredLosses   = filteredNormal.filter(t => t.result === 'loss')
+  const filteredPnl      = filtered.reduce((s, t) => s + t.pnl, 0)
+  const filteredWinRate  = filteredNormal.length > 0 ? (filteredWins.length / filteredNormal.length) * 100 : 0
+
+  // Header stats (all trades, non-overtrade for w/l)
   const normalTrades = trades.filter(t => !t.is_overtrade)
   const wins         = normalTrades.filter(t => t.result === 'win').length
   const losses       = normalTrades.filter(t => t.result === 'loss').length
@@ -178,7 +251,7 @@ export default function TradesPage() {
               <Plus size={14}/> Add Trade
             </Button>
           } />
-          <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto">
+          <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>New Trade</DialogTitle>
             </DialogHeader>
@@ -403,42 +476,168 @@ export default function TradesPage() {
         </Dialog>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter size={13} className="text-muted-foreground" />
-        <Input
-          placeholder="Search pair / strategy…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-44 h-8 text-sm"
-        />
-        <Select value={filterDir} onValueChange={v => setFilterDir(v ?? 'all')}>
-          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All directions</SelectItem>
-            <SelectItem value="long">Long</SelectItem>
-            <SelectItem value="short">Short</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterResult} onValueChange={v => setFilterResult(v ?? 'all')}>
-          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All results</SelectItem>
-            <SelectItem value="win">Win</SelectItem>
-            <SelectItem value="loss">Loss</SelectItem>
-            <SelectItem value="breakeven">Breakeven</SelectItem>
-          </SelectContent>
-        </Select>
-        {(filterDir !== 'all' || filterResult !== 'all' || search) && (
-          <Button variant="ghost" size="sm" className="h-8 text-xs"
-            onClick={() => { setFilterDir('all'); setFilterResult('all'); setSearch('') }}>
-            Reset
-          </Button>
-        )}
-        <span className="ml-auto text-xs text-muted-foreground">{filtered.length} trades</span>
+      {/* ── Filter Card ──────────────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Filter size={13} className="text-primary"/>
+              <span className="text-sm font-semibold">Filter Trades</span>
+            </div>
+            {hasFilter && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RotateCcw size={10}/> Reset
+              </button>
+            )}
+          </div>
+
+          {/* Quick chips */}
+          <div className="flex flex-wrap gap-2">
+            <ChipBtn active={quickFilter === 'winners'} color="green" onClick={() => setQuickFilter(quickFilter === 'winners' ? '' : 'winners')}>
+              ↗ Winners Only
+            </ChipBtn>
+            <ChipBtn active={quickFilter === 'losers'} color="red" onClick={() => setQuickFilter(quickFilter === 'losers' ? '' : 'losers')}>
+              ↘ Losers Only
+            </ChipBtn>
+            <ChipBtn active={quickFilter === 'bigwin'} color="teal" onClick={() => setQuickFilter(quickFilter === 'bigwin' ? '' : 'bigwin')}>
+              ↑ Big Wins (1M+)
+            </ChipBtn>
+            <ChipBtn active={quickFilter === 'bigloss'} color="orange" onClick={() => setQuickFilter(quickFilter === 'bigloss' ? '' : 'bigloss')}>
+              ↓ Big Losses (1M+)
+            </ChipBtn>
+          </div>
+
+          {/* Dropdowns */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Result</Label>
+              <Select value={filterResult} onValueChange={v => setFilterResult(v ?? 'all')}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Trades</SelectItem>
+                  <SelectItem value="win">Win</SelectItem>
+                  <SelectItem value="loss">Loss</SelectItem>
+                  <SelectItem value="breakeven">Breakeven</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Type</Label>
+              <Select value={filterDir} onValueChange={v => setFilterDir(v ?? 'all')}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="long">Long</SelectItem>
+                  <SelectItem value="short">Short</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Symbol</Label>
+              <Select value={filterPair} onValueChange={v => setFilterPair(v ?? 'all')}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Symbols</SelectItem>
+                  {allPairs.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Strategy</Label>
+              <Select value={filterStrategy} onValueChange={v => setFilterStrategy(v ?? 'all')}>
+                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Strategies</SelectItem>
+                  {allStrategies.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Date & amount filters */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Start Date</Label>
+              <Input
+                type="date"
+                value={filterStartDate}
+                onChange={e => setFilterStartDate(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">End Date</Label>
+              <Input
+                type="date"
+                value={filterEndDate}
+                onChange={e => setFilterEndDate(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Min Profit ({settings.currency})</Label>
+              <Input
+                type="number"
+                placeholder="e.g., 1000000"
+                value={filterMinProfit}
+                onChange={e => setFilterMinProfit(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Max Loss ({settings.currency})</Label>
+              <Input
+                type="number"
+                placeholder="e.g., -1000000"
+                value={filterMaxLoss}
+                onChange={e => setFilterMaxLoss(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Summary Stats Bar ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          {
+            label: 'Total Trades',
+            value: String(filtered.length),
+            colored: false,
+          },
+          {
+            label: 'Total P&L',
+            value: (filteredPnl >= 0 ? '+' : '') + fmt(filteredPnl),
+            colored: true,
+            positive: filteredPnl >= 0,
+          },
+          {
+            label: 'Win Rate',
+            value: `${filteredWinRate.toFixed(1)}%`,
+            colored: false,
+          },
+          {
+            label: 'W/L Ratio',
+            value: `${filteredWins.length}/${filteredLosses.length}`,
+            colored: false,
+          },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl bg-muted/20 border border-border/25 px-4 py-3">
+            <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
+            <p className={`text-xl font-black tracking-tight ${s.colored ? (s.positive ? 'text-emerald-400' : 'text-red-400') : ''}`}>
+              {s.value}
+            </p>
+          </div>
+        ))}
       </div>
 
-      {/* Trade table */}
+      {/* ── Trade Table ───────────────────────────────────────────────────── */}
       {filtered.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center text-sm text-muted-foreground">

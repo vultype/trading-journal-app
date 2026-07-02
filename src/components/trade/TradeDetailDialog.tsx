@@ -669,7 +669,7 @@ type Props = {
 export function TradeDetailDialog({ trade, open, onClose, onDelete, fmt }: Props) {
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader className="sr-only">
           <DialogTitle>{trade?.pair ?? 'Trade Detail'}</DialogTitle>
         </DialogHeader>

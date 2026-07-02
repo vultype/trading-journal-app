@@ -56,8 +56,8 @@ export function calcStats(trades: Trade[], transfers: Transfer[]): DashboardStat
   }
 }
 
-export function buildEquityCurve(trades: Trade[]) {
-  let balance = 0
+export function buildEquityCurve(trades: Trade[], startBalance = 0) {
+  let balance = startBalance
   return trades.map(t => ({ date: t.date, balance: (balance += t.pnl), pnl: t.pnl }))
 }
 
