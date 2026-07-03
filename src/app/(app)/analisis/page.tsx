@@ -19,6 +19,14 @@ import {
 import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle } from 'lucide-react'
 import type { Trade } from '@/types'
 
+const NOTE_SEP = '--- Analisa by Claude ---'
+function parseNote(raw?: string | null) {
+  if (!raw) return { catatan: '', analisa: '' }
+  const idx = raw.indexOf(NOTE_SEP)
+  if (idx === -1) return { catatan: raw.trim(), analisa: '' }
+  return { catatan: raw.slice(0, idx).trim(), analisa: raw.slice(idx + NOTE_SEP.length).trim() }
+}
+
 const C_WIN  = '#10b981'
 const C_LOSS = '#ef4444'
 const C_BLUE = '#6366f1'
@@ -556,42 +564,123 @@ export default function AnalisisPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Calendar day detail popup */}
+      {/* Calendar day — Jurnal Harian popup */}
       <Dialog open={calDayTrades !== null} onOpenChange={v => !v && setCalDayTrades(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-sm">Trades on {calDayDate}</DialogTitle>
+        <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
+          <DialogHeader className="pb-1">
+            <DialogTitle className="flex items-center gap-3">
+              <span className="text-base font-bold">📒 Jurnal Harian</span>
+              <span className="text-sm font-normal text-muted-foreground">{calDayDate}</span>
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 mt-2">
-            {calDayTrades?.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setDetailTrade(t)}
-                className="w-full flex items-center justify-between rounded-lg bg-muted/50 hover:bg-muted px-3 py-2 text-sm transition-colors text-left"
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold ${t.direction==='long'?'text-emerald-400':'text-red-400'}`}>
-                    {t.direction==='long'?'▲':'▼'} {t.pair}
-                  </span>
-                  {t.entry_time && <span className="text-xs text-muted-foreground">{t.entry_time}</span>}
-                </div>
-                <div className="text-right">
-                  <p className={`font-bold ${t.pnl>=0?'text-emerald-400':'text-red-400'}`}>{t.pnl>=0?'+':''}{fmt(t.pnl)}</p>
-                  <Badge variant={t.result==='win'?'default':t.result==='loss'?'destructive':'secondary'} className="text-[9px]">{t.result.toUpperCase()}</Badge>
-                </div>
-              </button>
-            ))}
-            {calDayTrades && (
-              <div className="flex justify-between text-sm font-bold pt-1 border-t border-border/50">
-                <span>Total</span>
-                <span className={calDayTrades.reduce((s,t)=>s+t.pnl,0)>=0?'text-emerald-400':'text-red-400'}>
-                  {calDayTrades.reduce((s,t)=>s+t.pnl,0)>=0?'+':''}{fmt(calDayTrades.reduce((s,t)=>s+t.pnl,0))}
-                </span>
+
+          {/* Day summary bar */}
+          {calDayTrades && (() => {
+            const dayPnl   = calDayTrades.reduce((s,t) => s+t.pnl, 0)
+            const dayNorm  = calDayTrades.filter(t => !t.is_overtrade)
+            const dayWins  = dayNorm.filter(t => t.result==='win').length
+            const dayLoss  = dayNorm.filter(t => t.result==='loss').length
+            const dayWr    = dayNorm.length > 0 ? Math.round(dayWins/dayNorm.length*100) : 0
+            return (
+              <div className="grid grid-cols-4 gap-2 py-2 border-y border-border/30 my-1">
+                {[
+                  { label: 'Trades', val: String(calDayTrades.length) },
+                  { label: 'Total P&L', val: (dayPnl>=0?'+':'')+fmt(dayPnl), colored: true, pos: dayPnl>=0 },
+                  { label: 'Win Rate', val: `${dayWr}%` },
+                  { label: 'W / L', val: `${dayWins} / ${dayLoss}` },
+                ].map(s => (
+                  <div key={s.label} className="text-center">
+                    <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest mb-0.5">{s.label}</p>
+                    <p className={`text-sm font-black ${s.colored ? (s.pos ? 'text-emerald-400' : 'text-red-400') : ''}`}>{s.val}</p>
+                  </div>
+                ))}
               </div>
-            )}
-            {calDayTrades && calDayTrades.length > 1 && (
-              <p className="text-[10px] text-muted-foreground text-center pt-1">Tap a trade to see details</p>
-            )}
+            )
+          })()}
+
+          {/* Trade journal cards */}
+          <div className="space-y-3 mt-1">
+            {calDayTrades?.map(t => {
+              const { catatan, analisa } = parseNote(t.note)
+              const hasContent = !!(catatan || analisa || t.screenshot_url)
+              return (
+                <div key={t.id} className="rounded-xl border border-border/40 bg-muted/10 overflow-hidden">
+
+                  {/* Trade header */}
+                  <div className={`flex items-center gap-2 px-4 py-3 border-b border-border/25 ${t.pnl>=0?'bg-emerald-500/5':'bg-red-500/5'}`}>
+                    <span className={`text-sm font-black ${t.direction==='long'?'text-emerald-400':'text-red-400'}`}>
+                      {t.direction==='long'?'↑':'↓'} {t.pair}
+                    </span>
+                    {t.entry_time && (
+                      <span className="text-xs text-muted-foreground">{t.entry_time}</span>
+                    )}
+                    {t.strategy && (
+                      <Badge variant="outline" className="text-[9px] font-medium">{t.strategy}</Badge>
+                    )}
+                    {t.is_overtrade && (
+                      <span className="text-[9px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded px-1 py-0.5">OT</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className={`font-black text-base ${t.pnl>=0?'text-emerald-400':'text-red-400'}`}>
+                        {t.pnl>=0?'+':''}{fmt(t.pnl)}
+                      </span>
+                      <Badge
+                        variant={t.result==='win'?'default':t.result==='loss'?'destructive':'secondary'}
+                        className="text-[9px] font-bold">
+                        {t.result==='win'?'WIN':t.result==='loss'?'LOSS':'BE'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Journal content */}
+                  <div className="px-4 py-3 space-y-3">
+                    {catatan && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/50 mb-1.5">Catatan</p>
+                        <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap">{catatan}</p>
+                      </div>
+                    )}
+                    {analisa && (
+                      <div className="rounded-lg bg-purple-500/5 border border-purple-500/15 px-3 py-2.5">
+                        <p className="text-[10px] uppercase tracking-widest font-bold text-purple-400/70 mb-1.5 flex items-center gap-1.5">
+                          <span className="text-sm">✦</span> Analisa by Claude
+                        </p>
+                        <p className="text-xs text-foreground/75 leading-relaxed line-clamp-4 whitespace-pre-wrap">
+                          {analisa.replace(/^#+\s*/gm,'').replace(/\*\*/g,'').trim()}
+                        </p>
+                      </div>
+                    )}
+                    {t.screenshot_url && (
+                      <div className="rounded-lg overflow-hidden border border-border/30">
+                        <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/40 px-3 py-1.5 bg-muted/20 border-b border-border/20">Chart Screenshot</p>
+                        <a href={t.screenshot_url} target="_blank" rel="noopener noreferrer" className="block">
+                          <img
+                            src={t.screenshot_url}
+                            alt="chart"
+                            className="w-full max-h-36 object-contain bg-black/20 hover:opacity-90 transition-opacity"
+                            loading="lazy"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    {!hasContent && (
+                      <p className="text-xs text-muted-foreground/40 italic text-center py-2">Tidak ada catatan untuk trade ini</p>
+                    )}
+                  </div>
+
+                  {/* Footer: detail link */}
+                  <div className="px-4 py-2 border-t border-border/20 flex justify-end bg-muted/5">
+                    <button
+                      type="button"
+                      onClick={() => setDetailTrade(t)}
+                      className="text-xs text-primary/60 hover:text-primary transition-colors font-semibold flex items-center gap-1"
+                    >
+                      Edit / Lihat Detail →
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </DialogContent>
       </Dialog>
