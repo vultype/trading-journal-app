@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { Sidebar, BottomNav } from '@/components/layout/Sidebar'
 import { Toaster } from '@/components/ui/toaster'
 import { Loader2, AlertTriangle, X, RefreshCw } from 'lucide-react'
 
@@ -65,8 +65,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
       <Sidebar/>
       <div className="flex-1 flex flex-col overflow-hidden">
         <SyncErrorBanner/>
-        <main className="flex-1 overflow-y-auto p-6 bg-muted/30">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6 bg-muted/30">{children}</main>
       </div>
+      <BottomNav/>
     </div>
   )
 }

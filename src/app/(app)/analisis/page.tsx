@@ -19,6 +19,13 @@ import {
 import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle } from 'lucide-react'
 import type { Trade } from '@/types'
 
+const NOTE_SEP = '--- Analisa by Claude ---'
+function parseCalNote(raw?: string | null) {
+  if (!raw) return ''
+  const idx = raw.indexOf(NOTE_SEP)
+  return (idx === -1 ? raw : raw.slice(0, idx)).trim()
+}
+
 const C_WIN  = '#10b981'
 const C_LOSS = '#ef4444'
 const C_BLUE = '#6366f1'
@@ -556,43 +563,92 @@ export default function AnalisisPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Calendar day detail popup */}
+      {/* Calendar day — Jurnal Harian popup */}
       <Dialog open={calDayTrades !== null} onOpenChange={v => !v && setCalDayTrades(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="w-[95vw] max-w-lg max-h-[82vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-sm">Trades on {calDayDate}</DialogTitle>
+            <DialogTitle className="text-base font-bold">
+              📒 {calDayDate}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 mt-2">
-            {calDayTrades?.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setDetailTrade(t)}
-                className="w-full flex items-center justify-between rounded-lg bg-muted/50 hover:bg-muted px-3 py-2 text-sm transition-colors text-left"
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs font-bold ${t.direction==='long'?'text-emerald-400':'text-red-400'}`}>
-                    {t.direction==='long'?'▲':'▼'} {t.pair}
-                  </span>
-                  {t.entry_time && <span className="text-xs text-muted-foreground">{t.entry_time}</span>}
-                </div>
-                <div className="text-right">
-                  <p className={`font-bold ${t.pnl>=0?'text-emerald-400':'text-red-400'}`}>{t.pnl>=0?'+':''}{fmt(t.pnl)}</p>
-                  <Badge variant={t.result==='win'?'default':t.result==='loss'?'destructive':'secondary'} className="text-[9px]">{t.result.toUpperCase()}</Badge>
-                </div>
-              </button>
-            ))}
-            {calDayTrades && (
-              <div className="flex justify-between text-sm font-bold pt-1 border-t border-border/50">
-                <span>Total</span>
-                <span className={calDayTrades.reduce((s,t)=>s+t.pnl,0)>=0?'text-emerald-400':'text-red-400'}>
-                  {calDayTrades.reduce((s,t)=>s+t.pnl,0)>=0?'+':''}{fmt(calDayTrades.reduce((s,t)=>s+t.pnl,0))}
+
+          {/* Day summary */}
+          {calDayTrades && (() => {
+            const dayPnl  = calDayTrades.reduce((s,t) => s+t.pnl, 0)
+            const dayNorm = calDayTrades.filter(t => !t.is_overtrade)
+            const dayW    = dayNorm.filter(t => t.result==='win').length
+            const dayL    = dayNorm.filter(t => t.result==='loss').length
+            return (
+              <div className="flex items-center gap-4 py-2 border-y border-border/30 text-xs">
+                <span className="text-muted-foreground">{calDayTrades.length} trade</span>
+                <span className={`font-bold ${dayPnl>=0?'text-emerald-400':'text-red-400'}`}>
+                  {dayPnl>=0?'+':''}{fmt(dayPnl)}
                 </span>
+                <span className="text-muted-foreground ml-auto">{dayW}W / {dayL}L</span>
               </div>
-            )}
-            {calDayTrades && calDayTrades.length > 1 && (
-              <p className="text-[10px] text-muted-foreground text-center pt-1">Tap a trade to see details</p>
-            )}
+            )
+          })()}
+
+          {/* Trade cards with journal content */}
+          <div className="space-y-3 mt-1">
+            {calDayTrades?.map(t => {
+              const catatan = parseCalNote(t.note)
+              return (
+                <div key={t.id} className="rounded-xl border border-border/40 bg-muted/15 overflow-hidden">
+                  {/* Trade header — tap to open detail */}
+                  <button
+                    onClick={() => setDetailTrade(t)}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+                  >
+                    <span className={`text-xs font-black ${t.direction==='long'?'text-emerald-400':'text-red-400'}`}>
+                      {t.direction==='long'?'↑':'↓'} {t.pair}
+                    </span>
+                    {t.entry_time && (
+                      <span className="text-[10px] text-muted-foreground">{t.entry_time}</span>
+                    )}
+                    {t.strategy && (
+                      <span className="text-[10px] text-muted-foreground/60 border border-border/40 rounded px-1.5 py-0.5">{t.strategy}</span>
+                    )}
+                    {t.is_overtrade && (
+                      <span className="text-[9px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded px-1 py-0.5">OT</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                      <span className={`text-sm font-black ${t.pnl>=0?'text-emerald-400':'text-red-400'}`}>
+                        {t.pnl>=0?'+':''}{fmt(t.pnl)}
+                      </span>
+                      <Badge
+                        variant={t.result==='win'?'default':t.result==='loss'?'destructive':'secondary'}
+                        className="text-[9px] font-bold">
+                        {t.result==='win'?'WIN':t.result==='loss'?'LOSS':'BE'}
+                      </Badge>
+                    </div>
+                  </button>
+
+                  {/* Jurnal content below */}
+                  {catatan ? (
+                    <div className="px-3 pb-3 pt-1 border-t border-border/25">
+                      <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/40 mb-1">Catatan</p>
+                      <p className="text-xs leading-relaxed text-foreground/75 whitespace-pre-wrap">{catatan}</p>
+                    </div>
+                  ) : (
+                    <div className="px-3 pb-2 pt-1 border-t border-border/25">
+                      <p className="text-[10px] text-muted-foreground/35 italic">Tidak ada catatan</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
+
+          {/* Total footer */}
+          {calDayTrades && calDayTrades.length > 1 && (
+            <div className="flex justify-between text-sm font-bold pt-2 mt-1 border-t border-border/40">
+              <span className="text-muted-foreground">Total P&L</span>
+              <span className={calDayTrades.reduce((s,t)=>s+t.pnl,0)>=0?'text-emerald-400':'text-red-400'}>
+                {calDayTrades.reduce((s,t)=>s+t.pnl,0)>=0?'+':''}{fmt(calDayTrades.reduce((s,t)=>s+t.pnl,0))}
+              </span>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
