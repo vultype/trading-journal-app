@@ -253,7 +253,29 @@ export default function AnalisisPage() {
         <p className="text-sm text-muted-foreground">{trades.length} trade · insight mendalam performa kamu</p>
       </div>
 
+      <Tabs defaultValue="kalender">
+        {/* Navigasi utama — fokus point */}
+        <div className="rounded-2xl border border-border/50 bg-card p-2 shadow-sm overflow-x-auto">
+          <TabsList className="w-full flex flex-nowrap md:flex-wrap justify-start md:justify-center h-auto gap-1.5 bg-transparent p-0">
+            {([
+              ['kalender', '📅', 'Kalender P&L'],
+              ['jam', '⏰', 'Jam Trading'],
+              ['equity', '📈', 'Equity'],
+              ['strategi', '🎯', 'Strategi'],
+              ['pair', '💱', 'Pair'],
+              ['waktu', '🗓️', 'Waktu'],
+              ['psikologi', '🧠', 'Psikologi'],
+            ] as const).map(([v, emoji, label]) => (
+              <TabsTrigger key={v} value={v}
+                className="flex-none md:flex-1 gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-md">
+                <span>{emoji}</span> {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
       {/* ── WIN / LOSS / PF Cards (seperti screenshot) ── */}
+      <div className="space-y-6 mt-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Winning Trades */}
         <Card className="border-emerald-500/20 bg-card">
@@ -370,18 +392,7 @@ export default function AnalisisPage() {
           </div>
         </div>
       )}
-
-      {/* ── Tabs ── */}
-      <Tabs defaultValue="kalender">
-        <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="kalender">Kalender P&L</TabsTrigger>
-          <TabsTrigger value="jam">Jam Trading</TabsTrigger>
-          <TabsTrigger value="equity">Equity</TabsTrigger>
-          <TabsTrigger value="strategi">Strategi</TabsTrigger>
-          <TabsTrigger value="pair">Pair</TabsTrigger>
-          <TabsTrigger value="waktu">Waktu</TabsTrigger>
-          <TabsTrigger value="psikologi">Psikologi</TabsTrigger>
-        </TabsList>
+      </div>
 
         {/* ── KALENDER ── */}
         <TabsContent value="kalender" className="mt-4">

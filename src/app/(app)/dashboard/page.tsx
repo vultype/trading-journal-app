@@ -5,6 +5,7 @@ import { useStore } from '@/lib/store'
 import { calcStats, buildEquityCurve, formatCurrency } from '@/lib/calculations'
 import { useT } from '@/lib/i18n'
 import { EquityCurve } from '@/components/charts/EquityCurve'
+import { ScoreRadar, NetDailyPnL, DrawdownChart } from '@/components/charts/DashboardWidgets'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -159,6 +160,7 @@ export default function DashboardPage() {
   const fmt = (n: number) => formatCurrency(n, settings.currency)
   const t = useT()
   const startBalance = stats.trading_capital - stats.total_pnl
+  const equityBase = stats.starting_balance + stats.total_deposited - stats.total_withdrawn
   const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)), startBalance)
   const recentTrades = [...trades].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6)
 
@@ -236,6 +238,12 @@ export default function DashboardPage() {
             <StatCard label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" positive={stats.expectancy > 0} />
           </div>
 
+          {/* Score + Net daily P&L */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ScoreRadar stats={stats} trades={trades} equityBase={equityBase} />
+            <NetDailyPnL trades={trades} fmt={fmt} />
+          </div>
+
           {/* Monthly Target */}
           {hasTargets && (
             <Card>
@@ -262,7 +270,7 @@ export default function DashboardPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Equity Curve</CardTitle>
+              <CardTitle className="text-sm font-semibold">{t('Equity Curve')}</CardTitle>
             </CardHeader>
             <CardContent>
               {curve.length > 1
@@ -272,9 +280,11 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
+          <DrawdownChart trades={trades} fmt={fmt} />
+
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Recent Trades</CardTitle>
+              <CardTitle className="text-sm font-semibold">{t('Recent Trades')}</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y">
