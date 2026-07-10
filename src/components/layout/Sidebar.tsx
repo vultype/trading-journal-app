@@ -7,37 +7,52 @@ import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
   FlaskConical, LogOut, Sun, Moon, ClipboardList, Grid2x2, HelpCircle, Shield,
+  CreditCard, Receipt,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
 import { useStore } from '@/lib/store'
+import { useT } from '@/lib/i18n'
 
 type NavItem = { href: string; label: string; icon: React.ElementType }
+type NavGroup = { label: string; items: NavItem[] }
 
-const baseNav: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard },
-  { href: '/trades',    label: 'Trade',       icon: TrendingUp },
-  { href: '/analisis',  label: 'Analisis',    icon: BarChart3 },
-  { href: '/laporan',   label: 'Laporan',     icon: ClipboardList },
-  { href: '/simulator', label: 'Simulator',   icon: FlaskConical },
-  { href: '/finance',   label: 'Keuangan',    icon: Wallet },
-  { href: '/journal',   label: 'Jurnal',      icon: BookOpen },
-  { href: '/panduan',   label: 'Panduan',     icon: HelpCircle },
-  { href: '/settings',  label: 'Setting',     icon: Settings },
-]
+const dashboard: NavItem  = { href: '/dashboard',    label: 'Dashboard', icon: LayoutDashboard }
+const trades: NavItem     = { href: '/trades',       label: 'Trade',     icon: TrendingUp }
+const simulator: NavItem  = { href: '/simulator',    label: 'Simulator', icon: FlaskConical }
+const finance: NavItem    = { href: '/finance',      label: 'Keuangan',  icon: Wallet }
+const analisis: NavItem    = { href: '/analisis',    label: 'Analisis',  icon: BarChart3 }
+const laporan: NavItem    = { href: '/laporan',      label: 'Laporan',   icon: ClipboardList }
+const journal: NavItem    = { href: '/journal',      label: 'Jurnal',    icon: BookOpen }
+const subscription: NavItem = { href: '/subscription', label: 'Langganan', icon: CreditCard }
+const billing: NavItem    = { href: '/billing',      label: 'Tagihan',   icon: Receipt }
+const settings: NavItem   = { href: '/settings',     label: 'Setting',   icon: Settings }
+const panduan: NavItem    = { href: '/panduan',      label: 'Panduan',   icon: HelpCircle }
+const adminItem: NavItem  = { href: '/admin',        label: 'Admin',     icon: Shield }
 
-const adminItem: NavItem = { href: '/admin', label: 'Admin', icon: Shield }
-
-function useNav(): NavItem[] {
+function useGroups(): NavGroup[] {
   const { isAdmin } = useStore()
-  return isAdmin ? [...baseNav, adminItem] : baseNav
+  const account: NavItem[] = [subscription, billing, settings, ...(isAdmin ? [adminItem] : [])]
+  return [
+    { label: 'Ringkasan',       items: [dashboard] },
+    { label: 'Trading',         items: [trades, simulator, finance] },
+    { label: 'Jurnal & Analisa', items: [analisis, laporan, journal] },
+    { label: 'Akun',            items: account },
+    { label: 'Bantuan',         items: [panduan] },
+  ]
+}
+
+// flatten in display order for the mobile bottom bar
+function useFlat(): NavItem[] {
+  return useGroups().flatMap(g => g.items)
 }
 
 export function Sidebar() {
   const path   = usePathname()
   const router = useRouter()
   const { theme, setTheme } = useTheme()
-  const nav = useNav()
+  const groups = useGroups()
+  const t = useT()
 
   async function logout() {
     await createClient().auth.signOut()
@@ -45,37 +60,44 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="hidden md:flex w-52 shrink-0 border-r border-border/50 bg-sidebar flex-col py-5 px-3">
+    <aside className="hidden md:flex w-56 shrink-0 border-r border-border/50 bg-sidebar flex-col py-5 px-3">
       <div className="px-3 mb-5">
         <p className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase">Trading Jurnal</p>
-        <p className="text-xs text-muted-foreground/60 mt-0.5">Versi 2.0</p>
+        <p className="text-xs text-muted-foreground/60 mt-0.5">Versi 3.0</p>
       </div>
 
-      <nav className="flex-1 flex flex-col gap-0.5 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
-              path.startsWith(href)
-                ? 'bg-primary/10 text-primary border border-primary/20'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent'
-            )}
-          >
-            <Icon size={15}/>
-            {label}
-          </Link>
+      <nav className="flex-1 flex flex-col gap-4 overflow-y-auto">
+        {groups.map(group => (
+          <div key={group.label}>
+            <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/45">{t(group.label)}</p>
+            <div className="flex flex-col gap-0.5">
+              {group.items.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
+                    path.startsWith(href)
+                      ? 'bg-primary/10 text-primary border border-primary/20'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent'
+                  )}
+                >
+                  <Icon size={15}/>
+                  {t(label)}
+                </Link>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
-      <div className="flex flex-col gap-1 mt-2">
+      <div className="flex flex-col gap-1 mt-3 pt-3 border-t border-border/40">
         <button
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all border border-transparent"
         >
           {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
-          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          {theme === 'dark' ? t('Light Mode') : t('Dark Mode')}
         </button>
 
         <button
@@ -83,7 +105,7 @@ export function Sidebar() {
           className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-all border border-transparent"
         >
           <LogOut size={15}/>
-          Keluar
+          {t('Keluar')}
         </button>
       </div>
     </aside>
@@ -97,10 +119,13 @@ export function BottomNav() {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [moreOpen, setMoreOpen] = useState(false)
-  const nav = useNav()
+  const flat = useFlat()
+  const t = useT()
 
-  const primary = nav.slice(0, 4)   // Dashboard, Trade, Analisis, Laporan
-  const more    = nav.slice(4)      // Simulator, Keuangan, Jurnal, Panduan, Setting (+ Admin)
+  // 4 utama untuk bar bawah; sisanya masuk sheet "Lainnya"
+  const primaryHrefs = ['/dashboard', '/trades', '/analisis', '/finance']
+  const primary = primaryHrefs.map(h => flat.find(n => n.href === h)!).filter(Boolean)
+  const more    = flat.filter(n => !primaryHrefs.includes(n.href))
 
   async function logout() {
     await createClient().auth.signOut()
@@ -109,17 +134,11 @@ export function BottomNav() {
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
-      {/* More sheet — slides up above the nav bar */}
       {moreOpen && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={() => setMoreOpen(false)}
-          />
-          {/* Sheet */}
+          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setMoreOpen(false)} />
           <div className="relative z-50 bg-sidebar border-t border-border/50 px-4 pt-4 pb-2">
-            <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/50 mb-3">Menu lainnya</p>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/50 mb-3">{t('Menu lainnya')}</p>
             <div className="grid grid-cols-4 gap-2 mb-3">
               {more.map(({ href, label, icon: Icon }) => (
                 <Link
@@ -134,7 +153,7 @@ export function BottomNav() {
                   )}
                 >
                   <Icon size={18}/>
-                  <span className="text-[10px] font-medium">{label}</span>
+                  <span className="text-[10px] font-medium">{t(label)}</span>
                 </Link>
               ))}
             </div>
@@ -144,21 +163,20 @@ export function BottomNav() {
                 className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-border/40 py-2.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
               >
                 {theme === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
-                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                {theme === 'dark' ? t('Light Mode') : t('Dark Mode')}
               </button>
               <button
                 onClick={() => { logout(); setMoreOpen(false) }}
                 className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-red-500/30 py-2.5 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
               >
                 <LogOut size={14}/>
-                Keluar
+                {t('Keluar')}
               </button>
             </div>
           </div>
         </>
       )}
 
-      {/* Bottom bar */}
       <nav className="bg-sidebar border-t border-border/50 flex h-14 pb-[env(safe-area-inset-bottom)]">
         {primary.map(({ href, label, icon: Icon }) => (
           <Link
@@ -170,11 +188,9 @@ export function BottomNav() {
             )}
           >
             <Icon size={19}/>
-            <span className="text-[9px] font-semibold leading-none mt-0.5">{label}</span>
+            <span className="text-[9px] font-semibold leading-none mt-0.5">{t(label)}</span>
           </Link>
         ))}
-
-        {/* More button */}
         <button
           onClick={() => setMoreOpen(v => !v)}
           className={cn(
@@ -183,7 +199,7 @@ export function BottomNav() {
           )}
         >
           <Grid2x2 size={19}/>
-          <span className="text-[9px] font-semibold leading-none mt-0.5">Lainnya</span>
+          <span className="text-[9px] font-semibold leading-none mt-0.5">{t('Lainnya')}</span>
         </button>
       </nav>
     </div>

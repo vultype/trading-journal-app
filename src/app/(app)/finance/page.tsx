@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useStore } from '@/lib/store'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useT } from '@/lib/i18n'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -32,6 +33,7 @@ const TooltipStyle = {
 export default function FinancePage() {
   const { accounts, trades, transfers, settings, addTransfer, deleteTransfer } = useStore()
   const fmt = useCurrency()
+  const t = useT()
 
   // ── Filter akun (multi-akun) ──
   const [scope, setScope] = useState<string>('all')   // 'all' | account.id
@@ -129,8 +131,8 @@ export default function FinancePage() {
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold">Keuangan Broker</h1>
-          <p className="text-sm text-muted-foreground">Catatan dana di akun broker — deposit, withdraw, dan hasil trading</p>
+          <h1 className="text-xl font-bold">{t('Keuangan Broker')}</h1>
+          <p className="text-sm text-muted-foreground">{t('Catatan dana di akun broker — deposit, withdraw, dan hasil trading')}</p>
         </div>
         {/* Pemilih akun */}
         {accounts.length > 0 && (
@@ -152,42 +154,42 @@ export default function FinancePage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1.5 mb-1">
               <Landmark size={12} className="text-emerald-400"/>
-              <p className="text-xs text-muted-foreground">Saldo Sekarang</p>
+              <p className="text-xs text-muted-foreground">{t('Saldo Sekarang')}</p>
             </div>
             <p className="text-2xl font-black tracking-tight">{fmt(balance)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Total uang di broker saat ini</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{t('Total uang di broker saat ini')}</p>
           </CardContent>
         </Card>
         <Card className="border-indigo-500/20">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1.5 mb-1">
               <ArrowDownLeft size={12} className="text-indigo-400"/>
-              <p className="text-xs text-muted-foreground">Total Deposit</p>
+              <p className="text-xs text-muted-foreground">{t('Total Deposit')}</p>
             </div>
             <p className="text-2xl font-black text-indigo-400 tracking-tight">{fmt(deposited)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Uang yang kamu setor</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{t('Uang yang kamu setor')}</p>
           </CardContent>
         </Card>
         <Card className="border-violet-500/20">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1.5 mb-1">
               <ArrowUpRight size={12} className="text-violet-400"/>
-              <p className="text-xs text-muted-foreground">Total Withdraw</p>
+              <p className="text-xs text-muted-foreground">{t('Total Withdraw')}</p>
             </div>
             <p className="text-2xl font-black text-violet-400 tracking-tight">{fmt(withdrawn)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Uang yang sudah ditarik</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{t('Uang yang sudah ditarik')}</p>
           </CardContent>
         </Card>
         <Card className={pnl >= 0 ? 'border-emerald-500/20' : 'border-red-500/20'}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1.5 mb-1">
               {pnl >= 0 ? <TrendingUp size={12} className="text-emerald-400"/> : <TrendingDown size={12} className="text-red-400"/>}
-              <p className="text-xs text-muted-foreground">Profit Trading</p>
+              <p className="text-xs text-muted-foreground">{t('Profit Trading')}</p>
             </div>
             <p className={`text-2xl font-black tracking-tight ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {pnl >= 0 ? '+' : ''}{fmt(pnl)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Murni dari hasil trade{roi !== null ? ` · ROI ${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : ''}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{t('Murni dari hasil trade')}{roi !== null ? ` · ROI ${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : ''}</p>
           </CardContent>
         </Card>
       </div>
@@ -195,30 +197,30 @@ export default function FinancePage() {
       {/* ── Rincian saldo (rumus jelas) ── */}
       <Card>
         <CardContent className="pt-4">
-          <p className="text-xs text-muted-foreground mb-3">Cara hitung saldo — {scopeName}</p>
+          <p className="text-xs text-muted-foreground mb-3">{t('Cara hitung saldo')} — {scope === 'all' ? t('Semua Akun') : scopeName}</p>
           <div className="flex items-center flex-wrap gap-x-2 gap-y-2 text-sm">
             <div className="rounded-lg bg-muted/40 px-3 py-2">
-              <p className="text-[10px] text-muted-foreground">Saldo Awal</p>
+              <p className="text-[10px] text-muted-foreground">{t('Saldo Awal')}</p>
               <p className="font-bold">{fmt(starting)}</p>
             </div>
             <span className="text-muted-foreground font-bold">+</span>
             <div className="rounded-lg bg-indigo-500/10 px-3 py-2">
-              <p className="text-[10px] text-muted-foreground">Deposit</p>
+              <p className="text-[10px] text-muted-foreground">{t('Deposit')}</p>
               <p className="font-bold text-indigo-400">{fmt(deposited)}</p>
             </div>
             <span className="text-muted-foreground font-bold">−</span>
             <div className="rounded-lg bg-violet-500/10 px-3 py-2">
-              <p className="text-[10px] text-muted-foreground">Withdraw</p>
+              <p className="text-[10px] text-muted-foreground">{t('Withdraw')}</p>
               <p className="font-bold text-violet-400">{fmt(withdrawn)}</p>
             </div>
             <span className="text-muted-foreground font-bold">+</span>
             <div className="rounded-lg bg-emerald-500/10 px-3 py-2">
-              <p className="text-[10px] text-muted-foreground">Profit</p>
+              <p className="text-[10px] text-muted-foreground">{t('Profit')}</p>
               <p className={`font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl >= 0 ? '+' : ''}{fmt(pnl)}</p>
             </div>
             <span className="text-muted-foreground font-bold">=</span>
             <div className="rounded-lg bg-foreground/5 border border-border/60 px-3 py-2">
-              <p className="text-[10px] text-muted-foreground">Saldo Sekarang</p>
+              <p className="text-[10px] text-muted-foreground">{t('Saldo Sekarang')}</p>
               <p className="font-black">{fmt(balance)}</p>
             </div>
           </div>
@@ -229,19 +231,19 @@ export default function FinancePage() {
       <div className="grid grid-cols-3 gap-3">
         <Card className="border-indigo-500/20">
           <CardContent className="pt-4 pb-4">
-            <p className="text-xs text-muted-foreground mb-1">Deposit Bln Ini</p>
+            <p className="text-xs text-muted-foreground mb-1">{t('Deposit Bln Ini')}</p>
             <p className="text-lg font-bold text-indigo-400">{fmt(thisMonthDeposit)}</p>
           </CardContent>
         </Card>
         <Card className="border-violet-500/20">
           <CardContent className="pt-4 pb-4">
-            <p className="text-xs text-muted-foreground mb-1">Withdraw Bln Ini</p>
+            <p className="text-xs text-muted-foreground mb-1">{t('Withdraw Bln Ini')}</p>
             <p className="text-lg font-bold text-violet-400">{fmt(thisMonthWithdraw)}</p>
           </CardContent>
         </Card>
         <Card className={thisMonthPnl >= 0 ? 'border-emerald-500/20' : 'border-red-500/20'}>
           <CardContent className="pt-4 pb-4">
-            <p className="text-xs text-muted-foreground mb-1">Profit Bln Ini</p>
+            <p className="text-xs text-muted-foreground mb-1">{t('Profit Bln Ini')}</p>
             <p className={`text-lg font-bold ${thisMonthPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {thisMonthPnl >= 0 ? '+' : ''}{fmt(thisMonthPnl)}
             </p>
@@ -253,7 +255,7 @@ export default function FinancePage() {
       {byMonth.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">Profit Trading per Bulan</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('Profit Trading per Bulan')}</CardTitle></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={byMonth} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
@@ -270,7 +272,7 @@ export default function FinancePage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-sm">Deposit vs Withdraw</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('Deposit vs Withdraw')}</CardTitle></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={byMonth} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
@@ -286,7 +288,7 @@ export default function FinancePage() {
           </Card>
 
           <Card className="md:col-span-2">
-            <CardHeader><CardTitle className="text-sm">Pertumbuhan Saldo</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('Pertumbuhan Saldo')}</CardTitle></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={150}>
                 <AreaChart data={cumulativePnl} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
@@ -311,18 +313,18 @@ export default function FinancePage() {
       {/* ── Tabs ── */}
       <Tabs defaultValue="catat">
         <TabsList>
-          <TabsTrigger value="catat">Catat Dana</TabsTrigger>
-          <TabsTrigger value="riwayat">Riwayat</TabsTrigger>
-          <TabsTrigger value="akun">Per Akun</TabsTrigger>
+          <TabsTrigger value="catat">{t('Catat Dana')}</TabsTrigger>
+          <TabsTrigger value="riwayat">{t('Riwayat')}</TabsTrigger>
+          <TabsTrigger value="akun">{t('Per Akun')}</TabsTrigger>
         </TabsList>
 
         {/* Form Catat Dana */}
         <TabsContent value="catat" className="mt-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">Catat Deposit / Withdraw</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">{t('Catat Deposit / Withdraw')}</CardTitle></CardHeader>
             <CardContent>
               {accounts.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">Tambah akun broker dulu di menu Setting.</p>
+                <p className="text-sm text-muted-foreground py-6 text-center">{t('Tambah akun broker dulu di menu Setting.')}</p>
               ) : (
               <form onSubmit={submit} className="space-y-4">
                 <div className="flex gap-2">
@@ -335,10 +337,10 @@ export default function FinancePage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Akun Broker</Label>
+                    <Label className="text-xs">{t('Akun Broker')}</Label>
                     <Select value={selectedFormAcc} onValueChange={v => setFormAcc(v ?? '')}>
                       <SelectTrigger>
-                        <SelectValue>{accounts.find(a => a.id === selectedFormAcc)?.name ?? 'Pilih akun'}</SelectValue>
+                        <SelectValue>{accounts.find(a => a.id === selectedFormAcc)?.name ?? t('Pilih akun')}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -346,20 +348,20 @@ export default function FinancePage() {
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs">Tanggal</Label>
+                    <Label className="text-xs">{t('Tanggal')}</Label>
                     <Input type="date" value={date} onChange={e => setDate(e.target.value)} required/>
                   </div>
                 </div>
                 <div>
-                  <Label className="text-xs">Jumlah ({settings.currency})</Label>
+                  <Label className="text-xs">{t('Jumlah')} ({settings.currency})</Label>
                   <CurrencyInput value={amount} onChange={setAmount} placeholder="500.000"/>
                 </div>
                 <div>
-                  <Label className="text-xs">Catatan (opsional)</Label>
+                  <Label className="text-xs">{t('Catatan (opsional)')}</Label>
                   <Textarea placeholder={type === 'deposit' ? 'Misal: top-up modal' : 'Misal: tarik profit'} value={note} onChange={e => setNote(e.target.value)} rows={2}/>
                 </div>
                 <Button type="submit" className="w-full" disabled={!amount || Number(amount) <= 0}>
-                  {type === 'deposit' ? 'Catat Deposit' : 'Catat Withdraw'}
+                  {type === 'deposit' ? t('Catat Deposit') : t('Catat Withdraw')}
                 </Button>
               </form>
               )}
@@ -373,7 +375,7 @@ export default function FinancePage() {
             <Card className="border-dashed">
               <CardContent className="py-12 text-center text-sm text-muted-foreground">
                 <BarChart2 size={24} className="mx-auto mb-2 opacity-50"/>
-                Belum ada catatan dana. Catat deposit pertamamu.
+                {t('Belum ada catatan dana. Catat deposit pertamamu.')}
               </CardContent>
             </Card>
           ) : (
@@ -416,7 +418,7 @@ export default function FinancePage() {
             {perAccount.length === 0 ? (
               <Card className="border-dashed">
                 <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                  Tambah akun broker di menu Setting
+                  {t('Tambah akun broker di menu Setting')}
                 </CardContent>
               </Card>
             ) : perAccount.map(({ acc, init, deposited, withdrawn, pnl, balance }) => {
@@ -431,32 +433,32 @@ export default function FinancePage() {
                         <p className="text-xs text-muted-foreground">{acc.broker ?? 'Akun broker'} · {acc.currency}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-muted-foreground mb-0.5">Saldo Sekarang</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">{t('Saldo Sekarang')}</p>
                         <p className={`text-2xl font-bold ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(balance)}</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-4 gap-2 text-xs mb-3">
                       <div className="rounded-lg bg-muted p-2.5 text-center">
-                        <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1"><PiggyBank size={10}/> Awal</p>
+                        <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1"><PiggyBank size={10}/> {t('Awal')}</p>
                         <p className="font-semibold">{fmt(init)}</p>
                       </div>
                       <div className="rounded-lg bg-muted p-2.5 text-center">
-                        <p className="text-muted-foreground mb-1">Deposit</p>
+                        <p className="text-muted-foreground mb-1">{t('Deposit')}</p>
                         <p className="font-semibold text-indigo-400">{fmt(deposited)}</p>
                       </div>
                       <div className="rounded-lg bg-muted p-2.5 text-center">
-                        <p className="text-muted-foreground mb-1">Withdraw</p>
+                        <p className="text-muted-foreground mb-1">{t('Withdraw')}</p>
                         <p className="font-semibold text-violet-400">{fmt(withdrawn)}</p>
                       </div>
                       <div className="rounded-lg bg-muted p-2.5 text-center">
-                        <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1"><Coins size={10}/> Profit</p>
+                        <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1"><Coins size={10}/> {t('Profit')}</p>
                         <p className={`font-semibold ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(pnl)}</p>
                       </div>
                     </div>
                     {invested > 0 && (
                       <div className="space-y-1">
                         <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>ROI Akun Ini</span>
+                          <span>{t('ROI Akun Ini')}</span>
                           <span className={pnl >= 0 ? 'text-emerald-400 font-medium' : 'text-red-400 font-medium'}>
                             {accRoi >= 0 ? '+' : ''}{accRoi.toFixed(2)}%
                           </span>

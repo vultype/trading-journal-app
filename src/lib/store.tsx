@@ -25,7 +25,8 @@ type Store = {
   transfers: Transfer[]
   journalNotes: JournalNote[]
   settings: AppSettings
-  addAccount: (a: Omit<Account, 'id' | 'created_at'>) => void
+  addAccount: (a: Omit<Account, 'id' | 'created_at'>) => Account
+  updateAccount: (id: string, a: Partial<Account>) => void
   deleteAccount: (id: string) => void
   addTrade: (t: Omit<Trade, 'id' | 'created_at'>) => void
   updateTrade: (id: string, t: Partial<Trade>) => void
@@ -94,16 +95,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLoading(false)
         return
       }
-      // Buat satu akun trading default jika belum ada
-      let accs: Account[] = a.data ?? []
-      if (accs.length === 0) {
-        const defaults = [
-          { user_id: userId, name: 'Akun Trading', broker: 'MT4/MT5', currency: 'IDR', initial_balance: 0 },
-        ]
-        const { data: created } = await sb.from('accounts').insert(defaults).select()
-        accs = created ?? []
-      }
-      setAccounts(accs)
+      // Tidak lagi membuat akun default — user setup lewat wizard onboarding
+      setAccounts((a.data ?? []) as Account[])
       setTrades((t.data ?? []) as Trade[])
       setTransfers((x.data ?? []) as Transfer[])
       setJournalNotes((j.data ?? []) as JournalNote[])
@@ -111,6 +104,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (s.data) {
         setSettings({
           currency:       (s.data.currency as AppSettings['currency']) ?? 'IDR',
+          language:       (s.data.language as AppSettings['language']) ?? 'id',
           strategies:     (s.data.strategies as string[]) ?? DEFAULT_SETTINGS.strategies,
           targetHarian:   s.data.target_harian ?? undefined,
           targetMingguan: s.data.target_mingguan ?? undefined,
@@ -118,6 +112,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           displayName:    s.data.display_name ?? undefined,
           defaultPair:    s.data.default_pair ?? undefined,
           weekStartsMonday: s.data.week_starts_monday ?? undefined,
+          onboarded:      s.data.onboarded ?? false,
         })
       }
       setLoading(false)
@@ -146,14 +141,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   function refetch() { setFetchKey(k => k + 1) }
 
   // ── Account actions ───────────────────────────────────────────────────
-  const addAccount = useCallback((a: Omit<Account, 'id' | 'created_at'>) => {
-    if (!userId) return
+  const addAccount = useCallback((a: Omit<Account, 'id' | 'created_at'>): Account => {
     const id = uid(); const created_at = new Date().toISOString()
     const row: Account = { ...a, id, created_at }
+    if (!userId) return row
     setAccounts(p => [...p, row])
     toast.success('Akun berhasil ditambahkan')
     sb().from('accounts').insert({ ...a, id, user_id: userId, created_at })
       .then(({ error }) => onSaveError('addAccount', error))
+    return row
+  }, [userId])
+
+  const updateAccount = useCallback((id: string, a: Partial<Account>) => {
+    if (!userId) return
+    setAccounts(p => p.map(x => x.id === id ? { ...x, ...a } : x))
+    sb().from('accounts').update(a).eq('id', id).eq('user_id', userId)
+      .then(({ error }) => onSaveError('updateAccount', error))
   }, [userId])
 
   const deleteAccount = useCallback((id: string) => {
@@ -266,6 +269,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sb().from('user_settings').upsert({
         user_id:            userId,
         currency:           next.currency,
+        language:           next.language ?? 'id',
         strategies:         next.strategies,
         target_harian:      next.targetHarian ?? null,
         target_mingguan:    next.targetMingguan ?? null,
@@ -273,6 +277,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         display_name:       next.displayName ?? null,
         default_pair:       next.defaultPair ?? null,
         week_starts_monday: next.weekStartsMonday ?? null,
+        onboarded:          next.onboarded ?? false,
         updated_at:         new Date().toISOString(),
       }, { onConflict: 'user_id' })
         .then(({ error }) => onSaveError('saveSettings', error))
@@ -286,7 +291,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={{
       loading, userId, userEmail, isAdmin: userEmail === ADMIN_EMAIL, syncError,
       accounts, trades, transfers, journalNotes, settings,
-      addAccount, deleteAccount, addTrade, updateTrade, deleteTrade,
+      addAccount, updateAccount, deleteAccount, addTrade, updateTrade, deleteTrade,
       addTransfer, deleteTransfer, saveJournal, deleteJournal, saveSettings,
       clearSyncError, refetch,
     }}>

@@ -2,6 +2,7 @@
 
 import { useStore } from '@/lib/store'
 import { calcStats, buildEquityCurve, formatCurrency } from '@/lib/calculations'
+import { useT } from '@/lib/i18n'
 import { EquityCurve } from '@/components/charts/EquityCurve'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const { trades, transfers, accounts, settings } = useStore()
   const stats = calcStats(trades, transfers, accounts)
   const fmt = (n: number) => formatCurrency(n, settings.currency)
+  const t = useT()
   const startBalance = stats.trading_capital - stats.total_pnl
   const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)), startBalance)
   const recentTrades = [...trades].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6)
@@ -63,10 +65,10 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Saldo Trading" value={fmt(stats.trading_capital)} sub="Saldo di broker saat ini" icon={Wallet} />
-            <StatCard label="Total Deposit" value={fmt(stats.total_deposited)} sub={`Withdraw ${fmt(stats.total_withdrawn)}`} icon={TrendingUp} />
-            <StatCard label="Profit Trading" value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
-            <StatCard label="Win Rate" value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} trades`} positive={stats.win_rate >= 50} icon={Target} />
+            <StatCard label={t('Saldo Trading')} value={fmt(stats.trading_capital)} sub={t('Saldo di broker saat ini')} icon={Wallet} />
+            <StatCard label={t('Total Deposit')} value={fmt(stats.total_deposited)} sub={`${t('Withdraw')} ${fmt(stats.total_withdrawn)}`} icon={TrendingUp} />
+            <StatCard label={t('Profit Trading')} value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
+            <StatCard label={t('Win Rate')} value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} ${t('trade')}`} positive={stats.win_rate >= 50} icon={Target} />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -107,7 +109,7 @@ export default function DashboardPage() {
             <CardContent>
               {curve.length > 1
                 ? <EquityCurve data={curve} fmt={fmt} startBalance={startBalance} />
-                : <p className="text-sm text-muted-foreground text-center py-8">Butuh minimal 2 trade untuk tampilkan grafik</p>
+                : <p className="text-sm text-muted-foreground text-center py-8">{t('Butuh minimal 2 trade untuk tampilkan grafik')}</p>
               }
             </CardContent>
           </Card>

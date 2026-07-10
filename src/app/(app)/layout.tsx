@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
 import { Sidebar, BottomNav } from '@/components/layout/Sidebar'
+import { SetupWizard } from '@/components/onboarding/SetupWizard'
 import { Toaster } from '@/components/ui/toaster'
 import { Loader2, AlertTriangle, X, RefreshCw } from 'lucide-react'
 
@@ -40,7 +41,7 @@ function SyncErrorBanner() {
 }
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { loading, userId } = useStore()
+  const { loading, userId, settings } = useStore()
   const router = useRouter()
 
   useEffect(() => {
@@ -59,6 +60,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
   }
 
   if (!userId) return null
+
+  // Onboarding: tampilkan wizard sampai user selesai setup
+  if (!settings.onboarded) return <SetupWizard />
 
   return (
     <div className="flex h-full">

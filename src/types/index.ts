@@ -60,6 +60,7 @@ export type JournalNote = {
 
 export type AppSettings = {
   currency: 'USD' | 'IDR' | 'EUR' | 'USDT'
+  language?: 'id' | 'en'
   strategies: string[]
   defaultAccountId?: string
   targetHarian?: number
@@ -68,6 +69,7 @@ export type AppSettings = {
   displayName?: string
   defaultPair?: string
   weekStartsMonday?: boolean
+  onboarded?: boolean
 }
 
 export type DashboardStats = {

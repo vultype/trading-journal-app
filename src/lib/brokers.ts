@@ -1,0 +1,41 @@
+// Daftar broker/platform populer. User bisa pilih atau ketik sendiri ("Lainnya").
+export const BROKERS: string[] = [
+  // Forex / CFD
+  'Exness',
+  'XM',
+  'IC Markets',
+  'Pepperstone',
+  'FBS',
+  'Octa',
+  'RoboForex',
+  'HFM (HotForex)',
+  'FXTM',
+  'Tickmill',
+  'FXCM',
+  'OANDA',
+  'Admiral Markets',
+  'Vantage',
+  'Deriv',
+  'GKInvest',
+  'Monex',
+  'MIFX (Monex Investindo)',
+  // Prop firm
+  'FTMO',
+  'MyForexFunds',
+  'The5ers',
+  'FundedNext',
+  'E8 Funding',
+  // Crypto
+  'Binance',
+  'Bybit',
+  'OKX',
+  'Bitget',
+  'KuCoin',
+  'Indodax',
+  'Tokocrypto',
+  // Saham
+  'Ajaib',
+  'Stockbit',
+  'IPOT (Indo Premier)',
+  'Mirae Asset',
+]

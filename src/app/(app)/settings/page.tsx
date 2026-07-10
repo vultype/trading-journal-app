@@ -11,12 +11,16 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2, UserCog } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/currency-input'
+import { BrokerSelect } from '@/components/ui/broker-select'
 import { formatCurrency } from '@/lib/calculations'
+import { useT, useLang } from '@/lib/i18n'
 import type { AppSettings } from '@/types'
 
 export default function SettingsPage() {
   const { accounts, trades, transfers, settings, userEmail, isAdmin, addAccount, deleteAccount, saveSettings } = useStore()
   const fmtCur = (n: number) => formatCurrency(n, settings.currency)
+  const t = useT()
+  const [lang, setLang] = useLang()
 
   // ─── Pengaturan Umum ───
   const [currency, setCurrency] = useState<AppSettings['currency']>(settings.currency)
@@ -101,13 +105,13 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-xl font-bold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Profil, konfigurasi, strategi, dan akun</p>
+        <h1 className="text-xl font-bold">{t('Setting')}</h1>
+        <p className="text-sm text-muted-foreground">{t('Profil, konfigurasi, strategi, dan akun')}</p>
       </div>
 
       {/* Profile */}
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><UserCog size={14}/> Profil</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><UserCog size={14}/> {t('Profil')}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3 rounded-xl bg-muted/40 p-3">
             <div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center text-primary font-black text-lg shrink-0">
@@ -130,10 +134,20 @@ export default function SettingsPage() {
 
       {/* General */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Umum</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">{t('Umum')}</CardTitle></CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Default Currency</Label>
+            <Label className="text-xs text-muted-foreground">{t('Bahasa')}</Label>
+            <Select value={lang} onValueChange={(v) => setLang((v ?? 'id') as 'id' | 'en')}>
+              <SelectTrigger className="w-52"><SelectValue>{lang === 'en' ? '🇬🇧 English' : '🇮🇩 Indonesia'}</SelectValue></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="id">🇮🇩 Indonesia</SelectItem>
+                <SelectItem value="en">🇬🇧 English</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">{t('Mata Uang')}</Label>
             <Select value={currency} onValueChange={(v) => setCurrency((v ?? 'USD') as AppSettings['currency'])}>
               <SelectTrigger className="w-52"><SelectValue>
                 {currency === 'IDR' ? '🇮🇩 IDR — Indonesian Rupiah' : currency === 'USD' ? '🇺🇸 USD — US Dollar' : currency === 'EUR' ? '🇪🇺 EUR — Euro' : '💵 USDT — Tether'}
@@ -268,8 +282,8 @@ export default function SettingsPage() {
                 <Input placeholder="Broker Utama" value={accName} onChange={e => setAccName(e.target.value)} required />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Broker / Platform</Label>
-                <Input placeholder="MT4, MT5, Bybit…" value={accBroker} onChange={e => setAccBroker(e.target.value)} />
+                <Label className="text-xs text-muted-foreground">{t('Broker / Platform')}</Label>
+                <BrokerSelect value={accBroker} onChange={setAccBroker} customPlaceholder={t('Ketik nama broker…')} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
