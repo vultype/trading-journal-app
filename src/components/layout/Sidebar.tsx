@@ -7,12 +7,13 @@ import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
   FlaskConical, LogOut, Sun, Moon, ClipboardList, Grid2x2, HelpCircle, Shield,
-  CreditCard, Receipt,
+  CreditCard, Receipt, Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
 import { useStore } from '@/lib/store'
 import { useT } from '@/lib/i18n'
+import { toast } from '@/lib/toast'
 
 type NavItem = { href: string; label: string; icon: React.ElementType }
 type NavGroup = { label: string; items: NavItem[] }
@@ -29,6 +30,9 @@ const billing: NavItem    = { href: '/billing',      label: 'Tagihan',   icon: R
 const settings: NavItem   = { href: '/settings',     label: 'Setting',   icon: Settings }
 const panduan: NavItem    = { href: '/panduan',      label: 'Panduan',   icon: HelpCircle }
 const adminItem: NavItem  = { href: '/admin',        label: 'Admin',     icon: Shield }
+
+// Menu yang tetap terbuka sebelum user mencatat trade pertama
+export const ALWAYS_UNLOCKED = ['/dashboard', '/panduan']
 
 function useGroups(): NavGroup[] {
   const { isAdmin } = useStore()
@@ -47,12 +51,22 @@ function useFlat(): NavItem[] {
   return useGroups().flatMap(g => g.items)
 }
 
+function useMenuLock() {
+  const { trades } = useStore()
+  const hasTrades = trades.length > 0
+  const isLocked = (href: string) => !hasTrades && !ALWAYS_UNLOCKED.includes(href)
+  return { hasTrades, isLocked }
+}
+
+const LOCK_MSG = 'Catat trade pertama di Dashboard dulu untuk membuka menu ini'
+
 export function Sidebar() {
   const path   = usePathname()
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const groups = useGroups()
   const t = useT()
+  const { isLocked } = useMenuLock()
 
   async function logout() {
     await createClient().auth.signOut()
@@ -71,21 +85,38 @@ export function Sidebar() {
           <div key={group.label}>
             <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/45">{t(group.label)}</p>
             <div className="flex flex-col gap-0.5">
-              {group.items.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
-                    path.startsWith(href)
-                      ? 'bg-primary/10 text-primary border border-primary/20'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent'
-                  )}
-                >
-                  <Icon size={15}/>
-                  {t(label)}
-                </Link>
-              ))}
+              {group.items.map(({ href, label, icon: Icon }) => {
+                const locked = isLocked(href)
+                if (locked) {
+                  return (
+                    <button
+                      key={href}
+                      type="button"
+                      onClick={() => toast.error(LOCK_MSG)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground/40 cursor-not-allowed border border-transparent text-left"
+                    >
+                      <Icon size={15}/>
+                      {t(label)}
+                      <Lock size={11} className="ml-auto"/>
+                    </button>
+                  )
+                }
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
+                      path.startsWith(href)
+                        ? 'bg-primary/10 text-primary border border-primary/20'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent'
+                    )}
+                  >
+                    <Icon size={15}/>
+                    {t(label)}
+                  </Link>
+                )
+              })}
             </div>
           </div>
         ))}
@@ -121,6 +152,7 @@ export function BottomNav() {
   const [moreOpen, setMoreOpen] = useState(false)
   const flat = useFlat()
   const t = useT()
+  const { isLocked } = useMenuLock()
 
   // 4 utama untuk bar bawah; sisanya masuk sheet "Lainnya"
   const primaryHrefs = ['/dashboard', '/trades', '/analisis', '/finance']
@@ -140,22 +172,39 @@ export function BottomNav() {
           <div className="relative z-50 bg-sidebar border-t border-border/50 px-4 pt-4 pb-2">
             <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/50 mb-3">{t('Menu lainnya')}</p>
             <div className="grid grid-cols-4 gap-2 mb-3">
-              {more.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMoreOpen(false)}
-                  className={cn(
-                    'flex flex-col items-center gap-1.5 rounded-xl py-3 border transition-colors',
-                    path.startsWith(href)
-                      ? 'bg-primary/10 border-primary/20 text-primary'
-                      : 'border-border/40 text-muted-foreground hover:bg-muted'
-                  )}
-                >
-                  <Icon size={18}/>
-                  <span className="text-[10px] font-medium">{t(label)}</span>
-                </Link>
-              ))}
+              {more.map(({ href, label, icon: Icon }) => {
+                const locked = isLocked(href)
+                if (locked) {
+                  return (
+                    <button
+                      key={href}
+                      type="button"
+                      onClick={() => toast.error(LOCK_MSG)}
+                      className="relative flex flex-col items-center gap-1.5 rounded-xl py-3 border border-border/40 text-muted-foreground/40 cursor-not-allowed"
+                    >
+                      <Icon size={18}/>
+                      <span className="text-[10px] font-medium">{t(label)}</span>
+                      <Lock size={9} className="absolute top-1.5 right-1.5"/>
+                    </button>
+                  )
+                }
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setMoreOpen(false)}
+                    className={cn(
+                      'flex flex-col items-center gap-1.5 rounded-xl py-3 border transition-colors',
+                      path.startsWith(href)
+                        ? 'bg-primary/10 border-primary/20 text-primary'
+                        : 'border-border/40 text-muted-foreground hover:bg-muted'
+                    )}
+                  >
+                    <Icon size={18}/>
+                    <span className="text-[10px] font-medium">{t(label)}</span>
+                  </Link>
+                )
+              })}
             </div>
             <div className="flex gap-2 pb-1">
               <button
@@ -178,19 +227,35 @@ export function BottomNav() {
       )}
 
       <nav className="bg-sidebar border-t border-border/50 flex h-14 pb-[env(safe-area-inset-bottom)]">
-        {primary.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              'flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors',
-              path.startsWith(href) ? 'text-primary' : 'text-muted-foreground'
-            )}
-          >
-            <Icon size={19}/>
-            <span className="text-[9px] font-semibold leading-none mt-0.5">{t(label)}</span>
-          </Link>
-        ))}
+        {primary.map(({ href, label, icon: Icon }) => {
+          const locked = isLocked(href)
+          if (locked) {
+            return (
+              <button
+                key={href}
+                type="button"
+                onClick={() => toast.error(LOCK_MSG)}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 text-muted-foreground/35"
+              >
+                <Icon size={19}/>
+                <span className="text-[9px] font-semibold leading-none mt-0.5">{t(label)}</span>
+              </button>
+            )
+          }
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors',
+                path.startsWith(href) ? 'text-primary' : 'text-muted-foreground'
+              )}
+            >
+              <Icon size={19}/>
+              <span className="text-[9px] font-semibold leading-none mt-0.5">{t(label)}</span>
+            </Link>
+          )
+        })}
         <button
           onClick={() => setMoreOpen(v => !v)}
           className={cn(

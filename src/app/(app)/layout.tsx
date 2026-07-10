@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
-import { Sidebar, BottomNav } from '@/components/layout/Sidebar'
+import { Sidebar, BottomNav, ALWAYS_UNLOCKED } from '@/components/layout/Sidebar'
 import { SetupWizard } from '@/components/onboarding/SetupWizard'
 import { Toaster } from '@/components/ui/toaster'
 import { Loader2, AlertTriangle, X, RefreshCw } from 'lucide-react'
@@ -41,12 +41,21 @@ function SyncErrorBanner() {
 }
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { loading, userId, settings } = useStore()
+  const { loading, userId, settings, trades } = useStore()
   const router = useRouter()
+  const pathname = usePathname()
+  const hasTrades = trades.length > 0
 
   useEffect(() => {
     if (!loading && !userId) router.replace('/login')
   }, [loading, userId, router])
+
+  // Kunci navigasi langsung via URL ke menu yang belum terbuka
+  useEffect(() => {
+    if (!loading && userId && settings.onboarded && !hasTrades && !ALWAYS_UNLOCKED.includes(pathname)) {
+      router.replace('/dashboard')
+    }
+  }, [loading, userId, settings.onboarded, hasTrades, pathname, router])
 
   if (loading) {
     return (

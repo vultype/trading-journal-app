@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { calcStats, buildEquityCurve, formatCurrency } from '@/lib/calculations'
 import { useT } from '@/lib/i18n'
@@ -7,7 +8,92 @@ import { EquityCurve } from '@/components/charts/EquityCurve'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { TrendingUp, TrendingDown, Wallet, Target, BarChart2, Activity, CalendarRange } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { CurrencyInput } from '@/components/ui/currency-input'
+import { TrendingUp, TrendingDown, Wallet, Target, Activity, CalendarRange, Sparkles } from 'lucide-react'
+
+function FirstTradeCard({ accountId }: { accountId?: string }) {
+  const { addTrade, settings } = useStore()
+  const t = useT()
+  const [pair, setPair]         = useState(settings.defaultPair || 'XAUUSD')
+  const [direction, setDir]     = useState<'long' | 'short'>('long')
+  const [result, setResult]     = useState<'win' | 'loss' | 'breakeven'>('win')
+  const [pnl, setPnl]           = useState<number | ''>('')
+  const [date, setDate]         = useState(new Date().toISOString().split('T')[0])
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!accountId || pnl === '' || Number(pnl) <= 0) return
+    addTrade({
+      account_id: accountId,
+      date, pair, direction, result,
+      pnl: result === 'loss' ? -Math.abs(Number(pnl)) : Math.abs(Number(pnl)),
+    })
+  }
+
+  return (
+    <Card className="border-primary/25 bg-gradient-to-br from-primary/5 to-transparent">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Sparkles size={14} className="text-primary" /> Catat Trade Pertama Kamu
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground mb-4">
+          Menu lain akan terbuka otomatis setelah kamu mencatat trade pertama.
+        </p>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Pair</Label>
+              <Input value={pair} onChange={e => setPair(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">{t('Tanggal')}</Label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Arah</Label>
+            <div className="flex gap-2">
+              {(['long', 'short'] as const).map(d => (
+                <button key={d} type="button" onClick={() => setDir(d)}
+                  className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-all ${direction === d ? (d === 'long' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400') : 'border-border/50 text-muted-foreground'}`}>
+                  {d === 'long' ? '↑ Long' : '↓ Short'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Hasil</Label>
+            <div className="flex gap-2">
+              {(['win', 'loss', 'breakeven'] as const).map(r => (
+                <button key={r} type="button" onClick={() => setResult(r)}
+                  className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-all ${result === r ? (r === 'win' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : r === 'loss' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400') : 'border-border/50 text-muted-foreground'}`}>
+                  {r === 'win' ? '✓ Win' : r === 'loss' ? '✗ Loss' : '= BE'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">P&L ({settings.currency})</Label>
+            <CurrencyInput value={pnl} onChange={setPnl} placeholder="0" />
+            <p className="text-[10px] text-muted-foreground">Masukkan angka positif — tanda +/− otomatis dari Hasil</p>
+          </div>
+
+          <Button type="submit" className="w-full" disabled={!accountId || !pnl || Number(pnl) <= 0}>
+            Simpan Trade Pertama
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
 
 function StatCard({ label, value, sub, positive, icon: Icon }: {
   label: string; value: string; sub?: string; positive?: boolean | null; icon?: React.ElementType
@@ -53,15 +139,7 @@ export default function DashboardPage() {
       </div>
 
       {trades.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <BarChart2 size={32} className="mx-auto mb-3 text-muted-foreground" />
-            <p className="font-medium text-muted-foreground">No trades yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Go to <strong>Trades</strong> to log your first position
-            </p>
-          </CardContent>
-        </Card>
+        <FirstTradeCard accountId={accounts[0]?.id} />
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
