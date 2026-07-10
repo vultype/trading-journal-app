@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
-  FlaskConical, LogOut, Sun, Moon, ClipboardList, Grid2x2, HelpCircle, Shield,
+  FlaskConical, LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
   CreditCard, Receipt, Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -23,7 +23,6 @@ const trades: NavItem     = { href: '/trades',       label: 'Trade',     icon: T
 const simulator: NavItem  = { href: '/simulator',    label: 'Simulator', icon: FlaskConical }
 const finance: NavItem    = { href: '/finance',      label: 'Keuangan',  icon: Wallet }
 const analisis: NavItem    = { href: '/analisis',    label: 'Analisis',  icon: BarChart3 }
-const laporan: NavItem    = { href: '/laporan',      label: 'Laporan',   icon: ClipboardList }
 const journal: NavItem    = { href: '/journal',      label: 'Jurnal',    icon: BookOpen }
 const subscription: NavItem = { href: '/subscription', label: 'Langganan', icon: CreditCard }
 const billing: NavItem    = { href: '/billing',      label: 'Tagihan',   icon: Receipt }
@@ -40,7 +39,7 @@ function useGroups(): NavGroup[] {
   return [
     { label: 'Ringkasan',       items: [dashboard] },
     { label: 'Trading',         items: [trades, simulator, finance] },
-    { label: 'Jurnal & Analisa', items: [analisis, laporan, journal] },
+    { label: 'Jurnal & Analisa', items: [analisis, journal] },
     { label: 'Akun',            items: account },
     { label: 'Bantuan',         items: [panduan] },
   ]

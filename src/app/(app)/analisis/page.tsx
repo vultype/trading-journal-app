@@ -8,6 +8,7 @@ import { calcStats, buildEquityCurve, pnlByGroup, DAYS } from '@/lib/calculation
 import { EquityCurve } from '@/components/charts/EquityCurve'
 import { PnLCalendar } from '@/components/charts/PnLCalendar'
 import { HourAnalysis } from '@/components/charts/HourAnalysis'
+import { TradeTimeScatter, DaySummaryTable, InsightsCard } from '@/components/charts/AnalyticsWidgets'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
@@ -19,7 +20,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, ReferenceLine,
 } from 'recharts'
-import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X } from 'lucide-react'
+import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X, CalendarDays, Clock, LineChart, Coins, CalendarClock } from 'lucide-react'
 import type { Trade } from '@/types'
 
 const NOTE_SEP = '--- Analisa by Claude ---'
@@ -258,17 +259,17 @@ export default function AnalisisPage() {
         <div className="rounded-2xl border border-border/50 bg-card p-2 shadow-sm overflow-x-auto">
           <TabsList className="w-full flex flex-nowrap md:flex-wrap justify-start md:justify-center h-auto gap-1.5 bg-transparent p-0">
             {([
-              ['kalender', '📅', 'Kalender P&L'],
-              ['jam', '⏰', 'Jam Trading'],
-              ['equity', '📈', 'Equity'],
-              ['strategi', '🎯', 'Strategi'],
-              ['pair', '💱', 'Pair'],
-              ['waktu', '🗓️', 'Waktu'],
-              ['psikologi', '🧠', 'Psikologi'],
-            ] as const).map(([v, emoji, label]) => (
+              ['kalender', CalendarDays, 'Kalender P&L'],
+              ['jam', Clock, 'Jam Trading'],
+              ['equity', LineChart, 'Equity'],
+              ['strategi', Target, 'Strategi'],
+              ['pair', Coins, 'Pair'],
+              ['waktu', CalendarClock, 'Waktu'],
+              ['psikologi', Brain, 'Psikologi'],
+            ] as const).map(([v, Icon, label]) => (
               <TabsTrigger key={v} value={v}
                 className="flex-none md:flex-1 gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-md">
-                <span>{emoji}</span> {label}
+                <Icon size={14} /> {label}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -548,6 +549,9 @@ export default function AnalisisPage() {
 
         {/* ── WAKTU ── */}
         <TabsContent value="waktu" className="mt-4 space-y-4">
+          <InsightsCard trades={normalTrades} stats={stats} fmt={fmt} />
+          <TradeTimeScatter trades={normalTrades} fmt={fmt} />
+          <DaySummaryTable trades={normalTrades} fmt={fmt} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader><CardTitle className="text-sm">P&L per Hari</CardTitle></CardHeader>

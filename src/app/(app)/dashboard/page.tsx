@@ -6,6 +6,7 @@ import { calcStats, buildEquityCurve, formatCurrency } from '@/lib/calculations'
 import { useT } from '@/lib/i18n'
 import { EquityCurve } from '@/components/charts/EquityCurve'
 import { ScoreRadar, NetDailyPnL, DrawdownChart } from '@/components/charts/DashboardWidgets'
+import { TradeTimeScatter, DaySummaryTable, InsightsCard } from '@/components/charts/AnalyticsWidgets'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -13,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { CurrencyInput } from '@/components/ui/currency-input'
+import { InfoTip } from '@/components/ui/info-tip'
 import Link from 'next/link'
 import { TrendingUp, TrendingDown, Wallet, Target, Activity, CalendarRange, Sparkles, Check } from 'lucide-react'
 
@@ -97,29 +99,31 @@ function FirstTradeCard({ accountId }: { accountId?: string }) {
   )
 }
 
-function StatCard({ label, value, sub, positive, icon: Icon, accent }: {
+function StatCard({ label, value, sub, positive, icon: Icon, accent, tip }: {
   label: string; value: string; sub?: string; positive?: boolean | null; icon?: React.ElementType
-  accent?: 'primary' | 'emerald' | 'red' | 'violet'
+  accent?: 'primary' | 'emerald' | 'red' | 'violet'; tip?: string
 }) {
   const accentMap = {
-    primary: 'bg-primary/10 text-primary',
-    emerald: 'bg-emerald-500/10 text-emerald-400',
-    red:     'bg-red-500/10 text-red-400',
-    violet:  'bg-violet-500/10 text-violet-400',
+    primary: { icon: 'bg-primary/15 text-primary', grad: 'from-primary/8' },
+    emerald: { icon: 'bg-emerald-500/15 text-emerald-400', grad: 'from-emerald-500/8' },
+    red:     { icon: 'bg-red-500/15 text-red-400', grad: 'from-red-500/8' },
+    violet:  { icon: 'bg-violet-500/15 text-violet-400', grad: 'from-violet-500/8' },
   }
-  const iconCls = accent ? accentMap[accent] : 'bg-muted text-muted-foreground'
+  const a = accent ? accentMap[accent] : { icon: 'bg-muted text-muted-foreground', grad: 'from-muted/40' }
   return (
-    <Card className="transition-colors hover:border-border">
+    <Card className={`relative overflow-hidden transition-all hover:border-border hover:shadow-md bg-gradient-to-br ${a.grad} via-transparent to-transparent`}>
       <CardContent className="pt-4">
         <div className="flex items-start justify-between">
           <div className="min-w-0">
-            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1.5">{label}</p>
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              {label}{tip && <InfoTip text={tip} />}
+            </p>
             <p className={`text-2xl font-black tracking-tight truncate ${positive === true ? 'text-emerald-400' : positive === false ? 'text-red-400' : ''}`}>
               {value}
             </p>
             {sub && <p className="text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
-          {Icon && <div className={`p-2 rounded-lg shrink-0 ${iconCls}`}><Icon size={16} /></div>}
+          {Icon && <div className={`p-2 rounded-lg shrink-0 ${a.icon}`}><Icon size={16} /></div>}
         </div>
       </CardContent>
     </Card>
@@ -232,16 +236,25 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Profit Factor" value={stats.profit_factor === Infinity ? '∞' : stats.profit_factor.toFixed(2)} positive={stats.profit_factor >= 1.5} />
-            <StatCard label="Avg Win" value={fmt(stats.avg_win)} positive={true} />
-            <StatCard label="Max Drawdown" value={fmt(stats.max_drawdown)} positive={false} />
-            <StatCard label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" positive={stats.expectancy > 0} />
+            <StatCard label="Profit Factor" value={stats.profit_factor === Infinity ? '∞' : stats.profit_factor.toFixed(2)} positive={stats.profit_factor >= 1.5} tip="Total profit dibagi total loss. Di atas 1 = untung, di atas 2 = sangat sehat." />
+            <StatCard label="Avg Win" value={fmt(stats.avg_win)} positive={true} tip="Rata-rata keuntungan per trade yang menang." />
+            <StatCard label="Max Drawdown" value={fmt(stats.max_drawdown)} positive={false} tip="Penurunan terbesar equity dari puncak ke lembah. Makin kecil makin baik." />
+            <StatCard label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" positive={stats.expectancy > 0} tip="Perkiraan profit rata-rata yang kamu hasilkan per trade dalam jangka panjang." />
           </div>
 
           {/* Score + Net daily P&L */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ScoreRadar stats={stats} trades={trades} equityBase={equityBase} />
             <NetDailyPnL trades={trades} fmt={fmt} />
+          </div>
+
+          {/* Insights */}
+          <InsightsCard trades={trades} stats={stats} fmt={fmt} />
+
+          {/* Trade time performance + day summary */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <TradeTimeScatter trades={trades} fmt={fmt} />
+            <DaySummaryTable trades={trades} fmt={fmt} />
           </div>
 
           {/* Monthly Target */}

@@ -7,6 +7,7 @@ import {
   AreaChart, Area,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { InfoTip } from '@/components/ui/info-tip'
 import type { Trade, DashboardStats } from '@/types'
 
 const TooltipStyle = {
@@ -50,11 +51,14 @@ export function ScoreRadar({ stats, trades, equityBase }: {
   const scoreLabel = overall >= 70 ? 'Sangat Baik' : overall >= 45 ? 'Cukup' : 'Perlu Ditingkatkan'
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-1">
-        <CardTitle className="text-sm font-semibold">Datalitiq Score</CardTitle>
+    <Card className="overflow-hidden relative bg-gradient-to-br from-primary/8 via-transparent to-transparent">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full blur-3xl opacity-20" style={{ background: scoreColor }} />
+      <CardHeader className="pb-1 relative">
+        <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+          Datalitiq Score <InfoTip text="Skor komposit 0–100 dari 6 metrik performa (win rate, profit factor, avg win/loss, konsistensi, recovery, drawdown). Makin tinggi makin sehat trading kamu." />
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="relative">
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="relative shrink-0">
             <svg width="110" height="110" viewBox="0 0 110 110">
@@ -98,7 +102,7 @@ export function NetDailyPnL({ trades, fmt }: { trades: Trade[]; fmt: (n: number)
 
   return (
     <Card>
-      <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Net P&L Harian</CardTitle></CardHeader>
+      <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-1.5">Net P&L Harian <InfoTip text="Total profit/loss bersih untuk setiap hari trading (30 hari terakhir). Hijau = hari profit, merah = hari loss." /></CardTitle></CardHeader>
       <CardContent>
         {data.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">Belum ada data</p>
@@ -138,7 +142,7 @@ export function DrawdownChart({ trades, fmt }: { trades: Trade[]; fmt: (n: numbe
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold flex items-center justify-between">
-          <span>Drawdown</span>
+          <span className="flex items-center gap-1.5">Drawdown <InfoTip text="Seberapa jauh equity turun dari titik tertingginya. Menunjukkan risiko & masa sulit dalam trading kamu." /></span>
           <span className="text-xs font-normal text-red-400">Max: {fmt(maxDD)}</span>
         </CardTitle>
       </CardHeader>
