@@ -146,6 +146,14 @@ export default function TradesPage() {
     }
   }, [tradingAccounts.length])
 
+  // Apply default pair from settings for fresh (empty) trades
+  useEffect(() => {
+    if (settings.defaultPair && form.pair === 'XAUUSD' && !form.pnl) {
+      setForm(p => ({ ...p, pair: settings.defaultPair! }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.defaultPair])
+
   function set<K extends keyof FormData>(key: K, val: FormData[K]) {
     setForm(p => ({ ...p, [key]: val }))
   }

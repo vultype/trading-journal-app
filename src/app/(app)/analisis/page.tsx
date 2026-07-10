@@ -1,22 +1,25 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { useCurrency } from '@/hooks/useCurrency'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { calcStats, buildEquityCurve, pnlByGroup, DAYS } from '@/lib/calculations'
 import { EquityCurve } from '@/components/charts/EquityCurve'
 import { PnLCalendar } from '@/components/charts/PnLCalendar'
+import { HourAnalysis } from '@/components/charts/HourAnalysis'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, ReferenceLine,
 } from 'recharts'
-import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X } from 'lucide-react'
 import type { Trade } from '@/types'
 
 const NOTE_SEP = '--- Analisa by Claude ---'
@@ -40,6 +43,112 @@ function pfRating(pf: number): { label: string; color: string } {
   return                              { label: 'Poor',               color: 'text-red-400' }
 }
 
+const MOODS: { value: 1|2|3|4|5; emoji: string; label: string }[] = [
+  { value: 1, emoji: '😞', label: 'Buruk' },
+  { value: 2, emoji: '😕', label: 'Kurang' },
+  { value: 3, emoji: '😐', label: 'Cukup' },
+  { value: 4, emoji: '😊', label: 'Baik' },
+  { value: 5, emoji: '🔥', label: 'Luar biasa' },
+]
+
+// Inline daily-journal editor used inside the calendar day popup
+function CalendarDayJournal({ date, note, onSave, onDelete }: {
+  date: string
+  note?: { content: string; mood: 1|2|3|4|5 }
+  onSave: (content: string, mood: 1|2|3|4|5) => void
+  onDelete: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [content, setContent] = useState(note?.content ?? '')
+  const [mood, setMood]       = useState<1|2|3|4|5>(note?.mood ?? 3)
+
+  // Reset local state whenever the day (or its saved note) changes
+  useEffect(() => {
+    setContent(note?.content ?? '')
+    setMood(note?.mood ?? 3)
+    setEditing(false)
+  }, [date, note?.content, note?.mood])
+
+  const moodMeta = MOODS.find(m => m.value === (note?.mood ?? 3))
+
+  if (!editing) {
+    return (
+      <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3.5">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-indigo-400/70 flex items-center gap-1.5">
+            <BookOpen size={12} /> Jurnal Harian
+          </p>
+          {note ? (
+            <div className="flex items-center gap-1">
+              <button onClick={() => setEditing(true)} className="text-muted-foreground hover:text-foreground p-1 rounded transition-colors" title="Edit">
+                <Pencil size={12} />
+              </button>
+              <button onClick={onDelete} className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors" title="Hapus">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setEditing(true)} className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium">+ Tulis</button>
+          )}
+        </div>
+        {note ? (
+          <>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-lg leading-none">{moodMeta?.emoji}</span>
+              <span className="text-xs text-muted-foreground">{moodMeta?.label}</span>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap">{note.content}</p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground/50 italic">Belum ada catatan refleksi untuk hari ini.</p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-3.5 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest font-bold text-indigo-400/70 flex items-center gap-1.5">
+          <BookOpen size={12} /> {note ? 'Edit Jurnal' : 'Tulis Jurnal'}
+        </p>
+        <button onClick={() => setEditing(false)} className="text-muted-foreground hover:text-foreground p-1"><X size={14} /></button>
+      </div>
+      <div className="flex gap-1.5">
+        {MOODS.map(m => (
+          <button
+            key={m.value}
+            type="button"
+            onClick={() => setMood(m.value)}
+            className={`flex-1 rounded-lg border py-1.5 text-lg transition-all ${mood === m.value ? 'border-indigo-500/50 bg-indigo-500/15' : 'border-border/40 opacity-50 hover:opacity-100'}`}
+            title={m.label}
+          >
+            {m.emoji}
+          </button>
+        ))}
+      </div>
+      <Textarea
+        value={content}
+        onChange={e => setContent(e.target.value)}
+        placeholder="Refleksi trading hari ini…"
+        rows={4}
+        className="text-sm resize-none"
+      />
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" className="flex-1" onClick={() => setEditing(false)}>Batal</Button>
+        <Button
+          size="sm"
+          className="flex-1 gap-1.5"
+          disabled={!content.trim()}
+          onClick={() => { onSave(content.trim(), mood); setEditing(false) }}
+        >
+          <Save size={12} /> Simpan
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function MiniStat({ label, value, sub, green, red }: { label: string; value: React.ReactNode; sub?: string; green?: boolean; red?: boolean }) {
   return (
     <div className="rounded-xl bg-card border border-border/50 p-4">
@@ -51,7 +160,7 @@ function MiniStat({ label, value, sub, green, red }: { label: string; value: Rea
 }
 
 export default function AnalisisPage() {
-  const { trades, transfers, deleteTrade } = useStore()
+  const { trades, transfers, deleteTrade, journalNotes, saveJournal, deleteJournal } = useStore()
   const fmt   = useCurrency()
   // Overtrades excluded from all analytics — only affect equity curve
   const normalTrades = useMemo(() => trades.filter(t => !t.is_overtrade), [trades])
@@ -266,6 +375,7 @@ export default function AnalisisPage() {
       <Tabs defaultValue="kalender">
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="kalender">Kalender P&L</TabsTrigger>
+          <TabsTrigger value="jam">Jam Trading</TabsTrigger>
           <TabsTrigger value="equity">Equity</TabsTrigger>
           <TabsTrigger value="strategi">Strategi</TabsTrigger>
           <TabsTrigger value="pair">Pair</TabsTrigger>
@@ -282,6 +392,20 @@ export default function AnalisisPage() {
                 fmt={fmt}
                 onDayClick={(date, dayTrades) => { setCalDayDate(date); setCalDayTrades(dayTrades) }}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── JAM TRADING ── */}
+        <TabsContent value="jam" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                ⏰ Analisa Jam Trading
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <HourAnalysis trades={normalTrades} fmt={fmt} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -639,6 +763,18 @@ export default function AnalisisPage() {
               )
             })}
           </div>
+
+          {/* Daily journal — editable & linked to this date */}
+          {calDayDate && (
+            <div className="mt-3">
+              <CalendarDayJournal
+                date={calDayDate}
+                note={journalNotes.find(n => n.date === calDayDate)}
+                onSave={(content, mood) => saveJournal({ date: calDayDate, content, mood })}
+                onDelete={() => deleteJournal(calDayDate)}
+              />
+            </div>
+          )}
 
           {/* Total footer */}
           {calDayTrades && calDayTrades.length > 1 && (

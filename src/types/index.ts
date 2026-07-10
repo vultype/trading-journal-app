@@ -64,7 +64,12 @@ export type AppSettings = {
   currency: 'USD' | 'IDR' | 'EUR' | 'USDT'
   strategies: string[]
   defaultAccountId?: string
+  targetHarian?: number
+  targetMingguan?: number
   targetBulanan?: number
+  displayName?: string
+  defaultPair?: string
+  weekStartsMonday?: boolean
 }
 
 export type DashboardStats = {

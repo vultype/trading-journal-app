@@ -6,12 +6,15 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
-  FlaskConical, LogOut, Sun, Moon, ClipboardList, Grid2x2,
+  FlaskConical, LogOut, Sun, Moon, ClipboardList, Grid2x2, HelpCircle, Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
+import { useStore } from '@/lib/store'
 
-const nav = [
+type NavItem = { href: string; label: string; icon: React.ElementType }
+
+const baseNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard },
   { href: '/trades',    label: 'Trade',       icon: TrendingUp },
   { href: '/analisis',  label: 'Analisis',    icon: BarChart3 },
@@ -19,17 +22,22 @@ const nav = [
   { href: '/simulator', label: 'Simulator',   icon: FlaskConical },
   { href: '/finance',   label: 'Keuangan',    icon: Wallet },
   { href: '/journal',   label: 'Jurnal',      icon: BookOpen },
+  { href: '/panduan',   label: 'Panduan',     icon: HelpCircle },
   { href: '/settings',  label: 'Setting',     icon: Settings },
 ]
 
-// Bottom nav: 4 primary + "More" button
-const PRIMARY_IDX = [0, 1, 2, 3]   // Dashboard, Trade, Analisis, Laporan
-const MORE_IDX    = [4, 5, 6, 7]   // Simulator, Keuangan, Jurnal, Setting
+const adminItem: NavItem = { href: '/admin', label: 'Admin', icon: Shield }
+
+function useNav(): NavItem[] {
+  const { isAdmin } = useStore()
+  return isAdmin ? [...baseNav, adminItem] : baseNav
+}
 
 export function Sidebar() {
   const path   = usePathname()
   const router = useRouter()
   const { theme, setTheme } = useTheme()
+  const nav = useNav()
 
   async function logout() {
     await createClient().auth.signOut()
@@ -43,7 +51,7 @@ export function Sidebar() {
         <p className="text-xs text-muted-foreground/60 mt-0.5">Versi 2.0</p>
       </div>
 
-      <nav className="flex-1 flex flex-col gap-0.5">
+      <nav className="flex-1 flex flex-col gap-0.5 overflow-y-auto">
         {nav.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
@@ -89,9 +97,10 @@ export function BottomNav() {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [moreOpen, setMoreOpen] = useState(false)
+  const nav = useNav()
 
-  const primary = PRIMARY_IDX.map(i => nav[i])
-  const more    = MORE_IDX.map(i => nav[i])
+  const primary = nav.slice(0, 4)   // Dashboard, Trade, Analisis, Laporan
+  const more    = nav.slice(4)      // Simulator, Keuangan, Jurnal, Panduan, Setting (+ Admin)
 
   async function logout() {
     await createClient().auth.signOut()
@@ -150,7 +159,7 @@ export function BottomNav() {
       )}
 
       {/* Bottom bar */}
-      <nav className="bg-sidebar border-t border-border/50 flex h-14 safe-area-pb">
+      <nav className="bg-sidebar border-t border-border/50 flex h-14 pb-[env(safe-area-inset-bottom)]">
         {primary.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}

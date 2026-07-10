@@ -9,22 +9,32 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2 } from 'lucide-react'
+import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2, UserCog } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import type { AccountType, AppSettings } from '@/types'
 
 export default function SettingsPage() {
-  const { accounts, trades, transfers, settings, addAccount, deleteAccount, saveSettings } = useStore()
+  const { accounts, trades, transfers, settings, userEmail, isAdmin, addAccount, deleteAccount, saveSettings } = useStore()
 
   // ─── Pengaturan Umum ───
   const [currency, setCurrency] = useState<AppSettings['currency']>(settings.currency)
+  const [targetD, setTargetD]   = useState<number | ''>(settings.targetHarian ?? '')
+  const [targetW, setTargetW]   = useState<number | ''>(settings.targetMingguan ?? '')
   const [targetM, setTargetM]   = useState<number | ''>(settings.targetBulanan ?? '')
+  const [displayName, setDisplayName] = useState(settings.displayName ?? '')
+  const [defaultPair, setDefaultPair] = useState(settings.defaultPair ?? '')
+  const [weekMon, setWeekMon]   = useState(settings.weekStartsMonday ?? false)
   const [saved, setSaved] = useState(false)
 
   function handleSaveSettings() {
     saveSettings({
       currency,
-      targetBulanan: targetM !== '' ? Number(targetM) : undefined,
+      targetHarian:   targetD !== '' ? Number(targetD) : undefined,
+      targetMingguan: targetW !== '' ? Number(targetW) : undefined,
+      targetBulanan:  targetM !== '' ? Number(targetM) : undefined,
+      displayName:    displayName.trim() || undefined,
+      defaultPair:    defaultPair.trim() || undefined,
+      weekStartsMonday: weekMon,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -85,17 +95,42 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-xl font-bold">Settings</h1>
-        <p className="text-sm text-muted-foreground">App configuration, strategies, and accounts</p>
+        <p className="text-sm text-muted-foreground">Profil, konfigurasi, strategi, dan akun</p>
       </div>
+
+      {/* Profile */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><UserCog size={14}/> Profil</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl bg-muted/40 p-3">
+            <div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center text-primary font-black text-lg shrink-0">
+              {(displayName || userEmail || '?').charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{displayName || 'Trader'}</p>
+              <p className="text-xs text-muted-foreground truncate">{userEmail ?? '—'}</p>
+            </div>
+            <Badge variant={isAdmin ? 'default' : 'secondary'} className={`ml-auto text-[10px] ${isAdmin ? 'bg-red-500/15 text-red-400 border-red-500/20' : ''}`}>
+              {isAdmin ? 'ADMIN' : 'USER'}
+            </Badge>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Nama Tampilan</Label>
+            <Input placeholder="Nama kamu" value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full sm:w-72" />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* General */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">General</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Umum</CardTitle></CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Default Currency</Label>
             <Select value={currency} onValueChange={(v) => setCurrency((v ?? 'USD') as AppSettings['currency'])}>
-              <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-52"><SelectValue>
+                {currency === 'IDR' ? '🇮🇩 IDR — Indonesian Rupiah' : currency === 'USD' ? '🇺🇸 USD — US Dollar' : currency === 'EUR' ? '🇪🇺 EUR — Euro' : '💵 USDT — Tether'}
+              </SelectValue></SelectTrigger>
               <SelectContent>
                 <SelectItem value="USD">🇺🇸 USD — US Dollar</SelectItem>
                 <SelectItem value="IDR">🇮🇩 IDR — Indonesian Rupiah</SelectItem>
@@ -103,22 +138,46 @@ export default function SettingsPage() {
                 <SelectItem value="USDT">💵 USDT — Tether</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Affects all P&L figures across the app</p>
+            <p className="text-xs text-muted-foreground">Mempengaruhi semua angka P&L di aplikasi</p>
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Monthly Profit Target ({currency})</Label>
-            <CurrencyInput
-              value={targetM}
-              onChange={setTargetM}
-              placeholder="0"
-              className="w-52"
-            />
-            <p className="text-xs text-muted-foreground">Progress shown on Dashboard</p>
+            <Label className="text-xs text-muted-foreground">Pair Default</Label>
+            <Input placeholder="XAUUSD" value={defaultPair} onChange={e => setDefaultPair(e.target.value)} className="w-52" />
+            <p className="text-xs text-muted-foreground">Pair yang otomatis terpilih saat Add Trade</p>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Target Harian ({currency})</Label>
+              <CurrencyInput value={targetD} onChange={setTargetD} placeholder="0" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Target Mingguan ({currency})</Label>
+              <CurrencyInput value={targetW} onChange={setTargetW} placeholder="0" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Target Bulanan ({currency})</Label>
+              <CurrencyInput value={targetM} onChange={setTargetM} placeholder="0" />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setWeekMon(v => !v)}
+            className="w-full flex items-center justify-between rounded-xl border border-border/50 px-4 py-3 hover:bg-muted/40 transition-colors text-left"
+          >
+            <div>
+              <p className="text-sm font-medium">Minggu Mulai Hari Senin</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Untuk perhitungan laporan mingguan</p>
+            </div>
+            <div className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${weekMon ? 'bg-primary' : 'bg-border'}`}>
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${weekMon ? 'translate-x-5' : 'translate-x-0.5'}`}/>
+            </div>
+          </button>
+
           <Button onClick={handleSaveSettings} size="sm" className="gap-2">
-            {saved ? <><CheckCircle2 size={13} /> Saved!</> : <><Save size={13} /> Save Settings</>}
+            {saved ? <><CheckCircle2 size={13} /> Tersimpan!</> : <><Save size={13} /> Simpan Pengaturan</>}
           </Button>
         </CardContent>
       </Card>

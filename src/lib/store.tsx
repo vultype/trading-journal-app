@@ -12,9 +12,13 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 function uid() { return crypto.randomUUID() }
 
+export const ADMIN_EMAIL = 'vultype@gmail.com'
+
 type Store = {
   loading: boolean
   userId: string | null
+  userEmail: string | null
+  isAdmin: boolean
   syncError: string | null
   accounts: Account[]
   trades: Trade[]
@@ -29,6 +33,7 @@ type Store = {
   addTransfer: (t: Omit<Transfer, 'id' | 'created_at'>) => void
   deleteTransfer: (id: string) => void
   saveJournal: (note: Omit<JournalNote, 'id' | 'created_at'>) => void
+  deleteJournal: (date: string) => void
   saveSettings: (s: Partial<AppSettings>) => void
   clearSyncError: () => void
   refetch: () => void
@@ -39,6 +44,7 @@ const Ctx = createContext<Store | null>(null)
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [loading,      setLoading]      = useState(true)
   const [userId,       setUserId]       = useState<string | null>(null)
+  const [userEmail,    setUserEmail]    = useState<string | null>(null)
   const [syncError,    setSyncError]    = useState<string | null>(null)
   const [fetchKey,     setFetchKey]     = useState(0)
   const [accounts,     setAccounts]     = useState<Account[]>([])
@@ -53,11 +59,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     sb.auth.getSession().then(({ data: { session } }) => {
       const uid = session?.user.id ?? null
       setUserId(uid)
+      setUserEmail(session?.user.email ?? null)
       if (!uid) setLoading(false)
     })
     const { data: { subscription } } = sb.auth.onAuthStateChange((_, session) => {
       const uid = session?.user.id ?? null
       setUserId(uid)
+      setUserEmail(session?.user.email ?? null)
       if (!uid) {
         setLoading(false)
         setAccounts([]); setTrades([]); setTransfers([])
@@ -103,9 +111,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (s.data) {
         setSettings({
-          currency:     (s.data.currency as AppSettings['currency']) ?? 'IDR',
-          strategies:   (s.data.strategies as string[]) ?? DEFAULT_SETTINGS.strategies,
-          targetBulanan: s.data.target_bulanan ?? undefined,
+          currency:       (s.data.currency as AppSettings['currency']) ?? 'IDR',
+          strategies:     (s.data.strategies as string[]) ?? DEFAULT_SETTINGS.strategies,
+          targetHarian:   s.data.target_harian ?? undefined,
+          targetMingguan: s.data.target_mingguan ?? undefined,
+          targetBulanan:  s.data.target_bulanan ?? undefined,
+          displayName:    s.data.display_name ?? undefined,
+          defaultPair:    s.data.default_pair ?? undefined,
+          weekStartsMonday: s.data.week_starts_monday ?? undefined,
         })
       }
       setLoading(false)
@@ -238,6 +251,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     })
   }, [userId])
 
+  const deleteJournal = useCallback((date: string) => {
+    if (!userId) return
+    setJournalNotes(p => p.filter(n => n.date !== date))
+    toast.success('Jurnal dihapus')
+    sb().from('journal_notes').delete().eq('user_id', userId).eq('date', date)
+      .then(({ error }) => onSaveError('deleteJournal', error))
+  }, [userId])
+
   // ── Settings actions ──────────────────────────────────────────────────
   const saveSettings = useCallback((s: Partial<AppSettings>) => {
     if (!userId) return
@@ -245,11 +266,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const next = { ...p, ...s }
       toast.success('Pengaturan disimpan')
       sb().from('user_settings').upsert({
-        user_id:         userId,
-        currency:        next.currency,
-        strategies:      next.strategies,
-        target_bulanan:  next.targetBulanan ?? null,
-        updated_at:      new Date().toISOString(),
+        user_id:            userId,
+        currency:           next.currency,
+        strategies:         next.strategies,
+        target_harian:      next.targetHarian ?? null,
+        target_mingguan:    next.targetMingguan ?? null,
+        target_bulanan:     next.targetBulanan ?? null,
+        display_name:       next.displayName ?? null,
+        default_pair:       next.defaultPair ?? null,
+        week_starts_monday: next.weekStartsMonday ?? null,
+        updated_at:         new Date().toISOString(),
       }, { onConflict: 'user_id' })
         .then(({ error }) => onSaveError('saveSettings', error))
       return next
@@ -260,9 +286,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      loading, userId, syncError, accounts, trades, transfers, journalNotes, settings,
+      loading, userId, userEmail, isAdmin: userEmail === ADMIN_EMAIL, syncError,
+      accounts, trades, transfers, journalNotes, settings,
       addAccount, deleteAccount, addTrade, updateTrade, deleteTrade,
-      addTransfer, deleteTransfer, saveJournal, saveSettings,
+      addTransfer, deleteTransfer, saveJournal, deleteJournal, saveSettings,
       clearSyncError, refetch,
     }}>
       {children}

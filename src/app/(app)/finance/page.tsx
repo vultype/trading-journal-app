@@ -389,7 +389,11 @@ export default function FinancePage() {
                   <div>
                     <Label className="text-xs">Akun Trading</Label>
                     <Select value={selectedTradingAcc} onValueChange={(v) => setTradingAccId(v ?? '')}>
-                      <SelectTrigger><SelectValue placeholder="Pilih akun"/></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue>
+                          {tradingAccounts.find(a => a.id === selectedTradingAcc)?.name ?? 'Pilih akun'}
+                        </SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
                         {tradingAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                       </SelectContent>
