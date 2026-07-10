@@ -110,7 +110,7 @@ export default function FinancePage() {
   const thisMonthPnl      = trades.filter(t => t.date.startsWith(monthStr)).reduce((s, t) => s + t.pnl, 0)
   const thisMonthNet      = thisMonthPnl - thisMonthDeposit + thisMonthWithdraw
 
-  const roi           = stats.total_deposited > 0 ? (stats.net_profit / stats.total_deposited) * 100 : null
+  const roi           = stats.total_deposited > 0 ? (stats.total_pnl / stats.total_deposited) * 100 : null
   const capitalGrowth = stats.total_deposited > 0 ? ((stats.trading_capital / stats.total_deposited) - 1) * 100 : null
   const avgMonthly    = byMonth.length > 0 ? byMonth.reduce((s, m) => s + m.pnl, 0) / byMonth.length : 0
   const bestMonth     = byMonth.length > 0 ? byMonth.reduce((a, b) => b.pnl > a.pnl ? b : a, byMonth[0]) : null

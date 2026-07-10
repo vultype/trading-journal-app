@@ -64,7 +64,7 @@ export default function DashboardPage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard label="Trading Capital" value={fmt(stats.trading_capital)} sub={`Deposited ${fmt(stats.total_deposited)}`} icon={Wallet} />
-            <StatCard label="Net Profit" value={fmt(stats.net_profit)} sub="Withdrawn − Deposited" positive={stats.net_profit >= 0} icon={TrendingUp} />
+            <StatCard label="Arus Kas Bersih" value={fmt(stats.net_profit)} sub="Withdraw − Deposit · belum termasuk saldo aktif" icon={TrendingUp} />
             <StatCard label="Total P&L" value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
             <StatCard label="Win Rate" value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} trades`} positive={stats.win_rate >= 50} icon={Target} />
           </div>
