@@ -76,8 +76,8 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex w-56 shrink-0 border-r border-border/50 bg-sidebar flex-col py-5 px-3">
       <div className="px-3 mb-5">
-        <p className="text-[10px] font-bold tracking-[0.15em] text-muted-foreground uppercase">Trading Jurnal</p>
-        <p className="text-xs text-muted-foreground/60 mt-0.5">Versi 3.0</p>
+        <p className="text-base font-black tracking-tight">Datalitiq</p>
+        <p className="text-[10px] text-muted-foreground/60 mt-0.5 uppercase tracking-widest">Trading Analytics</p>
       </div>
 
       <nav className="flex-1 flex flex-col gap-4 overflow-y-auto">

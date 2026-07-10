@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useStore } from '@/lib/store'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useT } from '@/lib/i18n'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw, Link2, Upload, Loader2, Sliders } from 'lucide-react'
+import { toast } from '@/lib/toast'
 import type { Trade } from '@/types'
 
 function AutoTextarea({ value, onChange, placeholder, className }: {
@@ -80,6 +82,9 @@ type FormData = {
   followed_plan: 'yes' | 'no' | ''; know_direction: 'yes' | 'no' | ''
   screenshot_url: string; note: string; ai_analysis: string
   is_overtrade: boolean
+  // advanced (detail)
+  entry_price: number | ''; exit_price: number | ''
+  lot_size: number | ''; rr_ratio: number | ''; fees: number | ''
 }
 
 const empty: FormData = {
@@ -88,6 +93,7 @@ const empty: FormData = {
   market_structure: '',
   followed_plan: '', know_direction: '', screenshot_url: '', note: '', ai_analysis: '',
   is_overtrade: false,
+  entry_price: '', exit_price: '', lot_size: '', rr_ratio: '', fees: '',
 }
 
 function ToggleGroup({ value, onChange, options }: {
@@ -116,11 +122,22 @@ function ToggleGroup({ value, onChange, options }: {
 }
 
 export default function TradesPage() {
-  const { trades, accounts, settings, addTrade, deleteTrade } = useStore()
+  const { trades, accounts, transfers, settings, addTrade, deleteTrade } = useStore()
   const fmt = useCurrency()
+  const t = useT()
+  // Basis equity untuk hitung %change per trade (saldo awal + deposit − withdraw)
+  const equityBase = useMemo(() => {
+    const initial = accounts.reduce((s, a) => s + (a.initial_balance ?? 0), 0)
+    const dep = transfers.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0)
+    const wd  = transfers.filter(t => t.type === 'withdraw').reduce((s, t) => s + t.amount, 0)
+    return initial + dep - wd
+  }, [accounts, transfers])
   const [open, setOpen]         = useState(false)
   const [form, setForm]         = useState<FormData>(empty)
   const [detail, setDetail]     = useState<Trade | null>(null)
+  const [journalMode, setJournalMode] = useState<'simple' | 'advance'>('simple')
+  const [imgMode, setImgMode]   = useState<'link' | 'upload'>('link')
+  const [uploading, setUploading] = useState(false)
 
   // Filter states
   const [quickFilter, setQuickFilter]         = useState<'' | 'winners' | 'losers' | 'bigwin' | 'bigloss'>('')
@@ -163,6 +180,7 @@ export default function TradesPage() {
     const pnlVal = Number(form.pnl)
     if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
 
+    const num = (v: number | '') => (v === '' || isNaN(Number(v)) ? undefined : Number(v))
     addTrade({
       account_id:       form.account_id || tradingAccounts[0]?.id || '',
       date:             form.date,
@@ -177,9 +195,36 @@ export default function TradesPage() {
       screenshot_url:   form.screenshot_url || undefined,
       note:             form.note || undefined,
       is_overtrade:     form.is_overtrade,
+      // advanced detail (hanya terisi kalau mode advance)
+      entry_price:      journalMode === 'advance' ? num(form.entry_price) : undefined,
+      exit_price:       journalMode === 'advance' ? num(form.exit_price) : undefined,
+      lot_size:         journalMode === 'advance' ? num(form.lot_size) : undefined,
+      rr_ratio:         journalMode === 'advance' ? num(form.rr_ratio) : undefined,
+      fees:             journalMode === 'advance' ? num(form.fees) : undefined,
     })
     setForm({ ...empty, account_id: form.account_id })
     setOpen(false)
+  }
+
+  // Upload gambar chart ke Supabase Storage
+  async function handleImageUpload(file: File) {
+    if (!file) return
+    setUploading(true)
+    try {
+      const { createClient } = await import('@/lib/supabase')
+      const sb = createClient()
+      const ext = file.name.split('.').pop() || 'png'
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+      if (error) { toast.error('Upload gagal: ' + error.message); setUploading(false); return }
+      const { data } = sb.storage.from('trade-screenshots').getPublicUrl(path)
+      set('screenshot_url', data.publicUrl)
+      toast.success('Gambar berhasil diupload')
+    } catch (err) {
+      toast.error('Upload gagal')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const hasFilter = !!(
@@ -242,7 +287,7 @@ export default function TradesPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold">Trades</h1>
+          <h1 className="text-xl font-bold">{t('Trade')}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {trades.length} total · {wins}W {losses}L ·{' '}
             <span className={totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>
@@ -254,7 +299,7 @@ export default function TradesPage() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger render={
             <Button size="sm" className="gap-2 shrink-0">
-              <Plus size={14}/> Add Trade
+              <Plus size={14}/> {t('Catat Trade')}
             </Button>
           } />
           <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
@@ -271,6 +316,22 @@ export default function TradesPage() {
             </DialogHeader>
 
             <form onSubmit={submit} className="space-y-5 mt-2">
+
+              {/* Journal mode: Simple / Advance */}
+              <div className="flex items-center gap-2 rounded-xl bg-muted/50 p-1">
+                {([
+                  { val: 'simple',  label: 'Simple',  desc: 'Cepat' },
+                  { val: 'advance', label: 'Advance', desc: 'Detail' },
+                ] as const).map(({ val, label, desc }) => (
+                  <button key={val} type="button" onClick={() => setJournalMode(val)}
+                    className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-all flex items-center justify-center gap-1.5
+                      ${journalMode === val ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                    {val === 'advance' && <Sliders size={13} />}
+                    {label}
+                    <span className="text-[10px] font-normal text-muted-foreground">· {desc}</span>
+                  </button>
+                ))}
+              </div>
 
               {/* Date + Time */}
               <div className="grid grid-cols-2 gap-3">
@@ -405,6 +466,41 @@ export default function TradesPage() {
                 <p className="text-xs text-muted-foreground">Masukkan angka positif — tanda +/− otomatis dari Result</p>
               </div>
 
+              {/* Advanced detail fields */}
+              {journalMode === 'advance' && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-primary/70 flex items-center gap-1.5">
+                    <Sliders size={11} /> Detail Trade (Advance)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Harga Entry</Label>
+                      <Input type="number" step="any" placeholder="0" value={form.entry_price}
+                        onChange={e => set('entry_price', e.target.value === '' ? '' : Number(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Harga Exit</Label>
+                      <Input type="number" step="any" placeholder="0" value={form.exit_price}
+                        onChange={e => set('exit_price', e.target.value === '' ? '' : Number(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Lot / Size</Label>
+                      <Input type="number" step="any" placeholder="0.01" value={form.lot_size}
+                        onChange={e => set('lot_size', e.target.value === '' ? '' : Number(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Risk : Reward</Label>
+                      <Input type="number" step="any" placeholder="2" value={form.rr_ratio}
+                        onChange={e => set('rr_ratio', e.target.value === '' ? '' : Number(e.target.value))} />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-xs text-muted-foreground">Biaya / Komisi ({settings.currency})</Label>
+                      <CurrencyInput value={form.fees} onChange={v => set('fees', v)} placeholder="0" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Strategy */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Strategy</Label>
@@ -434,14 +530,44 @@ export default function TradesPage() {
                 </div>
               </div>
 
-              {/* Screenshot */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">TradingView Screenshot URL</Label>
-                <Input
-                  placeholder="https://www.tradingview.com/x/…"
-                  value={form.screenshot_url}
-                  onChange={e => set('screenshot_url', e.target.value)}
-                />
+              {/* Screenshot: Link atau Upload */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Screenshot Chart</Label>
+                  <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-0.5">
+                    {([
+                      { val: 'link',   label: 'Link',   icon: Link2 },
+                      { val: 'upload', label: 'Upload', icon: Upload },
+                    ] as const).map(({ val, label, icon: Icon }) => (
+                      <button key={val} type="button" onClick={() => setImgMode(val)}
+                        className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all
+                          ${imgMode === val ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+                        <Icon size={11} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {imgMode === 'link' ? (
+                  <Input
+                    placeholder="https://www.tradingview.com/x/…"
+                    value={form.screenshot_url}
+                    onChange={e => set('screenshot_url', e.target.value)}
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    <label className={`flex items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-4 text-sm cursor-pointer transition-colors hover:bg-muted/40 ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                      {uploading ? <><Loader2 size={15} className="animate-spin" /> Mengupload…</> : <><Upload size={15} /> Pilih gambar dari perangkat</>}
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f) }} />
+                    </label>
+                    {form.screenshot_url && !uploading && (
+                      <div className="rounded-lg overflow-hidden border border-border/40">
+                        <img src={form.screenshot_url} alt="preview" className="w-full max-h-40 object-contain bg-black/20" />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Catatan */}
@@ -674,7 +800,12 @@ export default function TradesPage() {
                       </td>
                       <td className="px-3 py-3 text-xs text-muted-foreground">{t.strategy ?? '—'}</td>
                       <td className={`px-3 py-3 text-right font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {t.pnl >= 0 ? '+' : ''}{fmt(t.pnl)}
+                        <div>{t.pnl >= 0 ? '+' : ''}{fmt(t.pnl)}</div>
+                        {equityBase > 0 && (
+                          <div className={`text-[10px] font-medium ${t.pnl >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
+                            {t.pnl >= 0 ? '+' : ''}{(t.pnl / equityBase * 100).toFixed(2)}%
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-center">
                         <Badge

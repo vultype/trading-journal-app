@@ -53,8 +53,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-2">
             <TrendingUp size={28} className="text-primary"/>
           </div>
-          <h1 className="text-2xl font-black">Trading Journal</h1>
-          <p className="text-sm text-muted-foreground">Jurnal trading pribadi kamu</p>
+          <h1 className="text-3xl font-black tracking-tight">Datalitiq</h1>
+          <p className="text-sm text-muted-foreground">Trading journal & analytics untuk trader serius</p>
         </div>
 
         {done ? (

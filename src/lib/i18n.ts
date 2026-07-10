@@ -17,6 +17,7 @@ const EN: Record<string, string> = {
   // ── Nav items ──
   'Dashboard': 'Dashboard',
   'Trade': 'Trades',
+  'Catat Trade': 'New Trade',
   'Analisis': 'Analysis',
   'Laporan': 'Reports',
   'Simulator': 'Simulator',

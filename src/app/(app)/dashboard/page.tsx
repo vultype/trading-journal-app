@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { TrendingUp, TrendingDown, Wallet, Target, Activity, CalendarRange, Sparkles } from 'lucide-react'
+import Link from 'next/link'
+import { TrendingUp, TrendingDown, Wallet, Target, Activity, CalendarRange, Sparkles, Check } from 'lucide-react'
 
 function FirstTradeCard({ accountId }: { accountId?: string }) {
   const { addTrade, settings } = useStore()
@@ -124,8 +125,36 @@ function StatCard({ label, value, sub, positive, icon: Icon, accent }: {
   )
 }
 
+function OnboardingChecklist({ steps }: { steps: { done: boolean; label: string; href: string }[] }) {
+  const doneCount = steps.filter(s => s.done).length
+  if (doneCount === steps.length) return null
+  const pct = Math.round(doneCount / steps.length * 100)
+  return (
+    <Card className="border-primary/25 bg-gradient-to-br from-primary/8 to-transparent">
+      <CardContent className="pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-bold flex items-center gap-2"><Sparkles size={14} className="text-primary" /> Langkah Awal</p>
+          <span className="text-xs text-muted-foreground">{doneCount}/{steps.length} selesai</span>
+        </div>
+        <Progress value={pct} className="h-1.5 mb-3" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {steps.map((s, i) => (
+            <Link key={i} href={s.href}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${s.done ? 'text-muted-foreground/60' : 'hover:bg-muted/50'}`}>
+              <span className={`flex items-center justify-center w-4 h-4 rounded-full shrink-0 ${s.done ? 'bg-emerald-500 text-white' : 'border border-border'}`}>
+                {s.done && <Check size={10} />}
+              </span>
+              <span className={s.done ? 'line-through' : 'font-medium'}>{s.label}</span>
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function DashboardPage() {
-  const { trades, transfers, accounts, settings } = useStore()
+  const { trades, transfers, accounts, journalNotes, settings } = useStore()
   const stats = calcStats(trades, transfers, accounts)
   const fmt = (n: number) => formatCurrency(n, settings.currency)
   const t = useT()
@@ -148,6 +177,20 @@ export default function DashboardPage() {
   })()
   const name = settings.displayName || 'Trader'
 
+  const onboardSteps = [
+    { done: !!settings.displayName,      label: 'Lengkapi profil',       href: '/settings' },
+    { done: accounts.length > 0,         label: 'Tambah akun broker',    href: '/settings' },
+    { done: trades.length > 0,           label: 'Catat trade pertama',   href: '/dashboard' },
+    { done: (settings.targetBulanan ?? 0) > 0, label: 'Set target bulanan', href: '/settings' },
+    { done: journalNotes.length > 0,     label: 'Tulis jurnal pertama',  href: '/journal' },
+  ]
+
+  // Reminder/notifikasi sederhana
+  const todayStr = new Date().toISOString().split('T')[0]
+  const tradedToday = trades.some(t => t.date === todayStr)
+  const journaledToday = journalNotes.some(n => n.date === todayStr)
+  const showJournalReminder = tradedToday && !journaledToday
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-end justify-between gap-4 flex-wrap">
@@ -164,6 +207,21 @@ export default function DashboardPage() {
         <FirstTradeCard accountId={accounts[0]?.id} />
       ) : (
         <>
+          <OnboardingChecklist steps={onboardSteps} />
+
+          {showJournalReminder && (
+            <Link href="/journal" className="block">
+              <div className="flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 hover:bg-amber-500/15 transition-colors">
+                <span className="text-lg">🔔</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-400">Kamu trading hari ini — belum menulis jurnal</p>
+                  <p className="text-xs text-muted-foreground">Refleksikan trade hari ini selagi masih segar. Klik untuk menulis.</p>
+                </div>
+                <span className="text-amber-400 text-xs font-semibold shrink-0">Tulis →</span>
+              </div>
+            </Link>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard label={t('Saldo Trading')} value={fmt(stats.trading_capital)} sub={t('Saldo di broker saat ini')} icon={Wallet} accent="primary" />
             <StatCard label={t('Total Deposit')} value={fmt(stats.total_deposited)} sub={`${t('Withdraw')} ${fmt(stats.total_withdrawn)}`} icon={TrendingUp} accent="violet" />

@@ -10,8 +10,8 @@ const jakarta = Plus_Jakarta_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "Trading Jurnal",
-  description: "Pisahkan keuangan trading dan personal. Ukur performa nyata.",
+  title: "Datalitiq — Trading Journal & Analytics",
+  description: "Catat, analisa, dan tingkatkan performa trading kamu. Ukur performa nyata dengan Datalitiq.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
