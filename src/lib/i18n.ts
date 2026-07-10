@@ -101,6 +101,11 @@ const EN: Record<string, string> = {
 
   // ── Dashboard ──
   'Your trading performance overview': 'Your trading performance overview',
+  'Ringkasan performa trading kamu': 'Your trading performance overview',
+  'Selamat pagi': 'Good morning',
+  'Selamat siang': 'Good afternoon',
+  'Selamat sore': 'Good evening',
+  'Selamat malam': 'Good night',
   'Saldo Trading': 'Trading Balance',
   'Saldo di broker saat ini': 'Balance in broker now',
   'Win Rate': 'Win Rate',

@@ -1,90 +1,138 @@
 'use client'
 
 import { useState } from 'react'
+import { useLang } from '@/lib/i18n'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   LayoutDashboard, TrendingUp, BarChart3, ClipboardList, FlaskConical,
   Wallet, BookOpen, Settings, ChevronDown, Rocket, Lightbulb, ShieldAlert,
 } from 'lucide-react'
 
-type Section = {
-  icon: React.ElementType
-  title: string
-  color: string
-  steps: { q: string; a: string }[]
+type Step = { q: string; a: string }
+type Section = { icon: React.ElementType; color: string; title: string; steps: Step[] }
+type Content = {
+  pageTitle: string; pageSub: string
+  introTitle: string; introBody: string
+  tipsTitle: string; tips: string[]
+  sections: Section[]
 }
 
-const SECTIONS: Section[] = [
-  {
-    icon: Rocket, title: 'Mulai Cepat', color: 'text-primary',
-    steps: [
-      { q: '1. Catat modal awal', a: 'Buka menu Keuangan → tab Catat Transfer → pilih Deposit, masukkan jumlah modal trading kamu. Ini jadi dasar perhitungan equity & ROI.' },
-      { q: '2. Input trade pertama', a: 'Buka menu Trade → Add Trade. Isi tanggal, jam entry, pair, arah (long/short), hasil (win/loss/BE), dan nominal P&L.' },
-      { q: '3. Lihat performa', a: 'Buka Dashboard untuk ringkasan, atau Analisis untuk insight mendalam (jam terbaik, strategi, psikologi).' },
-    ],
-  },
-  {
-    icon: LayoutDashboard, title: 'Dashboard', color: 'text-blue-400',
-    steps: [
-      { q: 'Apa yang ditampilkan?', a: 'Ringkasan cepat: modal aktif, net profit, total P&L, win rate, profit factor, avg win, max drawdown, dan equity curve total (modal + akumulasi P&L).' },
-      { q: 'Target bulanan', a: 'Kalau kamu set target bulanan di Setting, progress bar akan muncul di Dashboard menunjukkan pencapaian bulan ini.' },
-    ],
-  },
-  {
-    icon: TrendingUp, title: 'Trade', color: 'text-emerald-400',
-    steps: [
-      { q: 'Menambah trade', a: 'Klik Add Trade. Masukkan angka P&L positif — tanda +/− otomatis mengikuti pilihan Result (win = +, loss = −).' },
-      { q: 'Overtrade', a: 'Aktifkan toggle Overtrade untuk trade emosional/di luar plan. Equity tetap berkurang, tapi TIDAK dihitung di statistik (win rate, PF, dll).' },
-      { q: 'Filter & cari', a: 'Gunakan filter chips (Winners/Losers/Big Wins), dropdown (Result/Type/Symbol/Strategy), rentang tanggal, dan min profit / max loss.' },
-      { q: 'Edit / hapus', a: 'Klik salah satu baris trade untuk buka detail. Di sana ada tombol Edit dan Hapus.' },
-    ],
-  },
-  {
-    icon: BarChart3, title: 'Analisis', color: 'text-purple-400',
-    steps: [
-      { q: 'Kalender P&L', a: 'Melihat P&L harian dalam bentuk kalender. Klik tanggal untuk lihat detail trade + jurnal hari itu (bisa langsung ditulis/diedit).' },
-      { q: 'Jam Trading', a: 'Analisa jam terbaik & terburuk berdasarkan waktu entry. Klik kotak jam untuk detail. Lihat juga performa per sesi market (Asia/London/NY).' },
-      { q: 'Strategi & Pair', a: 'Win rate dan P&L per strategi dan per pair, untuk tahu mana yang paling menguntungkan.' },
-      { q: 'Psikologi', a: 'Bandingkan hasil saat ikut plan vs tidak, dan saat yakin arah vs ragu — untuk evaluasi disiplin.' },
-    ],
-  },
-  {
-    icon: ClipboardList, title: 'Laporan', color: 'text-amber-400',
-    steps: [
-      { q: 'Laporan mingguan', a: 'Rekap performa per minggu: total trade, win rate, profit factor, trade terbaik & terburuk.' },
-    ],
-  },
-  {
-    icon: FlaskConical, title: 'Simulator', color: 'text-cyan-400',
-    steps: [
-      { q: 'Untuk apa?', a: 'Latihan money management: simulasikan hasil win/loss dengan risk-reward tertentu dan lihat dampaknya ke equity — tanpa mempengaruhi data trade asli.' },
-    ],
-  },
-  {
-    icon: Wallet, title: 'Keuangan', color: 'text-indigo-400',
-    steps: [
-      { q: 'Murni catatan broker', a: 'Menu ini hanya mencatat dana di akun broker — tidak dicampur uang pribadi. Saldo Sekarang = Saldo Awal + Deposit − Withdraw + Profit Trading.' },
-      { q: 'Saldo Awal', a: 'Saat menambah akun di Setting, isi Saldo Awal — saldo yang sudah ada di akun broker (real, prop firm, funded, atau demo). Ini beda dari deposit dan bukan dihitung sebagai profit.' },
-      { q: 'Deposit & Withdraw', a: 'Catat uang yang kamu setor (deposit) dan tarik (withdraw) dari broker. Deposit BUKAN profit — profit hanya dari hasil trade.' },
-      { q: 'Multi-akun', a: 'Punya beberapa akun broker? Pakai pemilih akun di atas untuk lihat angka per akun atau gabungan semua akun.' },
-    ],
-  },
-  {
-    icon: BookOpen, title: 'Jurnal', color: 'text-rose-400',
-    steps: [
-      { q: 'Refleksi harian', a: 'Tulis catatan & pilih mood per hari. Jurnal terhubung otomatis dengan trade hari itu — muncul juga di popup kalender Analisis.' },
+const ICONS = [Rocket, LayoutDashboard, TrendingUp, BarChart3, ClipboardList, FlaskConical, Wallet, BookOpen, Settings]
+const COLORS = ['text-primary', 'text-blue-400', 'text-emerald-400', 'text-purple-400', 'text-amber-400', 'text-cyan-400', 'text-indigo-400', 'text-rose-400', 'text-slate-400']
+
+const ID: Omit<Content, 'sections'> & { sections: Omit<Section, 'icon' | 'color'>[] } = {
+  pageTitle: 'Panduan Penggunaan',
+  pageSub: 'Cara pakai semua fitur di aplikasi jurnal trading ini',
+  introTitle: 'Kenapa jurnal trading penting?',
+  introBody: 'Trader konsisten bukan yang selalu profit, tapi yang mengevaluasi setiap keputusan. Aplikasi ini bantu kamu melacak performa, menemukan jam & strategi terbaik, dan menjaga disiplin lewat jurnal harian.',
+  tipsTitle: 'Tips konsistensi',
+  tips: [
+    'Catat trade segera setelah selesai, jangan ditunda.',
+    'Selalu isi jam entry agar analisa jam trading akurat.',
+    'Jujur menandai overtrade — itu kunci evaluasi disiplin.',
+    'Review jurnal mingguan tiap akhir pekan.',
+  ],
+  sections: [
+    { title: 'Mulai Cepat', steps: [
+      { q: '1. Isi saldo awal', a: 'Saat setup, isi Saldo Awal akun broker kamu. Ini jadi dasar perhitungan saldo & ROI.' },
+      { q: '2. Catat trade pertama', a: 'Di Dashboard, isi form trade pertama: tanggal, pair, arah, hasil, dan P&L. Semua menu terbuka setelah ini.' },
+      { q: '3. Lihat performa', a: 'Buka Dashboard untuk ringkasan, atau Analisis untuk insight (jam terbaik, strategi, psikologi).' },
+    ] },
+    { title: 'Dashboard', steps: [
+      { q: 'Apa yang ditampilkan?', a: 'Ringkasan: saldo trading, total deposit, profit trading, win rate, profit factor, avg win, max drawdown, dan equity curve.' },
+      { q: 'Target bulanan', a: 'Set target bulanan di Setting, progress bar muncul menunjukkan pencapaian bulan ini.' },
+    ] },
+    { title: 'Trade', steps: [
+      { q: 'Menambah trade', a: 'Klik Catat Trade Baru. Masukkan P&L positif — tanda +/− otomatis dari pilihan Result.' },
+      { q: 'Overtrade', a: 'Aktifkan toggle Overtrade untuk trade di luar plan. Saldo tetap berkurang, tapi TIDAK dihitung di statistik.' },
+      { q: 'Filter & cari', a: 'Gunakan chips (Winners/Losers/Big Wins), dropdown, rentang tanggal, dan min profit / max loss.' },
+      { q: 'Edit / hapus', a: 'Klik baris trade untuk buka detail. Ada tombol Edit dan Hapus di sana.' },
+    ] },
+    { title: 'Analisis', steps: [
+      { q: 'Kalender P&L', a: 'P&L harian dalam kalender. Klik tanggal untuk lihat detail trade + jurnal hari itu.' },
+      { q: 'Jam Trading', a: 'Analisa jam terbaik & terburuk. Klik kotak jam untuk detail, lihat performa per sesi (Asia/London/NY).' },
+      { q: 'Strategi & Pair', a: 'Win rate dan P&L per strategi & pair untuk tahu mana yang paling menguntungkan.' },
+      { q: 'Psikologi', a: 'Bandingkan hasil saat ikut plan vs tidak untuk evaluasi disiplin.' },
+    ] },
+    { title: 'Laporan', steps: [
+      { q: 'Laporan mingguan', a: 'Rekap per minggu: total trade, win rate, profit factor, trade terbaik & terburuk.' },
+    ] },
+    { title: 'Simulator', steps: [
+      { q: 'Untuk apa?', a: 'Latihan money management: simulasikan win/loss dengan risk-reward tertentu tanpa mempengaruhi data asli.' },
+    ] },
+    { title: 'Keuangan', steps: [
+      { q: 'Murni catatan broker', a: 'Hanya mencatat dana di broker. Saldo Sekarang = Saldo Awal + Deposit − Withdraw + Profit Trading.' },
+      { q: 'Deposit & Withdraw', a: 'Catat uang setor & tarik dari broker. Deposit BUKAN profit — profit hanya dari hasil trade.' },
+      { q: 'Multi-akun', a: 'Punya beberapa akun? Pakai pemilih akun untuk lihat angka per akun atau gabungan.' },
+    ] },
+    { title: 'Jurnal', steps: [
+      { q: 'Refleksi harian', a: 'Tulis catatan & pilih mood per hari. Jurnal terhubung otomatis dengan trade hari itu.' },
       { q: 'Edit & hapus', a: 'Jurnal bisa diedit kapan saja dan dihapus jika tidak diperlukan.' },
-    ],
-  },
-  {
-    icon: Settings, title: 'Setting', color: 'text-slate-400',
-    steps: [
-      { q: 'Mata uang & target', a: 'Atur mata uang default (IDR/USD/dll) dan target harian/mingguan/bulanan.' },
-      { q: 'Strategi & akun', a: 'Kelola daftar strategi dan akun trading kamu.' },
+    ] },
+    { title: 'Setting', steps: [
+      { q: 'Bahasa, mata uang & target', a: 'Atur bahasa (ID/EN), mata uang, dan target harian/mingguan/bulanan.' },
+      { q: 'Strategi & akun', a: 'Kelola daftar strategi dan akun broker kamu.' },
       { q: 'Backup', a: 'Export data ke JSON atau CSV untuk cadangan.' },
-    ],
-  },
-]
+    ] },
+  ],
+}
+
+const EN: typeof ID = {
+  pageTitle: 'User Guide',
+  pageSub: 'How to use every feature in this trading journal app',
+  introTitle: 'Why is a trading journal important?',
+  introBody: 'Consistent traders are not the ones who always profit, but the ones who evaluate every decision. This app helps you track performance, find your best hours & strategies, and stay disciplined through daily journaling.',
+  tipsTitle: 'Consistency tips',
+  tips: [
+    'Log trades right after they close — don\'t postpone.',
+    'Always fill in the entry time so hour analysis is accurate.',
+    'Mark overtrades honestly — it\'s key to evaluating discipline.',
+    'Review your weekly journal every weekend.',
+  ],
+  sections: [
+    { title: 'Quick Start', steps: [
+      { q: '1. Set starting balance', a: 'During setup, enter your broker account\'s starting balance. It becomes the basis for balance & ROI.' },
+      { q: '2. Log your first trade', a: 'On the Dashboard, fill the first-trade form: date, pair, direction, result, and P&L. All menus unlock after this.' },
+      { q: '3. Review performance', a: 'Open the Dashboard for a summary, or Analysis for insights (best hours, strategy, psychology).' },
+    ] },
+    { title: 'Dashboard', steps: [
+      { q: 'What is shown?', a: 'Summary: trading balance, total deposit, trading profit, win rate, profit factor, avg win, max drawdown, and equity curve.' },
+      { q: 'Monthly target', a: 'Set a monthly target in Settings and a progress bar shows this month\'s achievement.' },
+    ] },
+    { title: 'Trades', steps: [
+      { q: 'Adding a trade', a: 'Click New Trade. Enter a positive P&L — the +/− sign follows the Result automatically.' },
+      { q: 'Overtrade', a: 'Toggle Overtrade for trades outside your plan. Balance still drops, but it is NOT counted in stats.' },
+      { q: 'Filter & search', a: 'Use chips (Winners/Losers/Big Wins), dropdowns, date range, and min profit / max loss.' },
+      { q: 'Edit / delete', a: 'Click a trade row to open details. Edit and Delete buttons are there.' },
+    ] },
+    { title: 'Analysis', steps: [
+      { q: 'P&L Calendar', a: 'Daily P&L in a calendar. Click a date to see trade details + that day\'s journal.' },
+      { q: 'Trading Hours', a: 'Analyze best & worst hours. Click an hour box for details, view per-session performance (Asia/London/NY).' },
+      { q: 'Strategy & Pair', a: 'Win rate and P&L per strategy & pair to see what is most profitable.' },
+      { q: 'Psychology', a: 'Compare results when following your plan vs not, to evaluate discipline.' },
+    ] },
+    { title: 'Reports', steps: [
+      { q: 'Weekly report', a: 'Weekly recap: total trades, win rate, profit factor, best & worst trades.' },
+    ] },
+    { title: 'Simulator', steps: [
+      { q: 'What for?', a: 'Money-management practice: simulate wins/losses at a given risk-reward without affecting real data.' },
+    ] },
+    { title: 'Finance', steps: [
+      { q: 'Pure broker log', a: 'Only records broker funds. Current Balance = Starting Balance + Deposit − Withdraw + Trading Profit.' },
+      { q: 'Deposit & Withdraw', a: 'Record money in/out of your broker. A deposit is NOT profit — profit comes only from trades.' },
+      { q: 'Multi-account', a: 'Have several accounts? Use the account picker to view per-account or combined figures.' },
+    ] },
+    { title: 'Journal', steps: [
+      { q: 'Daily reflection', a: 'Write notes & pick a mood per day. The journal links automatically to that day\'s trades.' },
+      { q: 'Edit & delete', a: 'Journals can be edited anytime and deleted when not needed.' },
+    ] },
+    { title: 'Settings', steps: [
+      { q: 'Language, currency & targets', a: 'Set language (ID/EN), currency, and daily/weekly/monthly targets.' },
+      { q: 'Strategies & accounts', a: 'Manage your strategy list and broker accounts.' },
+      { q: 'Backup', a: 'Export data to JSON or CSV for backup.' },
+    ] },
+  ],
+}
 
 function Accordion({ section, open, onToggle }: { section: Section; open: boolean; onToggle: () => void }) {
   const Icon = section.icon
@@ -110,13 +158,17 @@ function Accordion({ section, open, onToggle }: { section: Section; open: boolea
 }
 
 export default function PanduanPage() {
+  const [lang] = useLang()
   const [openIdx, setOpenIdx] = useState<number | null>(0)
+
+  const c = lang === 'en' ? EN : ID
+  const sections: Section[] = c.sections.map((s, i) => ({ ...s, icon: ICONS[i], color: COLORS[i] }))
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-xl font-bold">Panduan Penggunaan</h1>
-        <p className="text-sm text-muted-foreground">Cara pakai semua fitur di aplikasi jurnal trading ini</p>
+        <h1 className="text-xl font-bold">{c.pageTitle}</h1>
+        <p className="text-sm text-muted-foreground">{c.pageSub}</p>
       </div>
 
       {/* Intro */}
@@ -124,19 +176,16 @@ export default function PanduanPage() {
         <CardContent className="pt-5 pb-5 flex items-start gap-3">
           <Lightbulb size={20} className="text-primary shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-sm">Kenapa jurnal trading penting?</p>
-            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-              Trader konsisten bukan yang selalu profit, tapi yang <strong>mengevaluasi</strong> setiap keputusan.
-              Aplikasi ini bantu kamu melacak performa, menemukan jam & strategi terbaik, dan menjaga disiplin lewat jurnal harian.
-            </p>
+            <p className="font-semibold text-sm">{c.introTitle}</p>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{c.introBody}</p>
           </div>
         </CardContent>
       </Card>
 
       {/* Accordions */}
       <div className="space-y-2.5">
-        {SECTIONS.map((s, i) => (
-          <Accordion key={s.title} section={s} open={openIdx === i} onToggle={() => setOpenIdx(openIdx === i ? null : i)} />
+        {sections.map((s, i) => (
+          <Accordion key={i} section={s} open={openIdx === i} onToggle={() => setOpenIdx(openIdx === i ? null : i)} />
         ))}
       </div>
 
@@ -145,12 +194,9 @@ export default function PanduanPage() {
         <CardContent className="pt-5 pb-5 flex items-start gap-3">
           <ShieldAlert size={20} className="text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-sm text-amber-400">Tips konsistensi</p>
+            <p className="font-semibold text-sm text-amber-400">{c.tipsTitle}</p>
             <ul className="text-sm text-muted-foreground mt-1.5 space-y-1 list-disc list-inside leading-relaxed">
-              <li>Catat trade segera setelah selesai, jangan ditunda.</li>
-              <li>Selalu isi jam entry agar analisa jam trading akurat.</li>
-              <li>Jujur menandai overtrade — itu kunci evaluasi disiplin.</li>
-              <li>Review jurnal mingguan tiap akhir pekan.</li>
+              {c.tips.map((tip, i) => <li key={i}>{tip}</li>)}
             </ul>
           </div>
         </CardContent>

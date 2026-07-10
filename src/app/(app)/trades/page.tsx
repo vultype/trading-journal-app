@@ -163,7 +163,6 @@ export default function TradesPage() {
     const pnlVal = Number(form.pnl)
     if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
 
-    const parts = [form.note, form.ai_analysis ? `--- Analisa by Claude ---\n${form.ai_analysis}` : ''].filter(Boolean)
     addTrade({
       account_id:       form.account_id || tradingAccounts[0]?.id || '',
       date:             form.date,
@@ -175,9 +174,8 @@ export default function TradesPage() {
       strategy:         form.strategy || undefined,
       market_structure: form.market_structure || undefined,
       followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
-      know_direction:   form.know_direction === 'yes' ? true : form.know_direction === 'no' ? false : undefined,
       screenshot_url:   form.screenshot_url || undefined,
-      note:             parts.join('\n\n') || undefined,
+      note:             form.note || undefined,
       is_overtrade:     form.is_overtrade,
     })
     setForm({ ...empty, account_id: form.account_id })
@@ -261,10 +259,18 @@ export default function TradesPage() {
           } />
           <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>New Trade</DialogTitle>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <TrendingUp size={18} className="text-primary" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold">Catat Trade Baru</DialogTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Isi detail posisi trading kamu</p>
+                </div>
+              </div>
             </DialogHeader>
 
-            <form onSubmit={submit} className="space-y-5 mt-1">
+            <form onSubmit={submit} className="space-y-5 mt-2">
 
               {/* Date + Time */}
               <div className="grid grid-cols-2 gap-3">
@@ -412,35 +418,19 @@ export default function TradesPage() {
                 </Select>
               </div>
 
-              {/* Yes/No questions */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Followed Plan?</Label>
-                  <div className="flex gap-2">
-                    {(['yes', 'no'] as const).map(v => (
-                      <button key={v} type="button" onClick={() => set('followed_plan', v)}
-                        className={`flex-1 flex items-center justify-center gap-1 rounded-lg border py-2 text-xs font-semibold transition-all
-                          ${form.followed_plan === v
-                            ? v === 'yes' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
-                            : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
-                        {v === 'yes' ? <><Check size={10}/> Yes</> : <><X size={10}/> No</>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Know Direction?</Label>
-                  <div className="flex gap-2">
-                    {(['yes', 'no'] as const).map(v => (
-                      <button key={v} type="button" onClick={() => set('know_direction', v)}
-                        className={`flex-1 flex items-center justify-center gap-1 rounded-lg border py-2 text-xs font-semibold transition-all
-                          ${form.know_direction === v
-                            ? v === 'yes' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
-                            : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
-                        {v === 'yes' ? <><Check size={10}/> Yes</> : <><X size={10}/> No</>}
-                      </button>
-                    ))}
-                  </div>
+              {/* Followed Plan */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Ikut Trading Plan?</Label>
+                <div className="flex gap-2">
+                  {(['yes', 'no'] as const).map(v => (
+                    <button key={v} type="button" onClick={() => set('followed_plan', v)}
+                      className={`flex-1 flex items-center justify-center gap-1 rounded-lg border py-2.5 text-sm font-semibold transition-all
+                        ${form.followed_plan === v
+                          ? v === 'yes' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
+                          : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
+                      {v === 'yes' ? <><Check size={12}/> Ya, sesuai plan</> : <><X size={12}/> Tidak</>}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -458,27 +448,14 @@ export default function TradesPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Catatan</Label>
                 <Textarea
-                  placeholder="Setup, entry reason, lessons learned…"
+                  placeholder="Setup, alasan entry, pelajaran…"
                   value={form.note}
                   onChange={e => set('note', e.target.value)}
-                  rows={2}
+                  rows={3}
                 />
               </div>
 
-              {/* Analisa by Claude */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <span className="text-purple-400">✦</span> Analisa by Claude
-                </Label>
-                <AutoTextarea
-                  value={form.ai_analysis}
-                  onChange={v => set('ai_analysis', v)}
-                  placeholder="Paste analisa dari Claude di sini…"
-                  className="text-xs min-h-[80px]"
-                />
-              </div>
-
-              <Button type="submit" className="w-full">Save Trade</Button>
+              <Button type="submit" className="w-full">Simpan Trade</Button>
             </form>
           </DialogContent>
         </Dialog>

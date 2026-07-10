@@ -95,21 +95,29 @@ function FirstTradeCard({ accountId }: { accountId?: string }) {
   )
 }
 
-function StatCard({ label, value, sub, positive, icon: Icon }: {
+function StatCard({ label, value, sub, positive, icon: Icon, accent }: {
   label: string; value: string; sub?: string; positive?: boolean | null; icon?: React.ElementType
+  accent?: 'primary' | 'emerald' | 'red' | 'violet'
 }) {
+  const accentMap = {
+    primary: 'bg-primary/10 text-primary',
+    emerald: 'bg-emerald-500/10 text-emerald-400',
+    red:     'bg-red-500/10 text-red-400',
+    violet:  'bg-violet-500/10 text-violet-400',
+  }
+  const iconCls = accent ? accentMap[accent] : 'bg-muted text-muted-foreground'
   return (
-    <Card>
+    <Card className="transition-colors hover:border-border">
       <CardContent className="pt-4">
         <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium mb-1">{label}</p>
-            <p className={`text-2xl font-bold ${positive === true ? 'text-emerald-600' : positive === false ? 'text-red-500' : ''}`}>
+          <div className="min-w-0">
+            <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mb-1.5">{label}</p>
+            <p className={`text-2xl font-black tracking-tight truncate ${positive === true ? 'text-emerald-400' : positive === false ? 'text-red-400' : ''}`}>
               {value}
             </p>
-            {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+            {sub && <p className="text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
-          {Icon && <div className="p-2 rounded-lg bg-muted"><Icon size={16} className="text-muted-foreground" /></div>}
+          {Icon && <div className={`p-2 rounded-lg shrink-0 ${iconCls}`}><Icon size={16} /></div>}
         </div>
       </CardContent>
     </Card>
@@ -131,11 +139,25 @@ export default function DashboardPage() {
   const { targetBulanan = 0 } = settings
   const hasTargets = targetBulanan > 0
 
+  const greeting = (() => {
+    const h = new Date().getHours()
+    if (h < 11) return t('Selamat pagi')
+    if (h < 15) return t('Selamat siang')
+    if (h < 19) return t('Selamat sore')
+    return t('Selamat malam')
+  })()
+  const name = settings.displayName || 'Trader'
+
   return (
     <div className="space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-xl font-bold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Your trading performance overview</p>
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">{greeting}, {name} 👋</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t('Ringkasan performa trading kamu')}</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {new Date().toLocaleDateString(settings.language === 'en' ? 'en-US' : 'id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
       </div>
 
       {trades.length === 0 ? (
@@ -143,10 +165,10 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label={t('Saldo Trading')} value={fmt(stats.trading_capital)} sub={t('Saldo di broker saat ini')} icon={Wallet} />
-            <StatCard label={t('Total Deposit')} value={fmt(stats.total_deposited)} sub={`${t('Withdraw')} ${fmt(stats.total_withdrawn)}`} icon={TrendingUp} />
-            <StatCard label={t('Profit Trading')} value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
-            <StatCard label={t('Win Rate')} value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} ${t('trade')}`} positive={stats.win_rate >= 50} icon={Target} />
+            <StatCard label={t('Saldo Trading')} value={fmt(stats.trading_capital)} sub={t('Saldo di broker saat ini')} icon={Wallet} accent="primary" />
+            <StatCard label={t('Total Deposit')} value={fmt(stats.total_deposited)} sub={`${t('Withdraw')} ${fmt(stats.total_withdrawn)}`} icon={TrendingUp} accent="violet" />
+            <StatCard label={t('Profit Trading')} value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} accent={stats.total_pnl >= 0 ? 'emerald' : 'red'} />
+            <StatCard label={t('Win Rate')} value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} ${t('trade')}`} positive={stats.win_rate >= 50} icon={Target} accent={stats.win_rate >= 50 ? 'emerald' : 'red'} />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
