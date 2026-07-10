@@ -77,7 +77,7 @@ export function SetupWizard() {
     true
 
   return (
-    <div className="fixed inset-0 z-[200] bg-background flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-30 bg-background flex items-center justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-md my-8">
         {/* Progress */}
         {step < 4 && (
