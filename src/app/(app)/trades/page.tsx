@@ -133,7 +133,7 @@ export default function TradesPage() {
   const [filterMinProfit, setFilterMinProfit] = useState('')
   const [filterMaxLoss, setFilterMaxLoss]     = useState('')
 
-  const tradingAccounts = accounts.filter(a => a.type === 'trading')
+  const tradingAccounts = accounts   // semua akun sekarang akun broker/trading
   const allPairs = useMemo(() => [...new Set(trades.map(t => t.pair))].sort(), [trades])
   const allStrategies = useMemo(() => {
     const fromTrades = trades.map(t => t.strategy).filter(Boolean) as string[]

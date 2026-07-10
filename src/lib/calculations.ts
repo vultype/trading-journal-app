@@ -1,6 +1,6 @@
-import type { Trade, Transfer, DashboardStats, AppSettings } from '@/types'
+import type { Trade, Transfer, Account, DashboardStats, AppSettings } from '@/types'
 
-export function calcStats(trades: Trade[], transfers: Transfer[]): DashboardStats {
+export function calcStats(trades: Trade[], transfers: Transfer[], accounts: Account[] = []): DashboardStats {
   // Overtrades affect equity (total_pnl) but are excluded from all performance metrics
   const normal = trades.filter(t => !t.is_overtrade)
 
@@ -44,14 +44,15 @@ export function calcStats(trades: Trade[], transfers: Transfer[]): DashboardStat
 
   const deposits    = transfers.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0)
   const withdrawals = transfers.filter(t => t.type === 'withdraw').reduce((s, t) => s + t.amount, 0)
+  const starting_balance = accounts.reduce((s, a) => s + (a.initial_balance ?? 0), 0)
 
   return {
     total_trades, win_rate, total_pnl, profit_factor, avg_win, avg_loss,
     max_drawdown, expectancy,
-    trading_capital: deposits - withdrawals + total_pnl,
+    trading_capital: starting_balance + deposits - withdrawals + total_pnl,
+    starting_balance,
     total_deposited: deposits,
     total_withdrawn: withdrawals,
-    net_profit: withdrawals - deposits,
     win_streak, loss_streak, current_streak, current_streak_type,
   }
 }

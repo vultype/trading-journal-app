@@ -1,20 +1,18 @@
-export type AccountType = 'personal' | 'trading'
-
 export type Account = {
   id: string
   name: string
-  type: AccountType
   broker?: string
   currency: string
+  initial_balance: number   // saldo awal broker (real/prop/funded/demo)
   created_at: string
 }
 
 export type TransferType = 'deposit' | 'withdraw'
 
+// Log dana satu-akun (deposit masuk / withdraw keluar dari satu akun broker)
 export type Transfer = {
   id: string
-  from_account_id: string
-  to_account_id: string
+  account_id: string
   type: TransferType
   amount: number
   note?: string
@@ -81,10 +79,10 @@ export type DashboardStats = {
   avg_loss: number
   max_drawdown: number
   expectancy: number
-  trading_capital: number
+  trading_capital: number   // saldo sekarang = starting_balance + deposit − withdraw + pnl
+  starting_balance: number  // total saldo awal semua akun
   total_deposited: number
   total_withdrawn: number
-  net_profit: number
   win_streak: number
   loss_streak: number
   current_streak: number

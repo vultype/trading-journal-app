@@ -30,10 +30,10 @@ function StatCard({ label, value, sub, positive, icon: Icon }: {
 }
 
 export default function DashboardPage() {
-  const { trades, transfers, settings } = useStore()
-  const stats = calcStats(trades, transfers)
+  const { trades, transfers, accounts, settings } = useStore()
+  const stats = calcStats(trades, transfers, accounts)
   const fmt = (n: number) => formatCurrency(n, settings.currency)
-  const startBalance = stats.total_deposited - stats.total_withdrawn
+  const startBalance = stats.trading_capital - stats.total_pnl
   const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)), startBalance)
   const recentTrades = [...trades].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6)
 
@@ -63,9 +63,9 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Trading Capital" value={fmt(stats.trading_capital)} sub={`Deposited ${fmt(stats.total_deposited)}`} icon={Wallet} />
-            <StatCard label="Arus Kas Bersih" value={fmt(stats.net_profit)} sub="Withdraw − Deposit · belum termasuk saldo aktif" icon={TrendingUp} />
-            <StatCard label="Total P&L" value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
+            <StatCard label="Saldo Trading" value={fmt(stats.trading_capital)} sub="Saldo di broker saat ini" icon={Wallet} />
+            <StatCard label="Total Deposit" value={fmt(stats.total_deposited)} sub={`Withdraw ${fmt(stats.total_withdrawn)}`} icon={TrendingUp} />
+            <StatCard label="Profit Trading" value={fmt(stats.total_pnl)} positive={stats.total_pnl >= 0} icon={Activity} />
             <StatCard label="Win Rate" value={`${stats.win_rate.toFixed(1)}%`} sub={`${stats.total_trades} trades`} positive={stats.win_rate >= 50} icon={Target} />
           </div>
 

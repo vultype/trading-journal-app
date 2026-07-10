@@ -11,10 +11,12 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2, UserCog } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import type { AccountType, AppSettings } from '@/types'
+import { formatCurrency } from '@/lib/calculations'
+import type { AppSettings } from '@/types'
 
 export default function SettingsPage() {
   const { accounts, trades, transfers, settings, userEmail, isAdmin, addAccount, deleteAccount, saveSettings } = useStore()
+  const fmtCur = (n: number) => formatCurrency(n, settings.currency)
 
   // ─── Pengaturan Umum ───
   const [currency, setCurrency] = useState<AppSettings['currency']>(settings.currency)
@@ -56,20 +58,25 @@ export default function SettingsPage() {
 
   // ─── Akun ───
   const [accName, setAccName]     = useState('')
-  const [accType, setAccType]     = useState<AccountType>('trading')
   const [accBroker, setAccBroker] = useState('')
-  const [accCur, setAccCur]       = useState('USD')
+  const [accCur, setAccCur]       = useState(settings.currency)
+  const [accInitial, setAccInitial] = useState<number | ''>('')
 
   function submitAccount(e: React.FormEvent) {
     e.preventDefault()
     if (!accName.trim()) return
-    addAccount({ name: accName.trim(), type: accType, broker: accBroker || undefined, currency: accCur })
-    setAccName(''); setAccBroker('')
+    addAccount({
+      name: accName.trim(),
+      broker: accBroker || undefined,
+      currency: accCur,
+      initial_balance: accInitial !== '' ? Number(accInitial) : 0,
+    })
+    setAccName(''); setAccBroker(''); setAccInitial('')
   }
 
   function canDelete(id: string) {
     return !trades.some(t => t.account_id === id) &&
-           !transfers.some(t => t.from_account_id === id || t.to_account_id === id)
+           !transfers.some(t => t.account_id === id)
   }
 
   function exportJSON() {
@@ -216,24 +223,30 @@ export default function SettingsPage() {
 
       {/* Saved Accounts */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Accounts</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Akun Broker</CardTitle></CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-border/50">
+            {accounts.length === 0 && (
+              <p className="px-4 py-6 text-sm text-muted-foreground text-center">Belum ada akun. Tambah akun broker di bawah.</p>
+            )}
             {accounts.map(a => (
               <div key={a.id} className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${a.type === 'personal' ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
-                    {a.type === 'personal' ? <Wallet size={14} className="text-blue-400" /> : <TrendingUp size={14} className="text-emerald-400" />}
+                  <div className="p-2 rounded-lg bg-emerald-500/10">
+                    <TrendingUp size={14} className="text-emerald-400" />
                   </div>
                   <div>
                     <p className="text-sm font-medium">{a.name}</p>
                     <p className="text-xs text-muted-foreground">{a.broker ? `${a.broker} · ` : ''}{a.currency}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={a.type === 'personal' ? 'secondary' : 'default'} className="text-xs capitalize">{a.type}</Badge>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground">Saldo Awal</p>
+                    <p className="text-xs font-semibold">{fmtCur(a.initial_balance ?? 0)}</p>
+                  </div>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    disabled={!canDelete(a.id)} title={!canDelete(a.id) ? 'In use' : 'Delete'}
+                    disabled={!canDelete(a.id)} title={!canDelete(a.id) ? 'Masih dipakai trade/dana' : 'Hapus'}
                     onClick={() => deleteAccount(a.id)}>
                     <Trash2 size={12} />
                   </Button>
@@ -246,44 +259,39 @@ export default function SettingsPage() {
 
       {/* Add Account */}
       <Card>
-        <CardHeader><CardTitle className="text-sm">Add Account</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Tambah Akun Broker</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={submitAccount} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Account Name</Label>
-                <Input placeholder="My Broker" value={accName} onChange={e => setAccName(e.target.value)} required />
+                <Label className="text-xs text-muted-foreground">Nama Akun</Label>
+                <Input placeholder="Broker Utama" value={accName} onChange={e => setAccName(e.target.value)} required />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Type</Label>
-                <Select value={accType} onValueChange={(v) => setAccType((v ?? 'trading') as AccountType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="trading">Trading</SelectItem>
-                    <SelectItem value="personal">Personal</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Broker / Platform</Label>
                 <Input placeholder="MT4, MT5, Bybit…" value={accBroker} onChange={e => setAccBroker(e.target.value)} />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Currency</Label>
-                <Select value={accCur} onValueChange={(v) => setAccCur(v ?? 'USD')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs text-muted-foreground">Saldo Awal ({accCur})</Label>
+                <CurrencyInput value={accInitial} onChange={setAccInitial} placeholder="0" />
+                <p className="text-[10px] text-muted-foreground">Saldo yang sudah ada di akun ini (real / prop firm / funded / demo). Kosongkan kalau mulai dari 0.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Mata Uang</Label>
+                <Select value={accCur} onValueChange={(v) => setAccCur((v ?? 'IDR') as AppSettings['currency'])}>
+                  <SelectTrigger><SelectValue>{accCur}</SelectValue></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="USD">USD</SelectItem>
                     <SelectItem value="IDR">IDR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
                     <SelectItem value="EUR">EUR</SelectItem>
                     <SelectItem value="USDT">USDT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <Button type="submit" size="sm" className="gap-2"><Plus size={13} /> Add Account</Button>
+            <Button type="submit" size="sm" className="gap-2"><Plus size={13} /> Tambah Akun</Button>
           </form>
         </CardContent>
       </Card>

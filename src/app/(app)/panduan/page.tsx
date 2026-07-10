@@ -63,8 +63,10 @@ const SECTIONS: Section[] = [
   {
     icon: Wallet, title: 'Keuangan', color: 'text-indigo-400',
     steps: [
-      { q: 'Deposit & Withdraw', a: 'Catat setiap top-up modal (deposit) dan penarikan profit (withdraw). Ini yang membentuk perhitungan modal & ROI.' },
-      { q: 'Per akun', a: 'Kalau punya beberapa akun broker, lihat saldo, deposit, P&L, dan withdraw masing-masing di tab Per Akun.' },
+      { q: 'Murni catatan broker', a: 'Menu ini hanya mencatat dana di akun broker — tidak dicampur uang pribadi. Saldo Sekarang = Saldo Awal + Deposit − Withdraw + Profit Trading.' },
+      { q: 'Saldo Awal', a: 'Saat menambah akun di Setting, isi Saldo Awal — saldo yang sudah ada di akun broker (real, prop firm, funded, atau demo). Ini beda dari deposit dan bukan dihitung sebagai profit.' },
+      { q: 'Deposit & Withdraw', a: 'Catat uang yang kamu setor (deposit) dan tarik (withdraw) dari broker. Deposit BUKAN profit — profit hanya dari hasil trade.' },
+      { q: 'Multi-akun', a: 'Punya beberapa akun broker? Pakai pemilih akun di atas untuk lihat angka per akun atau gabungan semua akun.' },
     ],
   },
   {

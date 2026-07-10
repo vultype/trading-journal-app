@@ -94,12 +94,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLoading(false)
         return
       }
-      // Buat akun default jika belum ada
+      // Buat satu akun trading default jika belum ada
       let accs: Account[] = a.data ?? []
       if (accs.length === 0) {
         const defaults = [
-          { user_id: userId, name: 'Rekening Personal', type: 'personal' as const, currency: 'IDR' },
-          { user_id: userId, name: 'Broker Utama',      type: 'trading'  as const, broker: 'MT4/MT5', currency: 'IDR' },
+          { user_id: userId, name: 'Akun Trading', broker: 'MT4/MT5', currency: 'IDR', initial_balance: 0 },
         ]
         const { data: created } = await sb.from('accounts').insert(defaults).select()
         accs = created ?? []
@@ -214,12 +213,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast.success(t.type === 'deposit' ? 'Deposit dicatat' : 'Withdraw dicatat')
     sb().from('transfers').insert({
       id, user_id: userId, created_at,
-      from_account_id: t.from_account_id,
-      to_account_id:   t.to_account_id,
-      type:            t.type,
-      amount:          t.amount,
-      note:            t.note,
-      date:            t.date,
+      account_id: t.account_id,
+      type:       t.type,
+      amount:     t.amount,
+      note:       t.note,
+      date:       t.date,
     }).then(({ error }) => onSaveError('addTransfer', error))
   }, [userId])
 
