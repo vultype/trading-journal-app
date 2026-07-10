@@ -11,9 +11,11 @@ import { InfoTip } from '@/components/ui/info-tip'
 import type { Trade, DashboardStats } from '@/types'
 
 const TooltipStyle = {
-  backgroundColor: 'var(--popover)', border: '1px solid var(--border)',
-  borderRadius: 10, fontSize: 12,
+  backgroundColor: 'rgba(15,20,30,0.97)', border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 10, fontSize: 12, color: '#f1f5f9', boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
 }
+const tipItem = { color: '#f1f5f9', fontWeight: 700 }
+const tipLabel = { color: '#94a3b8', fontSize: 11, marginBottom: 2, fontWeight: 600 }
 const C_WIN = '#10b981', C_LOSS = '#ef4444'
 
 // ── Datalitiq Score (radar + overall) ─────────────────────────────────────────
@@ -81,7 +83,7 @@ export function ScoreRadar({ stats, trades, equityBase }: {
                 <PolarGrid stroke="var(--border)" />
                 <PolarAngleAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }} />
                 <Radar dataKey="value" stroke={scoreColor} fill={scoreColor} fillOpacity={0.25} />
-                <Tooltip contentStyle={TooltipStyle} formatter={(v) => [`${Math.round(Number(v))}/100`, 'Skor']} />
+                <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={(v) => [`${Math.round(Number(v))}/100`, 'Skor']} />
               </RadarChart>
             </ResponsiveContainer>
           </div>
@@ -111,7 +113,7 @@ export function NetDailyPnL({ trades, fmt }: { trades: Trade[]; fmt: (n: number)
             <BarChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
               <XAxis dataKey="date" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={48} tickFormatter={v => fmt(v)} />
-              <Tooltip contentStyle={TooltipStyle} formatter={v => [fmt(Number(v)), 'P&L']} cursor={{ fill: 'var(--muted)', opacity: 0.3 }} />
+              <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={v => [fmt(Number(v)), 'P&L']} cursor={{ fill: 'var(--muted)', opacity: 0.3 }} />
               <ReferenceLine y={0} stroke="var(--border)" />
               <Bar dataKey="pnl" radius={[3, 3, 0, 0]}>
                 {data.map((e, i) => <Cell key={i} fill={e.pnl >= 0 ? C_WIN : C_LOSS} fillOpacity={0.85} />)}
@@ -160,7 +162,7 @@ export function DrawdownChart({ trades, fmt }: { trades: Trade[]; fmt: (n: numbe
               </defs>
               <XAxis dataKey="date" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={48} tickFormatter={v => fmt(v)} />
-              <Tooltip contentStyle={TooltipStyle} formatter={v => [fmt(Number(v)), 'Drawdown']} />
+              <Tooltip contentStyle={TooltipStyle} itemStyle={{ color: '#f87171', fontWeight: 700 }} labelStyle={tipLabel} formatter={v => [fmt(Number(v)), 'Drawdown']} />
               <ReferenceLine y={0} stroke="var(--border)" />
               <Area type="monotone" dataKey="dd" stroke={C_LOSS} strokeWidth={1.5} fill="url(#ddFill)" />
             </AreaChart>

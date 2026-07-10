@@ -11,9 +11,11 @@ import { Lightbulb, TrendingUp, TrendingDown, Clock, CalendarDays, Coins, Shield
 import type { Trade, DashboardStats } from '@/types'
 
 const TooltipStyle = {
-  backgroundColor: 'var(--popover)', border: '1px solid var(--border)',
-  borderRadius: 10, fontSize: 12,
+  backgroundColor: 'rgba(15,20,30,0.97)', border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 10, fontSize: 12, color: '#f1f5f9', boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
 }
+const tipItem = { color: '#f1f5f9', fontWeight: 700 }
+const tipLabel = { color: '#94a3b8', fontSize: 11, marginBottom: 2, fontWeight: 600 }
 const C_WIN = '#10b981', C_LOSS = '#ef4444', C_BE = '#6366f1'
 const DAYS_ID = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
 
@@ -48,7 +50,7 @@ export function TradeTimeScatter({ trades, fmt }: { trades: Trade[]; fmt: (n: nu
                 tickFormatter={(v) => `${String(v).padStart(2, '0')}:00`} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
               <YAxis type="number" dataKey="pnl" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={52} tickFormatter={v => fmt(v)} />
               <ReferenceLine y={0} stroke="var(--border)" />
-              <Tooltip contentStyle={TooltipStyle} cursor={{ strokeDasharray: '3 3' }}
+              <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} cursor={{ strokeDasharray: '3 3' }}
                 formatter={(v: any, n: any) => n === 'pnl' ? [fmt(Number(v)), 'P&L'] : [v, n]}
                 labelFormatter={() => ''} />
               <Scatter data={data}>

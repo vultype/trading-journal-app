@@ -33,7 +33,9 @@ function parseCalNote(raw?: string | null) {
 const C_WIN  = '#10b981'
 const C_LOSS = '#ef4444'
 const C_BLUE = '#6366f1'
-const TooltipStyle = { backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }
+const TooltipStyle = { backgroundColor: 'rgba(15,20,30,0.97)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 12, color: '#f1f5f9', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }
+const tipItem = { color: '#f1f5f9', fontWeight: 700 }
+const tipLabel = { color: '#94a3b8', fontSize: 11, fontWeight: 600 }
 
 function pfRating(pf: number): { label: string; color: string } {
   if (pf === Infinity || pf >= 3)   return { label: 'Excellent',   color: 'text-emerald-300' }
@@ -448,15 +450,38 @@ export default function AnalisisPage() {
             <Card>
               <CardHeader><CardTitle className="text-sm">Distribusi Hasil</CardTitle></CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie data={piePnL} cx="50%" cy="50%" innerRadius={55} outerRadius={80} dataKey="value" paddingAngle={3}>
-                      {piePnL.map((e,i)=><Cell key={i} fill={e.color}/>)}
-                    </Pie>
-                    <Legend wrapperStyle={{fontSize:12}}/>
-                    <Tooltip contentStyle={TooltipStyle}/>
-                  </PieChart>
-                </ResponsiveContainer>
+                {(() => {
+                  const total = piePnL.reduce((s, e) => s + e.value, 0)
+                  return (
+                    <div className="flex items-center gap-4">
+                      <div className="relative shrink-0" style={{ width: 150, height: 200 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={piePnL} cx="50%" cy="50%" innerRadius={54} outerRadius={78} dataKey="value" paddingAngle={4} cornerRadius={6} stroke="none">
+                              {piePnL.map((e,i)=><Cell key={i} fill={e.color}/>)}
+                            </Pie>
+                            <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={(v:any, n:any)=>[`${v} trade (${total>0?Math.round(Number(v)/total*100):0}%)`, n]}/>
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className="text-2xl font-black tracking-tight">{total}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</span>
+                        </div>
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        {piePnL.map((e,i)=>(
+                          <div key={i} className="flex items-center justify-between text-sm">
+                            <span className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{background:e.color}}/>
+                              {e.name}
+                            </span>
+                            <span className="font-semibold">{e.value} <span className="text-muted-foreground text-xs">({total>0?Math.round(e.value/total*100):0}%)</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           </div>
