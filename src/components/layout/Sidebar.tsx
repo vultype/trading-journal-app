@@ -142,7 +142,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Upgrade to Pro card (khusus Free) */}
+      {/* Upgrade card (khusus Standar) */}
       {PLAN === 'free' && (
         <Link href="/subscription"
           className="mt-3 block rounded-2xl p-[1px] bg-gradient-to-br from-primary/60 via-primary/20 to-transparent">
@@ -151,7 +151,7 @@ export function Sidebar() {
               <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/15 ring-1 ring-primary/25">
                 <Crown size={13} className="text-primary" />
               </span>
-              <p className="text-sm font-bold">Upgrade ke Pro</p>
+              <p className="text-sm font-bold">Upgrade ke Professional</p>
             </div>
             <p className="text-[11px] text-muted-foreground leading-snug mb-2.5">Buka multi-akun, analisa jam & sesi, export data, dan lainnya.</p>
             <span className="flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold py-1.5">

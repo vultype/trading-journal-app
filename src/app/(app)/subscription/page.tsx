@@ -20,27 +20,28 @@ type Plan = {
 
 const PLANS: Plan[] = [
   {
-    id: 'free', name: 'Free', icon: Sparkles, price: { IDR: 0, USD: 0 },
+    id: 'free', name: 'Standar', icon: Sparkles, price: { IDR: 0, USD: 0 },
     tagline: 'Untuk mulai mencatat trading',
     accent: 'text-muted-foreground',
     features: [
       'Catat trade tanpa batas',
       '1 akun broker',
       'Dashboard & statistik dasar',
-      'Jurnal harian',
-      'Kalender P&L',
+      'Jurnal harian & Kalender P&L',
+      'Insight AI (3 temuan)',
     ],
   },
   {
-    id: 'pro', name: 'Pro', icon: Crown, price: { IDR: 99000, USD: 7 },
+    id: 'pro', name: 'Professional', icon: Crown, price: { IDR: 99000, USD: 7 },
     tagline: 'Untuk trader yang serius berkembang',
     accent: 'text-primary', highlight: true,
     features: [
-      'Semua fitur Free',
+      'Semua fitur Standar',
       'Multi akun broker',
+      'Insight AI lengkap + Datalitiq Score',
       'Analisa jam & sesi trading',
-      'Analisa strategi & psikologi',
-      'Laporan mingguan lanjutan',
+      'Komparasi strategi & pair',
+      'Upload screenshot chart',
       'Export data (CSV / JSON)',
       'Prioritas support',
     ],

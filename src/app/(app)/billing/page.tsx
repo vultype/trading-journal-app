@@ -49,7 +49,7 @@ export default function BillingPage() {
             <div className="p-2 rounded-xl bg-muted"><Sparkles size={18} className="text-muted-foreground" /></div>
             <div>
               <p className="text-xs text-muted-foreground">{t('Paket Aktif')}</p>
-              <p className="text-lg font-black">Free</p>
+              <p className="text-lg font-black">Standar</p>
             </div>
           </div>
           <Badge variant="secondary" className="text-[10px]">{settings.displayName || 'Trader'}</Badge>

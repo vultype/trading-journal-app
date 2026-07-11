@@ -56,7 +56,7 @@ export function TopBar() {
       <Link href="/subscription"
         className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold transition-colors mr-1
           ${PLAN === 'pro' ? 'bg-primary/15 text-primary ring-1 ring-primary/25' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-        {PLAN === 'pro' ? <><Crown size={12} /> PRO</> : <>FREE</>}
+        {PLAN === 'pro' ? <><Crown size={12} /> PRO</> : <>STANDAR</>}
       </Link>
 
       {/* Theme toggle */}
@@ -114,7 +114,7 @@ export function TopBar() {
           <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-border bg-popover shadow-xl z-50 overflow-hidden">
             <div className="px-4 py-3 border-b border-border/50">
               <p className="text-sm font-semibold truncate">{name}</p>
-              <p className="text-xs text-muted-foreground truncate">{PLAN === 'pro' ? 'Paket Pro' : 'Paket Free'}</p>
+              <p className="text-xs text-muted-foreground truncate">{PLAN === 'pro' ? 'Paket Professional' : 'Paket Standar'}</p>
             </div>
             <div className="p-1">
               <Link href="/settings" onClick={() => setProfileOpen(false)}
