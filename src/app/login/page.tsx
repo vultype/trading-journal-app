@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { BrandLogo } from '@/components/layout/BrandLogo'
 import { TrendingUp, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
@@ -16,6 +17,12 @@ export default function LoginPage() {
   const [error,  setError]  = useState('')
   const [busy,   setBusy]   = useState(false)
   const [done,   setDone]   = useState(false)  // after signup confirmation
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    createClient().from('app_config').select('logo_url').eq('id', 1).maybeSingle()
+      .then(({ data }) => setLogoUrl((data?.logo_url as string | null) ?? null))
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -50,10 +57,16 @@ export default function LoginPage() {
       <div className="w-full max-w-sm space-y-6">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-2">
-            <TrendingUp size={28} className="text-primary"/>
-          </div>
-          <h1 className="text-3xl font-black tracking-tight">Datalitiq</h1>
+          {logoUrl ? (
+            <div className="flex justify-center mb-2"><BrandLogo url={logoUrl} size="lg" /></div>
+          ) : (
+            <>
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-2">
+                <TrendingUp size={28} className="text-primary"/>
+              </div>
+              <h1 className="text-3xl font-black tracking-tight">Datalitiq</h1>
+            </>
+          )}
           <p className="text-sm text-muted-foreground">Trading journal & analytics untuk trader serius</p>
         </div>
 

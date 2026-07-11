@@ -7,8 +7,73 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { createClient } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { BrandLogo } from '@/components/layout/BrandLogo'
+import { toast } from '@/lib/toast'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info } from 'lucide-react'
 import type { Trade, Transfer } from '@/types'
+
+function LogoManager() {
+  const { logoUrl, updateLogo } = useStore()
+  const [uploading, setUploading] = useState(false)
+
+  async function handleUpload(file: File) {
+    if (!file) return
+    if (file.size > 1_000_000) { toast.error('Ukuran file maksimal 1 MB'); return }
+    setUploading(true)
+    try {
+      const sb = createClient()
+      const ext = file.name.split('.').pop() || 'png'
+      const path = `branding/logo-${Date.now()}.${ext}`
+      const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+      if (error) { toast.error('Upload gagal: ' + error.message); setUploading(false); return }
+      const { data } = sb.storage.from('trade-screenshots').getPublicUrl(path)
+      updateLogo(data.publicUrl)
+      toast.success('Logo berhasil diperbarui')
+    } catch {
+      toast.error('Upload gagal')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ImageIcon size={15} className="text-primary" /> Logo Aplikasi (Branding)</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        {/* Preview */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center justify-center min-w-[180px] h-20 rounded-xl border border-border/50 bg-muted/30 px-4">
+            {logoUrl ? <BrandLogo url={logoUrl} size="lg" /> : <span className="text-sm text-muted-foreground">Belum ada logo</span>}
+          </div>
+          <div className="flex gap-2">
+            <label className={`inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold cursor-pointer transition-opacity ${uploading ? 'opacity-60 pointer-events-none' : 'hover:opacity-90'}`}>
+              {uploading ? <><Loader2 size={15} className="animate-spin" /> Mengupload…</> : <><Upload size={15} /> Upload Logo</>}
+              <input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f) }} />
+            </label>
+            {logoUrl && (
+              <Button variant="outline" size="sm" className="gap-1.5 text-destructive" onClick={() => { updateLogo(null); toast.success('Logo dihapus') }}>
+                <Trash2 size={14} /> Hapus
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Panduan ukuran */}
+        <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Panduan Ukuran Logo</p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
+            <li><strong>Format:</strong> PNG (background transparan), SVG, atau WebP.</li>
+            <li><strong>Rasio:</strong> horizontal / landscape, sekitar <strong>4:1</strong> (mis. 320×80 px).</li>
+            <li><strong>Ukuran ideal:</strong> lebar 240–480 px, tinggi 60–120 px.</li>
+            <li><strong>File maksimal:</strong> 1 MB.</li>
+            <li>Gunakan warna terang / kontras agar terbaca di sidebar gelap.</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 type AdminUser = { id: string; email: string; created_at: string }
 
@@ -103,6 +168,9 @@ export default function AdminPage() {
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* Logo / branding */}
+      <LogoManager />
 
       {error && (
         <Card className="border-red-500/30 bg-red-500/5">

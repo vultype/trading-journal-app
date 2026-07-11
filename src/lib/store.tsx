@@ -19,6 +19,8 @@ type Store = {
   userId: string | null
   userEmail: string | null
   isAdmin: boolean
+  logoUrl: string | null
+  updateLogo: (url: string | null) => void
   syncError: string | null
   accounts: Account[]
   trades: Trade[]
@@ -46,6 +48,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [loading,      setLoading]      = useState(true)
   const [userId,       setUserId]       = useState<string | null>(null)
   const [userEmail,    setUserEmail]    = useState<string | null>(null)
+  const [logoUrl,      setLogoUrl]      = useState<string | null>(null)
   const [syncError,    setSyncError]    = useState<string | null>(null)
   const [fetchKey,     setFetchKey]     = useState(0)
   const [accounts,     setAccounts]     = useState<Account[]>([])
@@ -89,7 +92,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sb.from('transfers').select('*').eq('user_id', userId).order('date'),
       sb.from('journal_notes').select('*').eq('user_id', userId).order('date'),
       sb.from('user_settings').select('*').eq('user_id', userId).single(),
-    ]).then(async ([a, t, x, j, s]) => {
+      sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle(),
+    ]).then(async ([a, t, x, j, s, cfg]) => {
       if (a.error && a.error.code === '42P01') {
         console.error('Tabel belum dibuat. Jalankan SQL schema di Supabase.')
         setLoading(false)
@@ -100,6 +104,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setTrades((t.data ?? []) as Trade[])
       setTransfers((x.data ?? []) as Transfer[])
       setJournalNotes((j.data ?? []) as JournalNote[])
+      setLogoUrl((cfg?.data?.logo_url as string | null) ?? null)
 
       if (s.data) {
         setSettings({
@@ -285,11 +290,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     })
   }, [userId])
 
+  const updateLogo = useCallback((url: string | null) => {
+    setLogoUrl(url)
+    sb().from('app_config').upsert({ id: 1, logo_url: url, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      .then(({ error }) => onSaveError('updateLogo', error))
+  }, [])
+
   const clearSyncError = useCallback(() => setSyncError(null), [])
 
   return (
     <Ctx.Provider value={{
-      loading, userId, userEmail, isAdmin: userEmail === ADMIN_EMAIL, syncError,
+      loading, userId, userEmail, isAdmin: userEmail === ADMIN_EMAIL, logoUrl, updateLogo, syncError,
       accounts, trades, transfers, journalNotes, settings,
       addAccount, updateAccount, deleteAccount, addTrade, updateTrade, deleteTrade,
       addTransfer, deleteTransfer, saveJournal, deleteJournal, saveSettings,

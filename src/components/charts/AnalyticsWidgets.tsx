@@ -1,13 +1,14 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, Tooltip, Cell,
   ReferenceLine, CartesianGrid,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { InfoTip } from '@/components/ui/info-tip'
-import { Lightbulb, TrendingUp, TrendingDown, Clock, CalendarDays, Coins, ShieldCheck } from 'lucide-react'
+import { Lightbulb, TrendingUp, TrendingDown, Clock, CalendarDays, Coins, ShieldCheck, Target, Flame, AlertTriangle, Sparkles } from 'lucide-react'
 import type { Trade, DashboardStats } from '@/types'
 
 const TooltipStyle = {
@@ -173,21 +174,106 @@ export function InsightsCard({ trades, stats, fmt, variant = 'default' }: { trad
       out.push({ icon: TrendingUp, color: 'text-emerald-400', text: `Profit factor ${stats.profit_factor === Infinity ? '∞' : stats.profit_factor.toFixed(2)} — sangat sehat, pertahankan!` })
     }
 
-    return out.slice(0, 5)
+    // Direction bias (long vs short)
+    const longs = normal.filter(t => t.direction === 'long')
+    const shorts = normal.filter(t => t.direction === 'short')
+    if (longs.length >= 2 && shorts.length >= 2) {
+      const wrL = longs.filter(t => t.result === 'win').length / longs.length * 100
+      const wrS = shorts.filter(t => t.result === 'win').length / shorts.length * 100
+      const better = wrL >= wrS ? 'Long' : 'Short'
+      out.push({ icon: better === 'Long' ? TrendingUp : TrendingDown, color: 'text-primary', text: `Kamu lebih jago ${better} — win rate ${Math.round(Math.max(wrL, wrS))}% vs ${Math.round(Math.min(wrL, wrS))}%.` })
+    }
+
+    // Best strategy
+    const byStrat: Record<string, number> = {}
+    for (const t of normal) { if (t.strategy) byStrat[t.strategy] = (byStrat[t.strategy] ?? 0) + t.pnl }
+    const stratEntries = Object.entries(byStrat)
+    if (stratEntries.length) {
+      const best = stratEntries.reduce((a, b) => b[1] > a[1] ? b : a)
+      const worst = stratEntries.reduce((a, b) => b[1] < a[1] ? b : a)
+      if (best[1] > 0) out.push({ icon: Target, color: 'text-emerald-400', text: `Strategi paling profit: "${best[0]}" (${fmt(best[1])}).` })
+      if (worst[1] < 0 && stratEntries.length > 1) out.push({ icon: Target, color: 'text-red-400', text: `Strategi "${worst[0]}" masih minus (${fmt(worst[1])}) — perlu dievaluasi.` })
+    }
+
+    // Overtrade impact
+    const overtrades = trades.filter(t => t.is_overtrade)
+    if (overtrades.length) {
+      const otPnl = overtrades.reduce((s, t) => s + t.pnl, 0)
+      out.push({ icon: AlertTriangle, color: 'text-orange-400', text: `${overtrades.length} overtrade menggerus equity sebesar ${fmt(otPnl)}. Kurangi trading emosional.` })
+    }
+
+    // Streaks
+    if (stats.current_streak >= 2) {
+      out.push({ icon: stats.current_streak_type === 'win' ? Flame : AlertTriangle, color: stats.current_streak_type === 'win' ? 'text-emerald-400' : 'text-red-400',
+        text: stats.current_streak_type === 'win' ? `Sedang ${stats.current_streak}x WIN beruntun 🔥 — jaga disiplin.` : `Sedang ${stats.current_streak}x LOSS beruntun ⚠️ — pertimbangkan istirahat.` })
+    }
+    if (stats.win_streak >= 3) out.push({ icon: Flame, color: 'text-emerald-400', text: `Rekor win streak terbaik: ${stats.win_streak}x berturut-turut.` })
+
+    // Largest win / loss
+    const wins2 = normal.filter(t => t.result === 'win')
+    const losses2 = normal.filter(t => t.result === 'loss')
+    if (wins2.length) out.push({ icon: TrendingUp, color: 'text-emerald-400', text: `Kemenangan terbesar: ${fmt(Math.max(...wins2.map(t => t.pnl)))}.` })
+    if (losses2.length) out.push({ icon: TrendingDown, color: 'text-red-400', text: `Kerugian terbesar: ${fmt(Math.min(...losses2.map(t => t.pnl)))} — pastikan risk management ketat.` })
+
+    // Consistency (profitable days)
+    const dPnl: Record<string, number> = {}
+    for (const t of normal) dPnl[t.date] = (dPnl[t.date] ?? 0) + t.pnl
+    const days2 = Object.values(dPnl)
+    if (days2.length >= 3) {
+      const profDays = days2.filter(d => d > 0).length
+      const pct = Math.round(profDays / days2.length * 100)
+      out.push({ icon: pct >= 50 ? ShieldCheck : AlertTriangle, color: pct >= 50 ? 'text-emerald-400' : 'text-amber-400', text: `Konsistensi: ${pct}% hari trading kamu profit (${profDays}/${days2.length} hari).` })
+    }
+
+    // Avg RR
+    if (stats.avg_loss > 0 && stats.avg_win > 0) {
+      const rr = stats.avg_win / stats.avg_loss
+      out.push({ icon: rr >= 1.5 ? TrendingUp : AlertTriangle, color: rr >= 1.5 ? 'text-emerald-400' : 'text-amber-400', text: `Rata-rata risk:reward ${rr.toFixed(2)} — ${rr >= 1.5 ? 'bagus, reward > risk.' : 'usahakan reward minimal 1.5x risk.'}` })
+    }
+
+    // Recent trend (last 10)
+    const recent = [...normal].sort((a, b) => a.date.localeCompare(b.date)).slice(-10)
+    if (recent.length >= 5) {
+      const rPnl = recent.reduce((s, t) => s + t.pnl, 0)
+      const rWr = Math.round(recent.filter(t => t.result === 'win').length / recent.length * 100)
+      out.push({ icon: rPnl >= 0 ? TrendingUp : TrendingDown, color: rPnl >= 0 ? 'text-emerald-400' : 'text-red-400', text: `10 trade terakhir: ${fmt(rPnl)} (${rWr}% WR) — ${rPnl >= 0 ? 'momentum positif.' : 'sedang kurang bagus, hati-hati.'}` })
+    }
+
+    // Expectancy
+    if (normal.length >= 5) {
+      out.push({ icon: stats.expectancy >= 0 ? TrendingUp : TrendingDown, color: stats.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400', text: `Expectancy ${fmt(stats.expectancy)} per trade — ${stats.expectancy >= 0 ? 'sistem kamu menguntungkan jangka panjang.' : 'sistem masih merugi, perlu perbaikan.'}` })
+    }
+
+    return out
   }, [trades, stats, fmt])
 
+  const [open, setOpen] = useState(false)
+
   if (insights.length === 0) return null
+  const top = insights.slice(0, variant === 'hero' ? 6 : 5)
 
   if (variant === 'hero') {
     return (
+      <>
       <div className="relative rounded-2xl overflow-hidden p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/40">
         <div className="relative rounded-2xl bg-[#060d0b] overflow-hidden">
           {/* glow accents */}
           <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary/25 blur-3xl" />
           <div className="absolute -bottom-24 -left-16 w-64 h-64 rounded-full bg-cyan-500/15 blur-3xl" />
           <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
+
+          {/* Round AI button — top right */}
+          <button onClick={() => setOpen(true)} title="Lihat semua insight AI"
+            className="absolute top-4 right-4 z-10 group">
+            <span className="absolute inset-0 rounded-full bg-primary/40 dtq-ping" />
+            <span className="absolute inset-0 rounded-full bg-cyan-400/30 dtq-ping2" />
+            <span className="relative flex items-center justify-center w-11 h-11 rounded-full bg-gradient-to-br from-primary to-cyan-500 shadow-lg shadow-primary/40 ring-2 ring-white/20 group-hover:scale-105 transition-transform">
+              <Sparkles size={18} className="text-white dtq-spin-slow" />
+            </span>
+          </button>
+
           <div className="relative p-6">
-            <div className="flex items-center gap-3 mb-5">
+            <div className="flex items-center gap-3 mb-5 pr-14">
               <span className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/20 ring-1 ring-primary/40">
                 <Lightbulb size={20} className="text-primary" />
               </span>
@@ -196,20 +282,59 @@ export function InsightsCard({ trades, stats, fmt, variant = 'default' }: { trad
                   Insight by AI
                   <span className="text-[10px] font-bold uppercase tracking-widest text-primary px-2 py-0.5 rounded-full bg-primary/15 ring-1 ring-primary/30">Datalitiq AI</span>
                 </h3>
-                <p className="text-xs text-white/45">Analisa performa trading kamu secara otomatis</p>
+                <p className="text-xs text-white/45">Analisa performa trading kamu secara otomatis · klik ✦ untuk selengkapnya</p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {insights.map((ins, i) => (
+              {top.map((ins, i) => (
                 <div key={i} className="flex items-start gap-3 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3.5 py-3 backdrop-blur-sm">
                   <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={16} /></span>
                   <p className="text-sm text-white/90 leading-snug">{ins.text}</p>
                 </div>
               ))}
             </div>
+            {insights.length > top.length && (
+              <button onClick={() => setOpen(true)} className="mt-3 text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
+                + {insights.length - top.length} insight lainnya →
+              </button>
+            )}
           </div>
         </div>
+
+        <style jsx>{`
+          .dtq-ping { animation: dtq-ping 2s cubic-bezier(0,0,0.2,1) infinite; }
+          .dtq-ping2 { animation: dtq-ping 2s cubic-bezier(0,0,0.2,1) infinite 1s; }
+          @keyframes dtq-ping { 0% { transform: scale(1); opacity: .7 } 80%,100% { transform: scale(1.9); opacity: 0 } }
+          .dtq-spin-slow { animation: dtq-spin 6s linear infinite; }
+          @keyframes dtq-spin { to { transform: rotate(360deg) } }
+        `}</style>
       </div>
+
+      {/* Dialog with ALL insights */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2.5">
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-cyan-500 shadow-md">
+                <Sparkles size={17} className="text-white" />
+              </span>
+              <div>
+                <p className="text-base font-black">Analisa AI Lengkap</p>
+                <p className="text-[11px] font-normal text-muted-foreground">{insights.length} temuan dari data trading kamu</p>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 mt-2">
+            {insights.map((ins, i) => (
+              <div key={i} className="flex items-start gap-3 rounded-xl bg-muted/30 ring-1 ring-border/40 px-3.5 py-3">
+                <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={16} /></span>
+                <p className="text-sm text-foreground/90 leading-snug">{ins.text}</p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+      </>
     )
   }
 
@@ -227,7 +352,7 @@ export function InsightsCard({ trades, stats, fmt, variant = 'default' }: { trad
       </CardHeader>
       <CardContent className="relative">
         <div className="space-y-2">
-          {insights.map((ins, i) => (
+          {top.map((ins, i) => (
             <div key={i} className="flex items-start gap-3 rounded-xl bg-muted/30 ring-1 ring-border/40 px-3 py-2.5 transition-colors hover:bg-muted/50">
               <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={15} /></span>
               <p className="text-sm text-foreground/85 leading-snug">{ins.text}</p>

@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase'
 import { useStore } from '@/lib/store'
 import { useT } from '@/lib/i18n'
 import { toast } from '@/lib/toast'
+import { BrandLogo } from '@/components/layout/BrandLogo'
 
 type NavItem = { href: string; label: string; icon: React.ElementType; children?: NavItem[] }
 type NavGroup = { label: string; items: NavItem[] }
@@ -71,13 +72,14 @@ export function Sidebar() {
   const groups = useGroups()
   const t = useT()
   const { isLocked } = useMenuLock()
+  const { logoUrl } = useStore()
   const [openMenu, setOpenMenu] = useState<string | null>('/finance')
 
   return (
     <aside className="hidden md:flex w-56 shrink-0 border-r border-border/50 bg-sidebar flex-col py-5 px-3">
       <div className="px-3 mb-5">
-        <p className="text-base font-black tracking-tight">Datalitiq</p>
-        <p className="text-[10px] text-muted-foreground/60 mt-0.5 uppercase tracking-widest">Trading Analytics</p>
+        <BrandLogo url={logoUrl} />
+        {!logoUrl && <p className="text-[10px] text-muted-foreground/60 mt-0.5 uppercase tracking-widest">Trading Analytics</p>}
       </div>
 
       <nav className="flex-1 flex flex-col gap-4 overflow-y-auto">
