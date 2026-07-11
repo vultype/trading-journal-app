@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw, Link2, Upload, Loader2 } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw, Link2, Upload, Loader2, MoveHorizontal, SlidersHorizontal, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import type { Trade } from '@/types'
 
@@ -148,6 +148,7 @@ export default function TradesPage() {
   const [filterEndDate, setFilterEndDate]     = useState('')
   const [filterMinProfit, setFilterMinProfit] = useState('')
   const [filterMaxLoss, setFilterMaxLoss]     = useState('')
+  const [showAdvanced, setShowAdvanced]       = useState(false)
 
   const tradingAccounts = accounts   // semua akun sekarang akun broker/trading
   const allPairs = useMemo(() => [...new Set(trades.map(t => t.pair))].sort(), [trades])
@@ -219,11 +220,11 @@ export default function TradesPage() {
     }
   }
 
-  const hasFilter = !!(
-    quickFilter || filterResult !== 'all' || filterDir !== 'all' ||
-    filterPair !== 'all' || filterStrategy !== 'all' ||
-    filterStartDate || filterEndDate || filterMinProfit || filterMaxLoss
-  )
+  const activeCount = [
+    quickFilter, filterResult !== 'all', filterDir !== 'all', filterPair !== 'all',
+    filterStrategy !== 'all', filterStartDate, filterEndDate, filterMinProfit, filterMaxLoss,
+  ].filter(Boolean).length
+  const hasFilter = activeCount > 0
 
   function resetFilters() {
     setQuickFilter(''); setFilterResult('all'); setFilterDir('all')
@@ -361,15 +362,15 @@ export default function TradesPage() {
                 <Label className="text-xs text-muted-foreground">Market Structure</Label>
                 <div className="flex gap-2">
                   {([
-                    { val: 'bullish', label: '🐂 Bullish', activeClass: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' },
-                    { val: 'bearish', label: '🐻 Bearish', activeClass: 'bg-red-500/10 border-red-500/30 text-red-400' },
-                    { val: 'ranging', label: '↔ Ranging',  activeClass: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' },
-                  ] as const).map(({ val, label, activeClass }) => (
+                    { val: 'bullish', label: 'Bullish', icon: TrendingUp,    activeClass: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' },
+                    { val: 'bearish', label: 'Bearish', icon: TrendingDown,  activeClass: 'bg-red-500/10 border-red-500/30 text-red-400' },
+                    { val: 'ranging', label: 'Ranging', icon: MoveHorizontal, activeClass: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' },
+                  ] as const).map(({ val, label, icon: Icon, activeClass }) => (
                     <button key={val} type="button"
                       onClick={() => set('market_structure', form.market_structure === val ? '' : val)}
-                      className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-all
+                      className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition-all
                         ${form.market_structure === val ? activeClass : 'border-border/60 text-muted-foreground hover:bg-muted'}`}>
-                      {label}
+                      <Icon size={13} /> {label}
                     </button>
                   ))}
                 </div>
@@ -528,39 +529,43 @@ export default function TradesPage() {
         </Dialog>
       </div>
 
-      {/* ── Filter Card ──────────────────────────────────────────────────── */}
+      {/* ── Filter Card (modern) ──────────────────────────────────────────── */}
       <Card>
         <CardContent className="pt-4 space-y-4">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Filter size={13} className="text-primary"/>
+              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10"><Filter size={13} className="text-primary"/></span>
               <span className="text-sm font-semibold">Filter Trades</span>
+              {activeCount > 0 && <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-full px-2 py-0.5">{activeCount} aktif</span>}
             </div>
-            {hasFilter && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <RotateCcw size={10}/> Reset
+            <div className="flex items-center gap-2">
+              {hasFilter && (
+                <button type="button" onClick={resetFilters}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors">
+                  <RotateCcw size={11}/> Reset
+                </button>
+              )}
+              <button type="button" onClick={() => setShowAdvanced(v => !v)}
+                className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                <SlidersHorizontal size={12}/> {showAdvanced ? 'Sembunyikan' : 'Filter lanjutan'}
               </button>
-            )}
+            </div>
           </div>
 
-          {/* Quick chips */}
+          {/* Quick chips (dengan icon) */}
           <div className="flex flex-wrap gap-2">
             <ChipBtn active={quickFilter === 'winners'} color="green" onClick={() => setQuickFilter(quickFilter === 'winners' ? '' : 'winners')}>
-              ↗ Winners Only
+              <TrendingUp size={12}/> Winners
             </ChipBtn>
             <ChipBtn active={quickFilter === 'losers'} color="red" onClick={() => setQuickFilter(quickFilter === 'losers' ? '' : 'losers')}>
-              ↘ Losers Only
+              <TrendingDown size={12}/> Losers
             </ChipBtn>
             <ChipBtn active={quickFilter === 'bigwin'} color="teal" onClick={() => setQuickFilter(quickFilter === 'bigwin' ? '' : 'bigwin')}>
-              ↑ Big Wins (1M+)
+              <ArrowUp size={12}/> Big Wins (1M+)
             </ChipBtn>
             <ChipBtn active={quickFilter === 'bigloss'} color="orange" onClick={() => setQuickFilter(quickFilter === 'bigloss' ? '' : 'bigloss')}>
-              ↓ Big Losses (1M+)
+              <ArrowDown size={12}/> Big Losses (1M+)
             </ChipBtn>
           </div>
 
@@ -569,9 +574,9 @@ export default function TradesPage() {
             <div className="space-y-1">
               <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Result</Label>
               <Select value={filterResult} onValueChange={v => setFilterResult(v ?? 'all')}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs w-full"><SelectValue>{filterResult === 'all' ? 'Semua' : filterResult === 'win' ? 'Win' : filterResult === 'loss' ? 'Loss' : 'Breakeven'}</SelectValue></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Trades</SelectItem>
+                  <SelectItem value="all">Semua Hasil</SelectItem>
                   <SelectItem value="win">Win</SelectItem>
                   <SelectItem value="loss">Loss</SelectItem>
                   <SelectItem value="breakeven">Breakeven</SelectItem>
@@ -579,11 +584,11 @@ export default function TradesPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Type</Label>
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Arah</Label>
               <Select value={filterDir} onValueChange={v => setFilterDir(v ?? 'all')}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs w-full"><SelectValue>{filterDir === 'all' ? 'Semua' : filterDir === 'long' ? 'Long' : 'Short'}</SelectValue></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="all">Semua Arah</SelectItem>
                   <SelectItem value="long">Long</SelectItem>
                   <SelectItem value="short">Short</SelectItem>
                 </SelectContent>
@@ -592,66 +597,46 @@ export default function TradesPage() {
             <div className="space-y-1">
               <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Symbol</Label>
               <Select value={filterPair} onValueChange={v => setFilterPair(v ?? 'all')}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs w-full"><SelectValue>{filterPair === 'all' ? 'Semua Pair' : filterPair}</SelectValue></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Symbols</SelectItem>
+                  <SelectItem value="all">Semua Pair</SelectItem>
                   {allPairs.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Strategy</Label>
+              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Strategi</Label>
               <Select value={filterStrategy} onValueChange={v => setFilterStrategy(v ?? 'all')}>
-                <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-xs w-full"><SelectValue>{filterStrategy === 'all' ? 'Semua' : filterStrategy}</SelectValue></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Strategies</SelectItem>
+                  <SelectItem value="all">Semua Strategi</SelectItem>
                   {allStrategies.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {/* Date & amount filters */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Start Date</Label>
-              <Input
-                type="date"
-                value={filterStartDate}
-                onChange={e => setFilterStartDate(e.target.value)}
-                className="h-9 text-xs"
-              />
+          {/* Date & amount filters (collapsible) */}
+          {showAdvanced && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-border/40">
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Dari Tanggal</Label>
+                <Input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="h-9 text-xs"/>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Sampai Tanggal</Label>
+                <Input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="h-9 text-xs"/>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Min Profit ({settings.currency})</Label>
+                <Input type="number" placeholder="1000000" value={filterMinProfit} onChange={e => setFilterMinProfit(e.target.value)} className="h-9 text-xs"/>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Max Loss ({settings.currency})</Label>
+                <Input type="number" placeholder="-1000000" value={filterMaxLoss} onChange={e => setFilterMaxLoss(e.target.value)} className="h-9 text-xs"/>
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">End Date</Label>
-              <Input
-                type="date"
-                value={filterEndDate}
-                onChange={e => setFilterEndDate(e.target.value)}
-                className="h-9 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Min Profit ({settings.currency})</Label>
-              <Input
-                type="number"
-                placeholder="e.g., 1000000"
-                value={filterMinProfit}
-                onChange={e => setFilterMinProfit(e.target.value)}
-                className="h-9 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">Max Loss ({settings.currency})</Label>
-              <Input
-                type="number"
-                placeholder="e.g., -1000000"
-                value={filterMaxLoss}
-                onChange={e => setFilterMaxLoss(e.target.value)}
-                className="h-9 text-xs"
-              />
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 

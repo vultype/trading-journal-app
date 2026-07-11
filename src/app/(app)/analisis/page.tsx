@@ -163,6 +163,23 @@ function MiniStat({ label, value, sub, green, red }: { label: string; value: Rea
   )
 }
 
+type MetricItem = { icon: React.ElementType; label: string; value: string; sub?: string; tone?: 'green' | 'red' | 'amber' | 'muted' }
+
+function MetricRow({ icon: Icon, label, value, sub, tone }: MetricItem) {
+  const toneMap = { green: 'text-emerald-400', red: 'text-red-400', amber: 'text-amber-400', muted: 'text-foreground' }
+  const iconTone = { green: 'text-emerald-400/70', red: 'text-red-400/70', amber: 'text-amber-400/70', muted: 'text-muted-foreground/60' }
+  const tk = tone ?? 'muted'
+  return (
+    <div className="flex items-center justify-between py-2.5">
+      <span className="flex items-center gap-2.5 text-sm text-muted-foreground">
+        <Icon size={14} className={iconTone[tk]} />
+        <span>{label}{sub && <span className="text-[11px] text-muted-foreground/50 ml-1.5">· {sub}</span>}</span>
+      </span>
+      <span className={`text-sm font-bold tabular-nums ${toneMap[tk]}`}>{value}</span>
+    </div>
+  )
+}
+
 export default function AnalisisPage() {
   const { trades, transfers, deleteTrade, journalNotes, saveJournal, deleteJournal } = useStore()
   const fmt   = useCurrency()
@@ -376,31 +393,67 @@ export default function AnalisisPage() {
         </Card>
       </div>
 
-      {/* ── Overview stats ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MiniStat label="Win Rate" value={`${stats.win_rate.toFixed(1)}%`} sub={`${wins.length}W / ${losses.length}L`} green={stats.win_rate>=50} red={stats.win_rate<50}/>
-        <MiniStat label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" green={stats.expectancy>0} red={stats.expectancy<0}/>
-        <MiniStat label="Max Drawdown" value={fmt(stats.max_drawdown)} red/>
-        <MiniStat label="Total P&L" value={fmt(stats.total_pnl)} green={stats.total_pnl>=0} red={stats.total_pnl<0}/>
-      </div>
-
-      {/* ── Extra stats ── */}
+      {/* ── Ringkasan Performa (layout lebih informatif) ── */}
       {(() => {
-        const rr = wins.length && losses.length ? (stats.avg_win / stats.avg_loss) : 0
+        const rr = stats.avg_loss > 0 && stats.avg_win > 0 ? stats.avg_win / stats.avg_loss : 0
         const bes = normalTrades.filter(t => t.result === 'breakeven').length
-        const totalVol = normalTrades.reduce((s, t) => s + (t.lot_size ?? 0), 0)
         const avgTradeSize = normalTrades.length ? stats.total_pnl / normalTrades.length : 0
-        const streakBest = stats.win_streak
+        const total = wins.length + losses.length + bes
+        const wPct = total ? wins.length / total * 100 : 0
+        const lPct = total ? losses.length / total * 100 : 0
+        const bPct = total ? bes / total * 100 : 0
+
+        const left: MetricItem[] = [
+          { icon: LineChart,     label: 'Total P&L',        value: fmt(stats.total_pnl),   tone: stats.total_pnl >= 0 ? 'green' : 'red' },
+          { icon: Target,        label: 'Expectancy',       value: fmt(stats.expectancy),  sub: 'per trade', tone: stats.expectancy >= 0 ? 'green' : 'red' },
+          { icon: TrendingDown,  label: 'Max Drawdown',     value: fmt(stats.max_drawdown), tone: 'red' },
+          { icon: Award,         label: 'Avg RR',           value: rr ? `1 : ${rr.toFixed(2)}` : '—', sub: 'reward : risk', tone: rr >= 1.5 ? 'green' : rr > 0 ? 'amber' : 'muted' },
+          { icon: Coins,         label: 'Avg per Trade',    value: fmt(avgTradeSize),      tone: avgTradeSize >= 0 ? 'green' : 'red' },
+        ]
+        const right: MetricItem[] = [
+          { icon: TrendingUp,    label: 'Gross Profit',     value: fmt(grossProfit),       tone: 'green' },
+          { icon: TrendingDown,  label: 'Gross Loss',       value: fmt(-grossLoss),        tone: 'red' },
+          { icon: TrendingUp,    label: 'Largest Win',      value: fmt(largestWin),        tone: 'green' },
+          { icon: TrendingDown,  label: 'Largest Loss',     value: fmt(largestLoss),       tone: 'red' },
+          { icon: Flame,         label: 'Win Streak Terbaik', value: `${stats.win_streak}x`, tone: stats.win_streak >= 3 ? 'green' : 'muted' },
+        ]
+
         return (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <MiniStat label="Total Trade" value={String(normalTrades.length)} sub={`${bes} breakeven`} />
-            <MiniStat label="Avg Win / Loss (RR)" value={rr ? rr.toFixed(2) : '—'} sub="reward : risk" green={rr>=1.5} red={rr>0 && rr<1}/>
-            <MiniStat label="Gross Profit" value={fmt(grossProfit)} green/>
-            <MiniStat label="Gross Loss" value={fmt(-grossLoss)} red/>
-            <MiniStat label="Largest Win" value={fmt(largestWin)} green/>
-            <MiniStat label="Largest Loss" value={fmt(largestLoss)} red/>
-            <MiniStat label="Win Streak Terbaik" value={`${streakBest}x`} green={streakBest>=3}/>
-            <MiniStat label="Avg per Trade" value={fmt(avgTradeSize)} sub="termasuk semua" green={avgTradeSize>=0} red={avgTradeSize<0}/>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Win Rate breakdown */}
+            <Card className="lg:col-span-1">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Distribusi Win Rate</CardTitle></CardHeader>
+              <CardContent>
+                <div className="flex items-end justify-between mb-3">
+                  <div>
+                    <p className={`text-4xl font-black tracking-tight ${stats.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{stats.win_rate.toFixed(1)}%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">win rate</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{total} trade</p>
+                </div>
+                <div className="h-3 rounded-full overflow-hidden flex bg-muted">
+                  {wPct > 0 && <div style={{ width: `${wPct}%` }} className="bg-emerald-500" />}
+                  {bPct > 0 && <div style={{ width: `${bPct}%` }} className="bg-yellow-500" />}
+                  {lPct > 0 && <div style={{ width: `${lPct}%` }} className="bg-red-500" />}
+                </div>
+                <div className="flex items-center justify-between mt-3 text-xs">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {wins.length} Win</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500" /> {bes} BE</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" /> {losses.length} Loss</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Metrik utama — list terstruktur */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Metrik Utama</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:gap-x-8">
+                  <div className="divide-y divide-border/40">{left.map((m, i) => <MetricRow key={i} {...m} />)}</div>
+                  <div className="divide-y divide-border/40">{right.map((m, i) => <MetricRow key={i} {...m} />)}</div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )
       })()}
