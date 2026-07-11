@@ -20,7 +20,7 @@ type Plan = {
 
 const PLANS: Plan[] = [
   {
-    id: 'free', name: 'Standar', icon: Sparkles, price: { IDR: 0, USD: 0 },
+    id: 'free', name: 'Standar', icon: Sparkles, price: { IDR: 59000, USD: 4 },
     tagline: 'Untuk mulai mencatat trading',
     accent: 'text-muted-foreground',
     features: [
@@ -32,7 +32,7 @@ const PLANS: Plan[] = [
     ],
   },
   {
-    id: 'pro', name: 'Professional', icon: Crown, price: { IDR: 99000, USD: 7 },
+    id: 'pro', name: 'Professional', icon: Crown, price: { IDR: 129000, USD: 9 },
     tagline: 'Untuk trader yang serius berkembang',
     accent: 'text-primary', highlight: true,
     features: [

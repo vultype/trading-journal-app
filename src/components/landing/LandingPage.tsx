@@ -14,14 +14,24 @@ type Lang = 'id' | 'en'
 
 const BROKERS = ['Exness', 'XM', 'IC Markets', 'FTMO', 'Binance', 'Bybit', 'MIFX', 'Pepperstone', 'OANDA', 'FundedNext', 'Deriv', 'Octa']
 
+const BASE = { standar: 59000, pro: 129000 }
+const DURATIONS = [
+  { months: 1, off: 0, id: 'Bulanan', en: 'Monthly' },
+  { months: 3, off: 10, id: '3 Bulan', en: '3 Months' },
+  { months: 6, off: 20, id: '6 Bulan', en: '6 Months' },
+  { months: 12, off: 35, id: '1 Tahun', en: '1 Year' },
+]
+const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
+const pkgPrice = (base: number, months: number, off: number) => Math.round(base * months * (1 - off / 100) / 1000) * 1000
+
 const C = {
   id: {
     nav: { features: 'Fitur', pricing: 'Harga', faq: 'FAQ', reviews: 'Testimoni', login: 'Masuk', cta: 'Coba Gratis', dash: 'Buka Dashboard' },
     hero: {
-      badge: 'Jurnal & Analitik Trading Bertenaga AI',
-      title: ['Berhenti Trading Buta.', 'Ukur Performa Nyata Kamu.'],
-      sub: 'Catat, analisa, dan tingkatkan trading kamu dengan AI insight, Datalitiq Score, dan analisa jam terbaik — semua dalam satu dashboard yang cantik.',
-      cta1: 'Mulai Gratis', cta2: 'Lihat Fitur', trust: 'Gratis selamanya · Tanpa kartu kredit',
+      badge: 'Data > Feeling · Jurnal & Analitik AI',
+      title: ['Stop Rugi Karena Feeling.', 'Trading Disiplin Berbasis Data.'],
+      sub: 'Trader konsisten menang bukan karena hoki — tapi karena punya data. Datalitiq kasih kamu AI insight, skor performa, dan analisa mendalam supaya kamu lebih disiplin dan berhenti mengulang kerugian.',
+      cta1: 'Coba Demo Gratis', cta2: 'Lihat Fitur', trust: 'Data-driven · Disiplin · Konsisten',
       floatA: 'Win Rate naik 12%', floatB: 'Datalitiq Score 87',
     },
     trustBar: 'Dipercaya trader XAUUSD, Forex, Crypto & Saham',
@@ -48,6 +58,9 @@ const C = {
       { icon: CalendarDays, t: 'Kalender P&L & Equity', d: 'Lihat progres profit tiap hari dan kurva equity kamu.' },
       { icon: GitCompare, t: 'Komparasi Strategi & Pair', d: 'Bandingkan mana strategi & pair paling menguntungkan.' },
       { icon: BookOpen, t: 'Jurnal Harian + Mood', d: 'Evaluasi psikologi & disiplin trading kamu tiap hari.' },
+      { icon: ShieldCheck, t: 'Deteksi Overtrade', d: 'Tandai trade emosional — lihat berapa equity yang tergerus.' },
+      { icon: Wallet, t: 'Multi-Akun Broker', d: 'Kelola banyak akun broker & lacak deposit/withdraw murni.' },
+      { icon: Zap, t: 'Simulator Money Management', d: 'Latihan risk-reward tanpa mempengaruhi data trade asli.' },
     ],
     howTitle: 'Cukup 3 langkah untuk mulai',
     how: [
@@ -89,10 +102,10 @@ const C = {
   en: {
     nav: { features: 'Features', pricing: 'Pricing', faq: 'FAQ', reviews: 'Reviews', login: 'Sign in', cta: 'Try Free', dash: 'Open Dashboard' },
     hero: {
-      badge: 'AI-Powered Trading Journal & Analytics',
-      title: ['Stop Trading Blind.', 'Measure Your Real Performance.'],
-      sub: 'Log, analyze, and improve your trading with AI insights, the Datalitiq Score, and best-hour analysis — all in one beautiful dashboard.',
-      cta1: 'Start Free', cta2: 'See Features', trust: 'Free forever · No credit card',
+      badge: 'Data > Feeling · AI Trading Journal & Analytics',
+      title: ['Stop Losing on Feelings.', 'Trade with Data & Discipline.'],
+      sub: "Consistent traders don't win on luck — they win on data. Datalitiq gives you AI insights, a performance score, and deep analytics so you stay disciplined and stop repeating losses.",
+      cta1: 'Try Free Demo', cta2: 'See Features', trust: 'Data-driven · Disciplined · Consistent',
       floatA: 'Win Rate up 12%', floatB: 'Datalitiq Score 87',
     },
     trustBar: 'Trusted by XAUUSD, Forex, Crypto & Stock traders',
@@ -119,6 +132,9 @@ const C = {
       { icon: CalendarDays, t: 'P&L Calendar & Equity', d: 'See daily profit progress and your equity curve.' },
       { icon: GitCompare, t: 'Strategy & Pair Comparison', d: 'Compare which strategies & pairs are most profitable.' },
       { icon: BookOpen, t: 'Daily Journal + Mood', d: 'Evaluate your trading psychology & discipline daily.' },
+      { icon: ShieldCheck, t: 'Overtrade Detection', d: 'Flag emotional trades — see how much equity they cost.' },
+      { icon: Wallet, t: 'Multi Broker Accounts', d: 'Manage multiple broker accounts & track pure deposits/withdrawals.' },
+      { icon: Zap, t: 'Money-Management Simulator', d: 'Practice risk-reward without affecting your real trade data.' },
     ],
     howTitle: 'Just 3 steps to get started',
     how: [
@@ -177,42 +193,112 @@ function Reveal({ children, delay = 0, className = '' }: { children: React.React
   )
 }
 
-// ── CSS mockup fallback ──
-function Mockup() {
+// ── HTML mockups (dummy image sampai screenshot asli diupload) ──
+function StatChip({ label, value, tone = 'white' }: { label: string; value: string; tone?: string }) {
+  const c = tone === 'green' ? 'text-emerald-400' : tone === 'red' ? 'text-red-400' : tone === 'primary' ? 'text-primary' : 'text-white'
+  return (
+    <div className="rounded-lg bg-white/[0.03] border border-white/5 p-2.5">
+      <p className="text-[8px] uppercase tracking-wider text-white/35 mb-1">{label}</p>
+      <p className={`text-[13px] font-black ${c}`}>{value}</p>
+    </div>
+  )
+}
+
+function MockDashboard() {
   return (
     <div className="p-4 space-y-3 bg-[#0a1210]">
+      <div className="flex items-center justify-between">
+        <div><div className="h-2.5 w-32 rounded bg-white/25 mb-1.5" /><div className="h-1.5 w-24 rounded bg-white/10" /></div>
+        <div className="h-6 w-20 rounded-md bg-primary/80" />
+      </div>
       <div className="grid grid-cols-4 gap-2">
-        {[['w-8', 'bg-white/40'], ['w-10', 'bg-primary/60'], ['w-12', 'bg-emerald-400/60'], ['w-9', 'bg-emerald-400/60']].map(([w, c], i) => (
-          <div key={i} className="rounded-lg bg-white/[0.03] border border-white/5 p-2.5"><div className="h-1.5 w-8 rounded bg-white/10 mb-2" /><div className={`h-3 ${w} rounded ${c}`} /></div>
-        ))}
+        <StatChip label="Saldo" value="Rp664jt" />
+        <StatChip label="Deposit" value="Rp600jt" tone="primary" />
+        <StatChip label="Profit" value="+Rp42jt" tone="green" />
+        <StatChip label="Win Rate" value="40%" tone="green" />
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl bg-white/[0.03] border border-white/5 p-3 flex flex-col items-center justify-center">
           <div className="relative w-16 h-16">
             <svg viewBox="0 0 64 64" className="w-16 h-16 -rotate-90"><circle cx="32" cy="32" r="27" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" /><circle cx="32" cy="32" r="27" fill="none" stroke="#10b981" strokeWidth="6" strokeLinecap="round" strokeDasharray="130 170" /></svg>
-            <span className="absolute inset-0 flex items-center justify-center text-lg font-black text-emerald-400">87</span>
+            <span className="absolute inset-0 flex items-center justify-center text-lg font-black text-emerald-400">78</span>
           </div>
           <span className="text-[9px] text-white/40 mt-1">Datalitiq Score</span>
         </div>
         <div className="col-span-2 rounded-xl bg-white/[0.03] border border-white/5 p-3">
-          <svg viewBox="0 0 200 70" className="w-full h-full" preserveAspectRatio="none">
+          <p className="text-[9px] text-white/40 mb-1">Equity Curve</p>
+          <svg viewBox="0 0 200 56" className="w-full h-12" preserveAspectRatio="none">
             <defs><linearGradient id="lgm" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity="0.4" /><stop offset="100%" stopColor="#10b981" stopOpacity="0" /></linearGradient></defs>
-            <path d="M0,55 L25,50 L50,52 L75,38 L100,42 L125,28 L150,30 L175,15 L200,18 L200,70 L0,70 Z" fill="url(#lgm)" />
-            <path d="M0,55 L25,50 L50,52 L75,38 L100,42 L125,28 L150,30 L175,15 L200,18" fill="none" stroke="#10b981" strokeWidth="2" />
+            <path d="M0,45 L25,42 L50,44 L75,30 L100,34 L125,20 L150,24 L175,10 L200,13 L200,56 L0,56 Z" fill="url(#lgm)" />
+            <path d="M0,45 L25,42 L50,44 L75,30 L100,34 L125,20 L150,24 L175,10 L200,13" fill="none" stroke="#10b981" strokeWidth="2" />
           </svg>
         </div>
       </div>
       <div className="rounded-xl bg-gradient-to-br from-primary/15 to-transparent border border-primary/20 p-3 flex items-center gap-2.5">
         <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/20"><Sparkles size={14} className="text-primary" /></span>
-        <div className="space-y-1"><div className="h-1.5 w-40 rounded bg-white/20" /><div className="h-1.5 w-28 rounded bg-white/10" /></div>
+        <div className="space-y-1 flex-1"><div className="h-1.5 w-40 rounded bg-white/20" /><div className="h-1.5 w-28 rounded bg-white/10" /></div>
       </div>
     </div>
   )
 }
 
-// ── Browser-frame screenshot (dummy fallback jika file belum ada) ──
-function Shot({ src, alt }: { src?: string; alt?: string }) {
+function MockInsight() {
+  const rows = [
+    { c: 'text-emerald-400', w: 'w-44' }, { c: 'text-primary', w: 'w-36' },
+    { c: 'text-emerald-400', w: 'w-40' }, { c: 'text-amber-400', w: 'w-32' },
+    { c: 'text-emerald-400', w: 'w-44' }, { c: 'text-red-400', w: 'w-36' },
+  ]
+  return (
+    <div className="p-5 bg-gradient-to-br from-[#08130f] to-[#0a1210]">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="flex items-center justify-center w-10 h-10 rounded-2xl bg-primary/20 ring-1 ring-primary/40"><Brain size={18} className="text-primary" /></span>
+        <div><div className="h-3 w-28 rounded bg-white/30 mb-1.5" /><div className="h-1.5 w-40 rounded bg-white/10" /></div>
+        <span className="ml-auto flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-primary to-cyan-500"><Sparkles size={16} className="text-white" /></span>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3 py-2.5">
+            <Zap size={13} className={`${r.c} shrink-0`} />
+            <div className={`h-1.5 ${r.w} max-w-full rounded bg-white/20`} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function MockTime() {
+  return (
+    <div className="p-4 space-y-3 bg-[#0a1210]">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3"><p className="text-[9px] text-white/40 uppercase tracking-wide mb-1">Jam Terbaik</p><p className="text-lg font-black text-emerald-400">20:00</p></div>
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3"><p className="text-[9px] text-white/40 uppercase tracking-wide mb-1">Sesi Terbaik</p><p className="text-lg font-black">New York</p></div>
+      </div>
+      <div className="grid grid-cols-12 gap-1">
+        {Array.from({ length: 24 }).map((_, i) => {
+          const active = i >= 19 && i <= 21
+          const loss = i >= 7 && i <= 9
+          return <div key={i} className={`aspect-square rounded ${active ? 'bg-emerald-500/70' : loss ? 'bg-red-500/50' : 'bg-white/[0.04]'}`} />
+        })}
+      </div>
+      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-3 flex items-end gap-1.5 h-20">
+        {[30, 45, 20, 60, 35, 70, 50, 80, 40, 90].map((h, i) => (
+          <div key={i} className={`flex-1 rounded-t ${i % 3 === 1 ? 'bg-red-500/60' : 'bg-emerald-500/60'}`} style={{ height: `${h}%` }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Browser-frame screenshot (fallback ke mockup jika file belum ada) ──
+function Shot({ src, alt, fallback }: { src?: string; alt?: string; fallback?: React.ReactNode }) {
   const [err, setErr] = useState(false)
+  const ref = useRef<HTMLImageElement>(null)
+  // tangani kasus gambar sudah gagal load sebelum handler onError terpasang
+  useEffect(() => {
+    const img = ref.current
+    if (img && img.complete && img.naturalWidth === 0) setErr(true)
+  }, [src])
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0a1210] shadow-2xl shadow-black/60 overflow-hidden">
       <div className="flex items-center gap-1.5 px-4 py-3 border-b border-white/5">
@@ -220,8 +306,8 @@ function Shot({ src, alt }: { src?: string; alt?: string }) {
         <span className="ml-3 text-[10px] text-white/30 font-mono truncate">datalitiq.app</span>
       </div>
       {src && !err
-        ? <img src={src} alt={alt} onError={() => setErr(true)} className="w-full block" />
-        : <Mockup />}
+        ? <img ref={ref} src={src} alt={alt} onError={() => setErr(true)} className="w-full block" />
+        : (fallback ?? <MockDashboard />)}
     </div>
   )
 }
@@ -243,6 +329,7 @@ export function LandingPage() {
   const [lang, setLang] = useState<Lang>('id')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
+  const [dur, setDur] = useState(0)
   const t = C[lang]
 
   useEffect(() => {
@@ -424,7 +511,7 @@ export function LandingPage() {
                 <h3 className="text-2xl font-black tracking-tight leading-tight">{s.t}</h3>
                 <p className="text-base text-white/60 mt-4 leading-relaxed">{s.d}</p>
               </div>
-              <div className="lg:[direction:ltr]"><Shot src={s.img} alt={s.t} /></div>
+              <div className="lg:[direction:ltr]"><Shot src={s.img} alt={s.t} fallback={i === 1 ? <MockInsight /> : i === 2 ? <MockTime /> : <MockDashboard />} /></div>
             </div>
           </Reveal>
         ))}
@@ -458,35 +545,61 @@ export function LandingPage() {
             <p className="text-sm text-white/50 mt-3">{t.pricingSub}</p>
           </div>
         </Reveal>
+        {/* Duration toggle */}
+        <Reveal>
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex flex-wrap items-center justify-center gap-1 rounded-2xl bg-white/5 p-1">
+              {DURATIONS.map((d, i) => (
+                <button key={i} onClick={() => setDur(i)}
+                  className={`relative rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${dur === i ? 'bg-primary text-primary-foreground' : 'text-white/50 hover:text-white'}`}>
+                  {d[lang]}
+                  {d.off > 0 && <span className={`ml-1.5 text-[9px] font-bold ${dur === i ? 'text-primary-foreground/80' : 'text-primary'}`}>-{d.off}%</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+
         <div className="grid md:grid-cols-2 gap-5">
-          {t.plans.map((p, i) => (
-            <Reveal key={i} delay={i * 120}>
-              <div className={`relative rounded-3xl p-[1px] h-full ${p.highlight ? 'bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30' : 'bg-white/10'}`}>
-                <div className="rounded-3xl bg-[#0a1110] h-full p-7 flex flex-col">
-                  {p.highlight && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-full">{t.popular}</span>}
-                  <div className="flex items-center gap-2 mb-1">
-                    {p.highlight ? <Crown size={18} className="text-primary" /> : <Sparkles size={18} className="text-white/60" />}
-                    <h3 className="text-xl font-black">{p.name}</h3>
+          {t.plans.map((p, i) => {
+            const base = p.highlight ? BASE.pro : BASE.standar
+            const d = DURATIONS[dur]
+            const total = pkgPrice(base, d.months, d.off)
+            const perMonth = total / d.months
+            return (
+              <Reveal key={i} delay={i * 120}>
+                <div className={`relative rounded-3xl p-[1px] h-full ${p.highlight ? 'bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30' : 'bg-white/10'}`}>
+                  <div className="rounded-3xl bg-[#0a1110] h-full p-7 flex flex-col">
+                    {p.highlight && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-full">{t.popular}</span>}
+                    <div className="flex items-center gap-2 mb-1">
+                      {p.highlight ? <Crown size={18} className="text-primary" /> : <Sparkles size={18} className="text-white/60" />}
+                      <h3 className="text-xl font-black">{p.name}</h3>
+                    </div>
+                    <p className="text-xs text-white/45 mb-5">{p.tagline}</p>
+                    <div className="mb-1 flex items-end gap-1.5">
+                      <span className="text-4xl font-black tracking-tight">{rp(total)}</span>
+                      <span className="text-sm text-white/40 mb-1">/ {d[lang].toLowerCase()}</span>
+                    </div>
+                    <p className="text-xs text-white/40 mb-6">
+                      {d.months > 1 ? `≈ ${rp(perMonth)}${t.month} · ` : ''}
+                      {d.off > 0 ? <span className="text-primary font-semibold">hemat {d.off}%</span> : rp(base) + t.month}
+                    </p>
+                    <ul className="space-y-2.5 mb-7 flex-1">
+                      {p.features.map(f => (
+                        <li key={f} className="flex items-start gap-2.5 text-sm">
+                          <span className={`shrink-0 mt-0.5 rounded-full p-0.5 ${p.highlight ? 'bg-primary/15' : 'bg-white/10'}`}><Check size={12} className={p.highlight ? 'text-primary' : 'text-white/60'} /></span>
+                          <span className="text-white/80">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Link href={primaryHref} className={`w-full text-center rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25' : 'bg-white/10 text-white'}`}>{p.cta}</Link>
                   </div>
-                  <p className="text-xs text-white/45 mb-5">{p.tagline}</p>
-                  <div className="flex items-end gap-1.5 mb-6">
-                    <span className="text-4xl font-black tracking-tight">{p.price}</span>
-                    <span className="text-sm text-white/40 mb-1">{p.price === 'Gratis' || p.price === 'Free' ? `· ${t.forever}` : t.month}</span>
-                  </div>
-                  <ul className="space-y-2.5 mb-7 flex-1">
-                    {p.features.map(f => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm">
-                        <span className={`shrink-0 mt-0.5 rounded-full p-0.5 ${p.highlight ? 'bg-primary/15' : 'bg-white/10'}`}><Check size={12} className={p.highlight ? 'text-primary' : 'text-white/60'} /></span>
-                        <span className="text-white/80">{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Link href={primaryHref} className={`w-full text-center rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25' : 'bg-white/10 text-white'}`}>{p.cta}</Link>
                 </div>
-              </div>
-            </Reveal>
-          ))}
+              </Reveal>
+            )
+          })}
         </div>
+        <Reveal><p className="text-center text-xs text-white/40 mt-6">Semua paket termasuk uji coba gratis · Pembayaran via transfer BCA · Bisa berhenti kapan saja</p></Reveal>
       </section>
 
       {/* ── FAQ ── */}

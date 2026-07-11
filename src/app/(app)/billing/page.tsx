@@ -16,7 +16,7 @@ const BCA = {
   holder: 'ADMIN VULTYPE',
   waNumber: '6281234567890',
 }
-const PRO_PRICE = { IDR: 99000, USD: 7 }
+const PRO_PRICE = { IDR: 129000, USD: 9 }
 
 export default function BillingPage() {
   const { settings } = useStore()
