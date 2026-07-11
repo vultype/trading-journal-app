@@ -255,58 +255,61 @@ export function InsightsCard({ trades, stats, fmt, variant = 'default' }: { trad
   if (variant === 'hero') {
     return (
       <>
-      <div className="relative rounded-2xl overflow-hidden p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/40">
-        <div className="relative rounded-2xl bg-[#060d0b] overflow-hidden">
-          {/* glow accents */}
-          <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary/25 blur-3xl" />
-          <div className="absolute -bottom-24 -left-16 w-64 h-64 rounded-full bg-cyan-500/15 blur-3xl" />
-          <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
+      <div className="relative rounded-3xl overflow-hidden p-[1px] bg-gradient-to-br from-primary/50 via-white/5 to-cyan-500/30">
+        <div className="relative rounded-[calc(1.5rem-1px)] bg-[#070c0b] overflow-hidden">
+          {/* soft radial glows (clean, no grid) */}
+          <div className="absolute -top-28 right-4 w-80 h-80 rounded-full bg-primary/20 blur-[90px]" />
+          <div className="absolute -bottom-32 -left-20 w-72 h-72 rounded-full bg-cyan-500/10 blur-[90px]" />
 
-          {/* Round AI button — top right */}
+          {/* Round AI button — modern */}
           <button onClick={() => setOpen(true)} title="Lihat semua insight AI"
-            className="absolute top-4 right-4 z-10 group">
-            <span className="absolute inset-0 rounded-full bg-primary/40 dtq-ping" />
-            <span className="absolute inset-0 rounded-full bg-cyan-400/30 dtq-ping2" />
-            <span className="relative flex items-center justify-center w-11 h-11 rounded-full bg-gradient-to-br from-primary to-cyan-500 shadow-lg shadow-primary/40 ring-2 ring-white/20 group-hover:scale-105 transition-transform">
-              <Sparkles size={18} className="text-white dtq-spin-slow" />
+            className="absolute top-5 right-5 z-10 group w-12 h-12">
+            <span className="absolute inset-[-3px] rounded-full dtq-halo" />
+            <span className="absolute inset-0 rounded-full bg-primary/50 blur-md dtq-breathe" />
+            <span className="relative flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-primary via-emerald-400 to-cyan-500 ring-1 ring-white/25 shadow-xl shadow-primary/30 transition-transform duration-300 group-hover:scale-110 group-active:scale-95">
+              <Sparkles size={19} className="text-white drop-shadow" />
             </span>
           </button>
 
-          <div className="relative p-6">
-            <div className="flex items-center gap-3 mb-5 pr-14">
-              <span className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/20 ring-1 ring-primary/40">
-                <Lightbulb size={20} className="text-primary" />
+          <div className="relative p-7">
+            <div className="flex items-center gap-3.5 mb-6 pr-16">
+              <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/25 to-cyan-500/15 ring-1 ring-primary/30 shadow-lg shadow-primary/10">
+                <Lightbulb size={22} className="text-primary" />
               </span>
               <div>
-                <h3 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                <h3 className="text-xl font-black tracking-tight text-white flex items-center gap-2.5">
                   Insight by AI
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary px-2 py-0.5 rounded-full bg-primary/15 ring-1 ring-primary/30">Datalitiq AI</span>
+                  <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-primary px-2 py-0.5 rounded-full bg-primary/10 ring-1 ring-primary/25">Datalitiq AI</span>
                 </h3>
-                <p className="text-xs text-white/45">Analisa performa trading kamu secara otomatis · klik ✦ untuk selengkapnya</p>
+                <p className="text-[13px] text-white/40 mt-0.5">Analisa performa trading kamu secara otomatis</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {top.map((ins, i) => (
-                <div key={i} className="flex items-start gap-3 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3.5 py-3 backdrop-blur-sm">
+                <div key={i} className="flex items-start gap-3 rounded-2xl bg-white/[0.03] ring-1 ring-white/[0.07] px-4 py-3.5 transition-colors hover:bg-white/[0.05]">
                   <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={16} /></span>
-                  <p className="text-sm text-white/90 leading-snug">{ins.text}</p>
+                  <p className="text-[13.5px] text-white/85 leading-relaxed">{ins.text}</p>
                 </div>
               ))}
             </div>
             {insights.length > top.length && (
-              <button onClick={() => setOpen(true)} className="mt-3 text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
-                + {insights.length - top.length} insight lainnya →
+              <button onClick={() => setOpen(true)}
+                className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:gap-2.5 transition-all">
+                <Sparkles size={13} /> Lihat {insights.length - top.length} insight lainnya →
               </button>
             )}
           </div>
         </div>
 
         <style jsx>{`
-          .dtq-ping { animation: dtq-ping 2s cubic-bezier(0,0,0.2,1) infinite; }
-          .dtq-ping2 { animation: dtq-ping 2s cubic-bezier(0,0,0.2,1) infinite 1s; }
-          @keyframes dtq-ping { 0% { transform: scale(1); opacity: .7 } 80%,100% { transform: scale(1.9); opacity: 0 } }
-          .dtq-spin-slow { animation: dtq-spin 6s linear infinite; }
+          .dtq-halo {
+            background: conic-gradient(from 0deg, #10b981, #22d3ee, transparent 55%, #10b981);
+            animation: dtq-spin 3.5s linear infinite;
+            filter: blur(1px);
+          }
           @keyframes dtq-spin { to { transform: rotate(360deg) } }
+          .dtq-breathe { animation: dtq-breathe 2.6s ease-in-out infinite; }
+          @keyframes dtq-breathe { 0%,100% { opacity: .35; transform: scale(1) } 50% { opacity: .7; transform: scale(1.18) } }
         `}</style>
       </div>
 
