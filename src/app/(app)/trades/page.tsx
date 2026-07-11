@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DatePicker } from '@/components/ui/date-picker'
 import { TradeDetailDialog } from '@/components/trade/TradeDetailDialog'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw, Link2, Upload, Loader2, Sliders } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Filter, Check, X, RotateCcw, Link2, Upload, Loader2 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import type { Trade } from '@/types'
 
@@ -135,7 +135,6 @@ export default function TradesPage() {
   const [open, setOpen]         = useState(false)
   const [form, setForm]         = useState<FormData>(empty)
   const [detail, setDetail]     = useState<Trade | null>(null)
-  const [journalMode, setJournalMode] = useState<'simple' | 'advance'>('simple')
   const [imgMode, setImgMode]   = useState<'link' | 'upload'>('link')
   const [uploading, setUploading] = useState(false)
 
@@ -180,7 +179,6 @@ export default function TradesPage() {
     const pnlVal = Number(form.pnl)
     if (!form.pnl || isNaN(pnlVal) || pnlVal <= 0) return
 
-    const num = (v: number | '') => (v === '' || isNaN(Number(v)) ? undefined : Number(v))
     addTrade({
       account_id:       form.account_id || tradingAccounts[0]?.id || '',
       date:             form.date,
@@ -195,12 +193,6 @@ export default function TradesPage() {
       screenshot_url:   form.screenshot_url || undefined,
       note:             form.note || undefined,
       is_overtrade:     form.is_overtrade,
-      // advanced detail (hanya terisi kalau mode advance)
-      entry_price:      journalMode === 'advance' ? num(form.entry_price) : undefined,
-      exit_price:       journalMode === 'advance' ? num(form.exit_price) : undefined,
-      lot_size:         journalMode === 'advance' ? num(form.lot_size) : undefined,
-      rr_ratio:         journalMode === 'advance' ? num(form.rr_ratio) : undefined,
-      fees:             journalMode === 'advance' ? num(form.fees) : undefined,
     })
     setForm({ ...empty, account_id: form.account_id })
     setOpen(false)
@@ -316,22 +308,6 @@ export default function TradesPage() {
             </DialogHeader>
 
             <form onSubmit={submit} className="space-y-5 mt-2">
-
-              {/* Journal mode: Simple / Advance */}
-              <div className="flex items-center gap-2 rounded-xl bg-muted/50 p-1">
-                {([
-                  { val: 'simple',  label: 'Simple',  desc: 'Cepat' },
-                  { val: 'advance', label: 'Advance', desc: 'Detail' },
-                ] as const).map(({ val, label, desc }) => (
-                  <button key={val} type="button" onClick={() => setJournalMode(val)}
-                    className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-all flex items-center justify-center gap-1.5
-                      ${journalMode === val ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-                    {val === 'advance' && <Sliders size={13} />}
-                    {label}
-                    <span className="text-[10px] font-normal text-muted-foreground">· {desc}</span>
-                  </button>
-                ))}
-              </div>
 
               {/* Date + Time */}
               <div className="grid grid-cols-2 gap-3">
@@ -465,41 +441,6 @@ export default function TradesPage() {
                 />
                 <p className="text-xs text-muted-foreground">Masukkan angka positif — tanda +/− otomatis dari Result</p>
               </div>
-
-              {/* Advanced detail fields */}
-              {journalMode === 'advance' && (
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-primary/70 flex items-center gap-1.5">
-                    <Sliders size={11} /> Detail Trade (Advance)
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Harga Entry</Label>
-                      <Input type="number" step="any" placeholder="0" value={form.entry_price}
-                        onChange={e => set('entry_price', e.target.value === '' ? '' : Number(e.target.value))} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Harga Exit</Label>
-                      <Input type="number" step="any" placeholder="0" value={form.exit_price}
-                        onChange={e => set('exit_price', e.target.value === '' ? '' : Number(e.target.value))} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Lot / Size</Label>
-                      <Input type="number" step="any" placeholder="0.01" value={form.lot_size}
-                        onChange={e => set('lot_size', e.target.value === '' ? '' : Number(e.target.value))} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Risk : Reward</Label>
-                      <Input type="number" step="any" placeholder="2" value={form.rr_ratio}
-                        onChange={e => set('rr_ratio', e.target.value === '' ? '' : Number(e.target.value))} />
-                    </div>
-                    <div className="space-y-1.5 col-span-2">
-                      <Label className="text-xs text-muted-foreground">Biaya / Komisi ({settings.currency})</Label>
-                      <CurrencyInput value={form.fees} onChange={v => set('fees', v)} placeholder="0" />
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Strategy */}
               <div className="space-y-1.5">
@@ -764,8 +705,8 @@ export default function TradesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] text-muted-foreground">
-                    {['Date','Pair','MS','Direction','Strategy','P&L','Result','Plan','Arah?',''].map(h => (
-                      <th key={h} className={`px-3 py-3 font-semibold ${h === 'P&L' ? 'text-right' : h === 'Result' ? 'text-center' : 'text-left'}`}>{h}</th>
+                    {['Tanggal','Pair','Arah','Strategi','P&L','Hasil','Plan',''].map(h => (
+                      <th key={h} className={`px-3 py-3 font-semibold ${h === 'P&L' ? 'text-right' : h === 'Hasil' ? 'text-center' : 'text-left'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -785,12 +726,6 @@ export default function TradesPage() {
                             <span className="text-[9px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30 rounded px-1 py-0.5 leading-none">OT</span>
                           )}
                         </div>
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        {t.market_structure === 'bullish' && <span title="Bullish">🐂</span>}
-                        {t.market_structure === 'bearish' && <span title="Bearish">🐻</span>}
-                        {t.market_structure === 'ranging' && <span title="Ranging">↔</span>}
-                        {!t.market_structure && <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="px-3 py-3">
                         <span className={`flex items-center gap-1 w-fit text-xs font-bold ${t.direction === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -817,11 +752,6 @@ export default function TradesPage() {
                       <td className="px-3 py-3 text-center text-xs">
                         {t.followed_plan === true  ? <span className="text-emerald-400">✓</span>
                           : t.followed_plan === false ? <span className="text-red-400">✗</span>
-                          : <span className="text-muted-foreground/30">—</span>}
-                      </td>
-                      <td className="px-3 py-3 text-center text-xs">
-                        {t.know_direction === true  ? <span className="text-emerald-400">✓</span>
-                          : t.know_direction === false ? <span className="text-red-400">✗</span>
                           : <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="px-3 py-3 text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity">Detail →</td>

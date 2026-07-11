@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
 import { Sidebar, BottomNav, ALWAYS_UNLOCKED } from '@/components/layout/Sidebar'
+import { TopBar } from '@/components/layout/TopBar'
 import { SetupWizard } from '@/components/onboarding/SetupWizard'
 import { Toaster } from '@/components/ui/toaster'
 import { Loader2, AlertTriangle, X, RefreshCw } from 'lucide-react'
@@ -77,6 +78,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
     <div className="flex h-full">
       <Sidebar/>
       <div className="flex-1 flex flex-col overflow-hidden">
+        <TopBar/>
         <SyncErrorBanner/>
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6 bg-muted/30">{children}</main>
       </div>

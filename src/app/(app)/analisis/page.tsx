@@ -382,6 +382,27 @@ export default function AnalisisPage() {
         <MiniStat label="Total P&L" value={fmt(stats.total_pnl)} green={stats.total_pnl>=0} red={stats.total_pnl<0}/>
       </div>
 
+      {/* ── Extra stats ── */}
+      {(() => {
+        const rr = wins.length && losses.length ? (stats.avg_win / stats.avg_loss) : 0
+        const bes = normalTrades.filter(t => t.result === 'breakeven').length
+        const totalVol = normalTrades.reduce((s, t) => s + (t.lot_size ?? 0), 0)
+        const avgTradeSize = normalTrades.length ? stats.total_pnl / normalTrades.length : 0
+        const streakBest = stats.win_streak
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <MiniStat label="Total Trade" value={String(normalTrades.length)} sub={`${bes} breakeven`} />
+            <MiniStat label="Avg Win / Loss (RR)" value={rr ? rr.toFixed(2) : '—'} sub="reward : risk" green={rr>=1.5} red={rr>0 && rr<1}/>
+            <MiniStat label="Gross Profit" value={fmt(grossProfit)} green/>
+            <MiniStat label="Gross Loss" value={fmt(-grossLoss)} red/>
+            <MiniStat label="Largest Win" value={fmt(largestWin)} green/>
+            <MiniStat label="Largest Loss" value={fmt(largestLoss)} red/>
+            <MiniStat label="Win Streak Terbaik" value={`${streakBest}x`} green={streakBest>=3}/>
+            <MiniStat label="Avg per Trade" value={fmt(avgTradeSize)} sub="termasuk semua" green={avgTradeSize>=0} red={avgTradeSize<0}/>
+          </div>
+        )
+      })()}
+
       {/* ── Streak banner ── */}
       {stats.current_streak > 0 && (
         <div className={`rounded-xl border p-4 flex items-center gap-3 ${stats.current_streak_type==='win' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}>

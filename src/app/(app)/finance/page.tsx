@@ -16,8 +16,9 @@ import { Progress } from '@/components/ui/progress'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import {
   ArrowDownLeft, ArrowUpRight, Trash2, TrendingUp, TrendingDown,
-  BarChart2, Landmark, PiggyBank, Coins, Target,
+  BarChart2, Landmark, PiggyBank, Coins, Target, ArrowLeftRight,
 } from 'lucide-react'
+import Link from 'next/link'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
   AreaChart, Area, ReferenceLine, CartesianGrid, Legend,
@@ -336,66 +337,26 @@ export default function FinancePage() {
       )}
 
       {/* ── Tabs ── */}
-      <Tabs defaultValue="catat">
+      {/* CTA ke halaman Deposit & Withdraw */}
+      <Card className="bg-gradient-to-br from-primary/8 to-transparent border-primary/20">
+        <CardContent className="pt-4 pb-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold">Kelola Deposit & Withdraw</p>
+            <p className="text-xs text-muted-foreground">Catat aliran dana di halaman khusus yang lebih rapi.</p>
+          </div>
+          <Link href="/transactions">
+            <Button size="sm" className="gap-1.5"><ArrowLeftRight size={14}/> Buka Deposit / Withdraw</Button>
+          </Link>
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="akun">
         <TabsList>
-          <TabsTrigger value="catat">{t('Catat Dana')}</TabsTrigger>
-          <TabsTrigger value="riwayat">{t('Riwayat')}</TabsTrigger>
           <TabsTrigger value="akun">{t('Per Akun')}</TabsTrigger>
         </TabsList>
 
-        {/* Form Catat Dana */}
-        <TabsContent value="catat" className="mt-4">
-          <Card>
-            <CardHeader><CardTitle className="text-sm">{t('Catat Deposit / Withdraw')}</CardTitle></CardHeader>
-            <CardContent>
-              {accounts.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">{t('Tambah akun broker dulu di menu Setting.')}</p>
-              ) : (
-              <form onSubmit={submit} className="space-y-4">
-                <div className="flex gap-2">
-                  <Button type="button" variant={type === 'deposit' ? 'default' : 'outline'} className="flex-1 gap-2" onClick={() => setType('deposit')}>
-                    <ArrowDownLeft size={14}/> Deposit
-                  </Button>
-                  <Button type="button" variant={type === 'withdraw' ? 'default' : 'outline'} className="flex-1 gap-2" onClick={() => setType('withdraw')}>
-                    <ArrowUpRight size={14}/> Withdraw
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">{t('Akun Broker')}</Label>
-                    <Select value={selectedFormAcc} onValueChange={v => setFormAcc(v ?? '')}>
-                      <SelectTrigger>
-                        <SelectValue>{accounts.find(a => a.id === selectedFormAcc)?.name ?? t('Pilih akun')}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">{t('Tanggal')}</Label>
-                    <Input type="date" value={date} onChange={e => setDate(e.target.value)} required/>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">{t('Jumlah')} ({settings.currency})</Label>
-                  <CurrencyInput value={amount} onChange={setAmount} placeholder="500.000"/>
-                </div>
-                <div>
-                  <Label className="text-xs">{t('Catatan (opsional)')}</Label>
-                  <Textarea placeholder={type === 'deposit' ? 'Misal: top-up modal' : 'Misal: tarik profit'} value={note} onChange={e => setNote(e.target.value)} rows={2}/>
-                </div>
-                <Button type="submit" className="w-full" disabled={!amount || Number(amount) <= 0}>
-                  {type === 'deposit' ? t('Catat Deposit') : t('Catat Withdraw')}
-                </Button>
-              </form>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Riwayat */}
-        <TabsContent value="riwayat" className="mt-4">
+        {/* Riwayat (dinonaktifkan — pindah ke /transactions) */}
+        <TabsContent value="__riwayat_hidden" className="mt-4">
           {allTxns.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="py-12 text-center text-sm text-muted-foreground">

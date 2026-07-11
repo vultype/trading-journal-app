@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
   FlaskConical, LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
-  CreditCard, Receipt, Lock,
+  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
@@ -15,13 +15,16 @@ import { useStore } from '@/lib/store'
 import { useT } from '@/lib/i18n'
 import { toast } from '@/lib/toast'
 
-type NavItem = { href: string; label: string; icon: React.ElementType }
+type NavItem = { href: string; label: string; icon: React.ElementType; children?: NavItem[] }
 type NavGroup = { label: string; items: NavItem[] }
 
 const dashboard: NavItem  = { href: '/dashboard',    label: 'Dashboard', icon: LayoutDashboard }
 const trades: NavItem     = { href: '/trades',       label: 'Trade',     icon: TrendingUp }
 const simulator: NavItem  = { href: '/simulator',    label: 'Simulator', icon: FlaskConical }
-const finance: NavItem    = { href: '/finance',      label: 'Keuangan',  icon: Wallet }
+const finance: NavItem    = { href: '/finance', label: 'Keuangan', icon: Wallet, children: [
+  { href: '/finance',      label: 'Ringkasan',          icon: PieChart },
+  { href: '/transactions', label: 'Deposit & Withdraw', icon: ArrowLeftRight },
+] }
 const analisis: NavItem    = { href: '/analisis',    label: 'Analisis',  icon: BarChart3 }
 const journal: NavItem    = { href: '/journal',      label: 'Jurnal',    icon: BookOpen }
 const subscription: NavItem = { href: '/subscription', label: 'Langganan', icon: CreditCard }
@@ -46,9 +49,9 @@ function useGroups(): NavGroup[] {
   ]
 }
 
-// flatten in display order for the mobile bottom bar
+// flatten in display order for the mobile bottom bar (expand children)
 function useFlat(): NavItem[] {
-  return useGroups().flatMap(g => g.items)
+  return useGroups().flatMap(g => g.items).flatMap(i => i.children ? i.children : [i])
 }
 
 function useMenuLock() {
@@ -67,6 +70,7 @@ export function Sidebar() {
   const groups = useGroups()
   const t = useT()
   const { isLocked } = useMenuLock()
+  const [openMenu, setOpenMenu] = useState<string | null>('/finance')
 
   async function logout() {
     await createClient().auth.signOut()
@@ -85,35 +89,53 @@ export function Sidebar() {
           <div key={group.label}>
             <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/45">{t(group.label)}</p>
             <div className="flex flex-col gap-0.5">
-              {group.items.map(({ href, label, icon: Icon }) => {
+              {group.items.map((item) => {
+                const { href, label, icon: Icon, children } = item
                 const locked = isLocked(href)
+
+                // Dropdown parent (mis. Keuangan)
+                if (children && !locked) {
+                  const expanded = openMenu === href || children.some(c => path.startsWith(c.href) && c.href !== '/')
+                  const parentActive = children.some(c => path === c.href)
+                  return (
+                    <div key={href}>
+                      <button type="button" onClick={() => setOpenMenu(openMenu === href ? null : href)}
+                        className={cn('w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all border border-transparent',
+                          parentActive ? 'text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                        <Icon size={15}/> {t(label)}
+                        <ChevronDown size={13} className={`ml-auto transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expanded && (
+                        <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-border/50 pl-2">
+                          {children.map(c => (
+                            <Link key={c.href} href={c.href}
+                              className={cn('flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all',
+                                path === c.href ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                              <c.icon size={13}/> {t(c.label)}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+
                 if (locked) {
                   return (
-                    <button
-                      key={href}
-                      type="button"
-                      onClick={() => toast.error(LOCK_MSG)}
-                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground/40 cursor-not-allowed border border-transparent text-left"
-                    >
-                      <Icon size={15}/>
-                      {t(label)}
+                    <button key={href} type="button" onClick={() => toast.error(LOCK_MSG)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground/40 cursor-not-allowed border border-transparent text-left">
+                      <Icon size={15}/> {t(label)}
                       <Lock size={11} className="ml-auto"/>
                     </button>
                   )
                 }
                 return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
+                  <Link key={href} href={href}
+                    className={cn('flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
                       path.startsWith(href)
                         ? 'bg-primary/10 text-primary border border-primary/20'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent'
-                    )}
-                  >
-                    <Icon size={15}/>
-                    {t(label)}
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent')}>
+                    <Icon size={15}/> {t(label)}
                   </Link>
                 )
               })}

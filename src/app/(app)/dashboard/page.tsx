@@ -236,14 +236,9 @@ export default function DashboardPage() {
             <StatCard label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" positive={stats.expectancy > 0} tip="Perkiraan profit rata-rata yang kamu hasilkan per trade dalam jangka panjang." />
           </div>
 
-          {/* Score + Insight otomatis */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-            <ScoreRadar stats={stats} trades={trades} equityBase={equityBase} />
-            <InsightsCard trades={trades} stats={stats} fmt={fmt} />
-          </div>
-
-          {/* Equity Curve + Net P&L Harian (berdampingan) */}
+          {/* Score + Equity Curve (equity ditukar ke sini) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+            <ScoreRadar stats={stats} trades={trades} equityBase={equityBase} />
             <Card className="flex flex-col">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
@@ -257,6 +252,11 @@ export default function DashboardPage() {
                 }
               </CardContent>
             </Card>
+          </div>
+
+          {/* Insight Otomatis + Net P&L Harian (insight ditukar ke sini) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <InsightsCard trades={trades} stats={stats} fmt={fmt} />
             <NetDailyPnL trades={trades} fmt={fmt} />
           </div>
 
@@ -266,37 +266,8 @@ export default function DashboardPage() {
             <DaySummaryTable trades={trades} fmt={fmt} />
           </div>
 
-          {/* Drawdown + Recent trades (setengah layar) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-            <DrawdownChart trades={trades} fmt={fmt} />
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">{t('Recent Trades')}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y">
-                  {recentTrades.map(t => (
-                    <div key={t.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <div className="flex items-center gap-3">
-                        <Badge variant={t.direction === 'long' ? 'default' : 'destructive'} className="text-xs gap-1">
-                          {t.direction === 'long' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                          {t.direction.toUpperCase()}
-                        </Badge>
-                        <div>
-                          <p className="font-semibold">{t.pair}</p>
-                          <p className="text-xs text-muted-foreground">{t.date}{t.strategy ? ` · ${t.strategy}` : ''}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(t.pnl)}</p>
-                        {t.rr_ratio != null && <p className="text-xs text-muted-foreground">RR {t.rr_ratio.toFixed(1)}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Drawdown */}
+          <DrawdownChart trades={trades} fmt={fmt} />
         </>
       )}
     </div>

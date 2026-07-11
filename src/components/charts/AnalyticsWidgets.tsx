@@ -179,58 +179,27 @@ export function InsightsCard({ trades, stats, fmt }: { trades: Trade[]; stats: D
   if (insights.length === 0) return null
 
   return (
-    <div className="relative rounded-2xl overflow-hidden group h-full">
-      {/* animated gradient border */}
-      <div className="absolute inset-0 rounded-2xl opacity-70 dtq-insight-glow" />
-      <div className="relative m-[1px] rounded-2xl bg-[#0a0e1a] overflow-hidden">
-        {/* grid + glow bg */}
-        <div className="absolute inset-0 dtq-grid opacity-[0.15]" />
-        <div className="absolute -top-20 -right-10 w-48 h-48 rounded-full bg-primary/20 blur-3xl dtq-pulse" />
-        <div className="relative p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30">
-              <Lightbulb size={16} className="text-primary dtq-flicker" />
-            </span>
-            <div>
-              <p className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-                Insight Otomatis
-                <span className="text-[9px] font-mono uppercase tracking-widest text-primary/70 px-1.5 py-0.5 rounded bg-primary/10 ring-1 ring-primary/20">AI</span>
-              </p>
-              <p className="text-[10px] text-white/40 font-mono">real-time analysis</p>
+    <Card className="h-full relative overflow-hidden bg-gradient-to-br from-primary/8 via-transparent to-transparent">
+      <div className="absolute -top-16 -right-12 w-40 h-40 rounded-full bg-primary/10 blur-3xl" />
+      <CardHeader className="pb-2 relative">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/15 ring-1 ring-primary/25">
+            <Lightbulb size={14} className="text-primary" />
+          </span>
+          Insight Otomatis
+          <span className="text-[9px] font-semibold uppercase tracking-widest text-primary/70 px-1.5 py-0.5 rounded bg-primary/10 ring-1 ring-primary/20">AI</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="relative">
+        <div className="space-y-2">
+          {insights.map((ins, i) => (
+            <div key={i} className="flex items-start gap-3 rounded-xl bg-muted/30 ring-1 ring-border/40 px-3 py-2.5 transition-colors hover:bg-muted/50">
+              <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={15} /></span>
+              <p className="text-sm text-foreground/85 leading-snug">{ins.text}</p>
             </div>
-          </div>
-          <div className="space-y-2.5">
-            {insights.map((ins, i) => (
-              <div key={i}
-                className="flex items-start gap-3 rounded-xl bg-white/[0.03] ring-1 ring-white/5 px-3 py-2.5 dtq-enter"
-                style={{ animationDelay: `${i * 90}ms` }}>
-                <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={15} /></span>
-                <p className="text-sm text-white/85 leading-snug">{ins.text}</p>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
-      </div>
-
-      <style jsx>{`
-        .dtq-insight-glow {
-          background: linear-gradient(120deg, transparent, #3b82f6, transparent, #22d3ee, transparent);
-          background-size: 300% 300%;
-          animation: dtq-border 6s linear infinite;
-        }
-        @keyframes dtq-border { 0% { background-position: 0% 50% } 100% { background-position: 300% 50% } }
-        .dtq-grid {
-          background-image: linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px);
-          background-size: 22px 22px;
-          mask-image: radial-gradient(ellipse at top right, black, transparent 70%);
-        }
-        .dtq-pulse { animation: dtq-pulse 4s ease-in-out infinite; }
-        @keyframes dtq-pulse { 0%,100% { opacity: .2; transform: scale(1) } 50% { opacity: .35; transform: scale(1.15) } }
-        .dtq-flicker { animation: dtq-flicker 3s ease-in-out infinite; }
-        @keyframes dtq-flicker { 0%,100% { opacity: 1 } 45% { opacity: .5 } 50% { opacity: 1 } }
-        .dtq-enter { opacity: 0; animation: dtq-enter .5s ease forwards; }
-        @keyframes dtq-enter { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
-      `}</style>
-    </div>
+      </CardContent>
+    </Card>
   )
 }

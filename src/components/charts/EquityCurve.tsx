@@ -1,18 +1,41 @@
 'use client'
 
+import { useState, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 type Point = { date: string; balance: number }
 
+const RANGES = [
+  { key: '7', label: '7 Hari', days: 7 },
+  { key: '30', label: '30 Hari', days: 30 },
+  { key: '90', label: '90 Hari', days: 90 },
+  { key: 'all', label: 'Semua', days: 0 },
+] as const
+
 export function EquityCurve({
-  data,
+  data: allData,
   fmt,
   startBalance = 0,
+  showRange = true,
 }: {
   data: Point[]
   fmt?: (n: number) => string
   startBalance?: number
+  showRange?: boolean
 }) {
+  const [range, setRange] = useState<string>('all')
+
+  const data = useMemo(() => {
+    const r = RANGES.find(x => x.key === range)
+    if (!r || r.days === 0 || allData.length === 0) return allData
+    const last = allData[allData.length - 1].date
+    const cutoff = new Date(last + 'T00:00:00')
+    cutoff.setDate(cutoff.getDate() - r.days)
+    const cut = cutoff.toISOString().split('T')[0]
+    const filtered = allData.filter(p => p.date >= cut)
+    return filtered.length > 1 ? filtered : allData
+  }, [allData, range])
+
   const lastBal = data[data.length - 1]?.balance ?? 0
   const isProfit = lastBal >= startBalance
   const color = isProfit ? '#10b981' : '#ef4444'
@@ -46,7 +69,19 @@ export function EquityCurve({
   }
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(180deg, #05100a 0%, #020806 100%)' }}>
+    <div className="space-y-2">
+      {showRange && (
+        <div className="flex items-center gap-1 justify-end">
+          {RANGES.map(r => (
+            <button key={r.key} type="button" onClick={() => setRange(r.key)}
+              className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors
+                ${range === r.key ? 'bg-primary/15 text-primary ring-1 ring-primary/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(180deg, #05100a 0%, #020806 100%)' }}>
       <ResponsiveContainer width="100%" height={280}>
         <AreaChart data={data} margin={{ top: 24, right: 16, bottom: 4, left: 8 }}>
           <defs>
@@ -83,6 +118,7 @@ export function EquityCurve({
           />
         </AreaChart>
       </ResponsiveContainer>
+      </div>
     </div>
   )
 }
