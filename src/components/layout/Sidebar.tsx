@@ -38,8 +38,9 @@ function useGroups(): NavGroup[] {
   const account: NavItem[] = [subscription, billing, settings, ...(isAdmin ? [adminItem] : [])]
   return [
     { label: 'Ringkasan',       items: [dashboard] },
-    { label: 'Trading',         items: [trades, simulator, finance] },
+    { label: 'Trading',         items: [trades, finance] },
     { label: 'Jurnal & Analisa', items: [analisis, journal] },
+    { label: 'Tools',           items: [simulator] },
     { label: 'Akun',            items: account },
     { label: 'Bantuan',         items: [panduan] },
   ]

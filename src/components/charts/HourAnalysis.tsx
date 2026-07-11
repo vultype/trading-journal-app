@@ -1,8 +1,15 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Clock, TrendingUp, TrendingDown, Sparkles, AlertTriangle } from 'lucide-react'
+import { Clock, TrendingUp, TrendingDown, Sparkles, AlertTriangle, Lightbulb } from 'lucide-react'
+import {
+  ResponsiveContainer, ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ReferenceLine,
+} from 'recharts'
 import type { Trade } from '@/types'
+
+const TT = { backgroundColor: 'rgba(15,20,30,0.97)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 12, color: '#f1f5f9' }
+const TTI = { color: '#f1f5f9', fontWeight: 700 }
+const TTL = { color: '#94a3b8', fontSize: 11, fontWeight: 600 }
 
 type HourBucket = {
   hour: number
@@ -16,10 +23,10 @@ type HourBucket = {
 
 type Session = { key: string; label: string; emoji: string; from: number; to: number }
 const SESSIONS: Session[] = [
-  { key: 'asia',   label: 'Asia',   emoji: '🌏', from: 0,  to: 8 },
-  { key: 'london', label: 'London', emoji: '🇬🇧', from: 8,  to: 15 },
-  { key: 'ny',     label: 'New York', emoji: '🗽', from: 15, to: 21 },
-  { key: 'late',   label: 'Late/Sydney', emoji: '🌙', from: 21, to: 24 },
+  { key: 'asia',    label: 'Asia',            emoji: '🌏', from: 0,  to: 8 },
+  { key: 'london',  label: 'London',          emoji: '🇬🇧', from: 8,  to: 13 },
+  { key: 'overlap', label: 'Overlap London-NY', emoji: '🔥', from: 13, to: 16 },
+  { key: 'ny',      label: 'New York',        emoji: '🗽', from: 16, to: 24 },
 ]
 
 export function HourAnalysis({ trades, fmt }: { trades: Trade[]; fmt: (n: number) => string }) {
@@ -181,6 +188,24 @@ export function HourAnalysis({ trades, fmt }: { trades: Trade[]; fmt: (n: number
         </div>
       )}
 
+      {/* P&L + Win rate per jam (chart) */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">P&L & Win Rate per Jam</p>
+        <ResponsiveContainer width="100%" height={200}>
+          <ComposedChart data={buckets.filter(b => b.total > 0).map(b => ({ jam: `${String(b.hour).padStart(2, '0')}`, pnl: b.pnl, wr: b.winRate }))} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+            <XAxis dataKey="jam" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+            <YAxis yAxisId="l" tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={50} tickFormatter={v => fmt(v)} />
+            <YAxis yAxisId="r" orientation="right" domain={[0, 100]} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={30} tickFormatter={v => `${v}%`} />
+            <Tooltip contentStyle={TT} itemStyle={TTI} labelStyle={TTL} formatter={(v: any, n: any) => n === 'wr' ? [`${v}%`, 'Win Rate'] : [fmt(Number(v)), 'P&L']} labelFormatter={l => `Jam ${l}:00`} />
+            <ReferenceLine yAxisId="l" y={0} stroke="var(--border)" />
+            <Bar yAxisId="l" dataKey="pnl" radius={[3, 3, 0, 0]}>
+              {buckets.filter(b => b.total > 0).map((b, i) => <Cell key={i} fill={b.pnl >= 0 ? '#10b981' : '#ef4444'} fillOpacity={0.85} />)}
+            </Bar>
+            <Line yAxisId="r" type="monotone" dataKey="wr" stroke="#6366f1" strokeWidth={2} dot={{ r: 2 }} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
       {/* Session breakdown bars */}
       <div>
         <p className="text-xs text-muted-foreground mb-2">Performa per Sesi Market</p>
@@ -204,6 +229,29 @@ export function HourAnalysis({ trades, fmt }: { trades: Trade[]; fmt: (n: number
           ))}
         </div>
       </div>
+
+      {/* Insight teks */}
+      {(() => {
+        const busiest = active.length ? active.reduce((a, b) => b.total > a.total ? b : a) : null
+        const worstSession = sessionStats.filter(s => s.total > 0).sort((a, b) => a.pnl - b.pnl)[0] ?? null
+        const items: string[] = []
+        if (bestHour && bestHour.pnl > 0) items.push(`Jam paling profit: ${String(bestHour.hour).padStart(2, '0')}:00 dengan ${fmt(bestHour.pnl)} (${bestHour.winRate}% WR).`)
+        if (worstHour && worstHour.pnl < 0) items.push(`Hindari entry jam ${String(worstHour.hour).padStart(2, '0')}:00 — sering rugi (${fmt(worstHour.pnl)}).`)
+        if (busiest) items.push(`Jam tersibuk: ${String(busiest.hour).padStart(2, '0')}:00 (${busiest.total} trade).`)
+        if (bestSession) items.push(`Sesi terbaik: ${bestSession.label} (${fmt(bestSession.pnl)}, ${bestSession.winRate}% WR).`)
+        if (worstSession && worstSession.pnl < 0 && worstSession.key !== bestSession?.key) items.push(`Waspada sesi ${worstSession.label} — total ${fmt(worstSession.pnl)}.`)
+        if (!items.length) return null
+        return (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-primary/70 mb-2 flex items-center gap-1.5"><Lightbulb size={12} /> Insight Jam Trading</p>
+            <ul className="space-y-1.5">
+              {items.map((it, i) => (
+                <li key={i} className="text-sm text-foreground/85 leading-snug flex gap-2"><span className="text-primary shrink-0">•</span>{it}</li>
+              ))}
+            </ul>
+          </div>
+        )
+      })()}
 
       <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1.5">
         <TrendingUp size={11} className="text-emerald-400/60" /> Hijau = profit

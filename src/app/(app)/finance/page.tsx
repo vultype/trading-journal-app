@@ -16,7 +16,7 @@ import { Progress } from '@/components/ui/progress'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import {
   ArrowDownLeft, ArrowUpRight, Trash2, TrendingUp, TrendingDown,
-  BarChart2, Landmark, PiggyBank, Coins,
+  BarChart2, Landmark, PiggyBank, Coins, Target,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell,
@@ -250,6 +250,31 @@ export default function FinancePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Target Bulanan ── */}
+      {(settings.targetBulanan ?? 0) > 0 && (() => {
+        const target = settings.targetBulanan!
+        const pct = Math.min(100, Math.max(0, (thisMonthPnl / target) * 100))
+        const reached = thisMonthPnl >= target
+        return (
+          <Card className={reached ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/8 to-transparent' : ''}>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold flex items-center gap-2">
+                  <Target size={14} className="text-amber-400" /> Target Profit Bulan Ini
+                </p>
+                <span className={`text-sm font-bold ${reached ? 'text-emerald-400' : 'text-muted-foreground'}`}>{Math.round(pct)}%</span>
+              </div>
+              <Progress value={pct} className="h-2.5 mb-2" />
+              <div className="flex justify-between text-xs">
+                <span className={thisMonthPnl >= 0 ? 'text-emerald-400 font-medium' : 'text-red-400 font-medium'}>{fmt(thisMonthPnl)}</span>
+                <span className="text-muted-foreground">Target: {fmt(target)}</span>
+              </div>
+              {reached && <p className="text-xs text-emerald-400 mt-2 font-medium">🎉 Target tercapai! Kerja bagus.</p>}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* ── Charts ── */}
       {byMonth.length > 0 && (

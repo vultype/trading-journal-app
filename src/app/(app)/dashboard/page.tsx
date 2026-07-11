@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { InfoTip } from '@/components/ui/info-tip'
 import Link from 'next/link'
-import { TrendingUp, TrendingDown, Wallet, Target, Activity, CalendarRange, Sparkles, Check } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, Target, Activity, Sparkles, Check } from 'lucide-react'
 
 function FirstTradeCard({ accountId }: { accountId?: string }) {
   const { addTrade, settings } = useStore()
@@ -168,12 +168,6 @@ export default function DashboardPage() {
   const curve = buildEquityCurve([...trades].sort((a, b) => a.date.localeCompare(b.date)), startBalance)
   const recentTrades = [...trades].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6)
 
-  // Monthly target progress
-  const monthStr = new Date().toISOString().slice(0, 7)
-  const monthPnl = trades.filter(t => t.date.startsWith(monthStr)).reduce((s, t) => s + t.pnl, 0)
-  const { targetBulanan = 0 } = settings
-  const hasTargets = targetBulanan > 0
-
   const greeting = (() => {
     const h = new Date().getHours()
     if (h < 11) return t('Selamat pagi')
@@ -242,86 +236,67 @@ export default function DashboardPage() {
             <StatCard label="Expectancy" value={fmt(stats.expectancy)} sub="per trade" positive={stats.expectancy > 0} tip="Perkiraan profit rata-rata yang kamu hasilkan per trade dalam jangka panjang." />
           </div>
 
-          {/* Score + Net daily P&L */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Score + Insight otomatis */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             <ScoreRadar stats={stats} trades={trades} equityBase={equityBase} />
+            <InsightsCard trades={trades} stats={stats} fmt={fmt} />
+          </div>
+
+          {/* Equity Curve + Net P&L Harian (berdampingan) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+            <Card className="flex flex-col">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  {t('Equity Curve')} <InfoTip text="Perkembangan total saldo trading dari waktu ke waktu. Hover untuk lihat nominal & % perubahan." />
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col justify-center">
+                {curve.length > 1
+                  ? <EquityCurve data={curve} fmt={fmt} startBalance={startBalance} />
+                  : <p className="text-sm text-muted-foreground text-center py-8">{t('Butuh minimal 2 trade untuk tampilkan grafik')}</p>
+                }
+              </CardContent>
+            </Card>
             <NetDailyPnL trades={trades} fmt={fmt} />
           </div>
 
-          {/* Insights */}
-          <InsightsCard trades={trades} stats={stats} fmt={fmt} />
-
           {/* Trade time performance + day summary */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             <TradeTimeScatter trades={trades} fmt={fmt} />
             <DaySummaryTable trades={trades} fmt={fmt} />
           </div>
 
-          {/* Monthly Target */}
-          {hasTargets && (
+          {/* Drawdown + Recent trades (setengah layar) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <DrawdownChart trades={trades} fmt={fmt} />
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2"><CalendarRange size={14}/> Monthly Target</CardTitle>
+                <CardTitle className="text-sm font-semibold">{t('Recent Trades')}</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">This month</span>
-                    <span className={monthPnl >= targetBulanan ? 'text-emerald-400 font-bold' : ''}>
-                      {Math.min(100, Math.max(0, Math.round(monthPnl / targetBulanan * 100)))}%
-                    </span>
-                  </div>
-                  <Progress value={Math.min(100, Math.max(0, monthPnl / targetBulanan * 100))} className="h-2"/>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{fmt(monthPnl)}</span>
-                    <span>{fmt(targetBulanan)}</span>
-                  </div>
+              <CardContent className="p-0">
+                <div className="divide-y">
+                  {recentTrades.map(t => (
+                    <div key={t.id} className="flex items-center justify-between px-4 py-3 text-sm">
+                      <div className="flex items-center gap-3">
+                        <Badge variant={t.direction === 'long' ? 'default' : 'destructive'} className="text-xs gap-1">
+                          {t.direction === 'long' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                          {t.direction.toUpperCase()}
+                        </Badge>
+                        <div>
+                          <p className="font-semibold">{t.pair}</p>
+                          <p className="text-xs text-muted-foreground">{t.date}{t.strategy ? ` · ${t.strategy}` : ''}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(t.pnl)}</p>
+                        {t.rr_ratio != null && <p className="text-xs text-muted-foreground">RR {t.rr_ratio.toFixed(1)}</p>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">{t('Equity Curve')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {curve.length > 1
-                ? <EquityCurve data={curve} fmt={fmt} startBalance={startBalance} />
-                : <p className="text-sm text-muted-foreground text-center py-8">{t('Butuh minimal 2 trade untuk tampilkan grafik')}</p>
-              }
-            </CardContent>
-          </Card>
-
-          <DrawdownChart trades={trades} fmt={fmt} />
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">{t('Recent Trades')}</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {recentTrades.map(t => (
-                  <div key={t.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                    <div className="flex items-center gap-3">
-                      <Badge variant={t.direction === 'long' ? 'default' : 'destructive'} className="text-xs gap-1">
-                        {t.direction === 'long' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                        {t.direction.toUpperCase()}
-                      </Badge>
-                      <div>
-                        <p className="font-semibold">{t.pair}</p>
-                        <p className="text-xs text-muted-foreground">{t.date}{t.strategy ? ` · ${t.strategy}` : ''}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-bold ${t.pnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{fmt(t.pnl)}</p>
-                      {t.rr_ratio != null && <p className="text-xs text-muted-foreground">RR {t.rr_ratio.toFixed(1)}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </>
       )}
     </div>

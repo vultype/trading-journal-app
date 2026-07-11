@@ -20,7 +20,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, ReferenceLine,
 } from 'recharts'
-import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X, CalendarDays, Clock, LineChart, Coins, CalendarClock } from 'lucide-react'
+import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X, CalendarDays, Clock, LineChart, Coins, LayoutGrid } from 'lucide-react'
 import type { Trade } from '@/types'
 
 const NOTE_SEP = '--- Analisa by Claude ---'
@@ -174,6 +174,7 @@ export default function AnalisisPage() {
   const [calDayTrades, setCalDayTrades] = useState<Trade[] | null>(null)
   const [calDayDate,   setCalDayDate]   = useState('')
   const [detailTrade,  setDetailTrade]  = useState<Trade | null>(null)
+  const [timeMode,     setTimeMode]     = useState<'jam' | 'hari'>('jam')
 
   const byStrategy  = useMemo(() => pnlByGroup(normalTrades, t => t.strategy ?? '—').sort((a,b) => b.total - a.total), [normalTrades])
   const byPair      = useMemo(() => pnlByGroup(normalTrades, t => t.pair).sort((a,b) => b.total - a.total).slice(0,8), [normalTrades])
@@ -256,17 +257,17 @@ export default function AnalisisPage() {
         <p className="text-sm text-muted-foreground">{trades.length} trade · insight mendalam performa kamu</p>
       </div>
 
-      <Tabs defaultValue="kalender">
+      <Tabs defaultValue="summary">
         {/* Navigasi utama — fokus point */}
         <div className="rounded-2xl border border-border/50 bg-card p-2 shadow-sm overflow-x-auto">
           <TabsList className="w-full flex flex-nowrap md:flex-wrap justify-start md:justify-center h-auto gap-1.5 bg-transparent p-0">
             {([
+              ['summary', LayoutGrid, 'Summary'],
               ['kalender', CalendarDays, 'Kalender P&L'],
-              ['jam', Clock, 'Jam Trading'],
+              ['time', Clock, 'Time Analysis'],
               ['equity', LineChart, 'Equity'],
               ['strategi', Target, 'Strategi'],
               ['pair', Coins, 'Pair'],
-              ['waktu', CalendarClock, 'Waktu'],
               ['psikologi', Brain, 'Psikologi'],
             ] as const).map(([v, Icon, label]) => (
               <TabsTrigger key={v} value={v}
@@ -277,8 +278,8 @@ export default function AnalisisPage() {
           </TabsList>
         </div>
 
-      {/* ── WIN / LOSS / PF Cards (seperti screenshot) ── */}
-      <div className="space-y-6 mt-6">
+      {/* ── SUMMARY TAB (WIN / LOSS / PF + overview + streak) ── */}
+      <TabsContent value="summary" className="mt-6 space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Winning Trades */}
         <Card className="border-emerald-500/20 bg-card">
@@ -395,7 +396,7 @@ export default function AnalisisPage() {
           </div>
         </div>
       )}
-      </div>
+      </TabsContent>
 
         {/* ── KALENDER ── */}
         <TabsContent value="kalender" className="mt-4">
@@ -410,18 +411,83 @@ export default function AnalisisPage() {
           </Card>
         </TabsContent>
 
-        {/* ── JAM TRADING ── */}
-        <TabsContent value="jam" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                ⏰ Analisa Jam Trading
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <HourAnalysis trades={normalTrades} fmt={fmt} />
-            </CardContent>
-          </Card>
+        {/* ── TIME ANALYSIS (merge Jam + Waktu) ── */}
+        <TabsContent value="time" className="mt-4 space-y-4">
+          {/* Sub-toggle: per jam / per hari */}
+          <div className="flex items-center gap-2 rounded-xl bg-muted/50 p-1 w-fit">
+            {([
+              ['jam', Clock, 'Breakdown per Jam'],
+              ['hari', CalendarDays, 'Data Harian'],
+            ] as const).map(([m, Icon, label]) => (
+              <button key={m} type="button" onClick={() => setTimeMode(m)}
+                className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-all
+                  ${timeMode === m ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                <Icon size={14} /> {label}
+              </button>
+            ))}
+          </div>
+
+          {timeMode === 'jam' ? (
+            <Card>
+              <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Clock size={14} className="text-primary" /> Analisa Jam Trading</CardTitle></CardHeader>
+              <CardContent><HourAnalysis trades={normalTrades} fmt={fmt} /></CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              <InsightsCard trades={normalTrades} stats={stats} fmt={fmt} />
+              <TradeTimeScatter trades={normalTrades} fmt={fmt} />
+              <DaySummaryTable trades={normalTrades} fmt={fmt} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader><CardTitle className="text-sm">P&L per Hari</CardTitle></CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={byDay} margin={{top:4,right:4,bottom:4,left:0}}>
+                        <XAxis dataKey="name" tick={{fontSize:10}} tickLine={false} axisLine={false}/>
+                        <YAxis tick={{fontSize:10}} tickLine={false} axisLine={false} width={55} tickFormatter={v=>fmt(v)}/>
+                        <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={(v)=>[fmt(Number(v)),'P&L']}/>
+                        <ReferenceLine y={0} stroke="var(--border)"/>
+                        <Bar dataKey="pnl" radius={[4,4,0,0]}>
+                          {byDay.map((e,i)=><Cell key={i} fill={e.pnl>=0?C_WIN:C_LOSS} fillOpacity={0.8}/>)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle className="text-sm">Win Rate per Hari</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {byDay.filter(d=>d.total>0).sort((a,b)=>b.winRate-a.winRate).map((d,i)=>(
+                      <div key={i} className="flex items-center gap-3 text-sm">
+                        <span className="w-16 text-xs text-muted-foreground">{d.name}</span>
+                        <Progress value={d.winRate} className="flex-1 h-2"/>
+                        <span className={`text-xs font-bold w-8 text-right ${d.winRate>=50?'text-emerald-400':'text-red-400'}`}>{d.winRate}%</span>
+                        <span className="text-xs text-muted-foreground w-10 text-right">{d.total}x</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+              <Card>
+                <CardHeader><CardTitle className="text-sm">Long vs Short</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    {byDirection.map((d,i)=>(
+                      <div key={i} className={`rounded-xl border p-4 ${d.name==='long'?'border-emerald-500/20 bg-emerald-500/5':'border-red-500/20 bg-red-500/5'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          {d.name==='long'?<TrendingUp size={16} className="text-emerald-400"/>:<TrendingDown size={16} className="text-red-400"/>}
+                          <span className="font-bold text-sm uppercase">{d.name}</span>
+                        </div>
+                        <p className={`text-3xl font-black ${d.name==='long'?'text-emerald-400':'text-red-400'}`}>{d.winRate}%</p>
+                        <p className="text-xs text-muted-foreground mb-1">win rate · {d.total} trade</p>
+                        <p className={`text-sm font-semibold ${d.pnl>=0?'text-emerald-400':'text-red-400'}`}>{d.pnl>=0?'+':''}{fmt(d.pnl)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
 
         {/* ── EQUITY ── */}
@@ -573,61 +639,6 @@ export default function AnalisisPage() {
         </TabsContent>
 
         {/* ── WAKTU ── */}
-        <TabsContent value="waktu" className="mt-4 space-y-4">
-          <InsightsCard trades={normalTrades} stats={stats} fmt={fmt} />
-          <TradeTimeScatter trades={normalTrades} fmt={fmt} />
-          <DaySummaryTable trades={normalTrades} fmt={fmt} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader><CardTitle className="text-sm">P&L per Hari</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={byDay} margin={{top:4,right:4,bottom:4,left:0}}>
-                    <XAxis dataKey="name" tick={{fontSize:10}} tickLine={false} axisLine={false}/>
-                    <YAxis tick={{fontSize:10}} tickLine={false} axisLine={false} width={55} tickFormatter={v=>fmt(v)}/>
-                    <Tooltip contentStyle={TooltipStyle} formatter={(v)=>[fmt(Number(v)),'P&L']}/>
-                    <ReferenceLine y={0} stroke="var(--border)"/>
-                    <Bar dataKey="pnl" radius={[4,4,0,0]}>
-                      {byDay.map((e,i)=><Cell key={i} fill={e.pnl>=0?C_WIN:C_LOSS} fillOpacity={0.8}/>)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Win Rate per Hari</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {byDay.filter(d=>d.total>0).sort((a,b)=>b.winRate-a.winRate).map((d,i)=>(
-                  <div key={i} className="flex items-center gap-3 text-sm">
-                    <span className="w-16 text-xs text-muted-foreground">{d.name}</span>
-                    <Progress value={d.winRate} className="flex-1 h-2"/>
-                    <span className={`text-xs font-bold w-8 text-right ${d.winRate>=50?'text-emerald-400':'text-red-400'}`}>{d.winRate}%</span>
-                    <span className="text-xs text-muted-foreground w-10 text-right">{d.total}x</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-          <Card>
-            <CardHeader><CardTitle className="text-sm">Long vs Short</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                {byDirection.map((d,i)=>(
-                  <div key={i} className={`rounded-xl border p-4 ${d.name==='long'?'border-emerald-500/20 bg-emerald-500/5':'border-red-500/20 bg-red-500/5'}`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      {d.name==='long'?<TrendingUp size={16} className="text-emerald-400"/>:<TrendingDown size={16} className="text-red-400"/>}
-                      <span className="font-bold text-sm uppercase">{d.name}</span>
-                    </div>
-                    <p className={`text-3xl font-black ${d.name==='long'?'text-emerald-400':'text-red-400'}`}>{d.winRate}%</p>
-                    <p className="text-xs text-muted-foreground mb-1">win rate · {d.total} trade</p>
-                    <p className={`text-sm font-semibold ${d.pnl>=0?'text-emerald-400':'text-red-400'}`}>{d.pnl>=0?'+':''}{fmt(d.pnl)}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         {/* ── PSIKOLOGI ── */}
         <TabsContent value="psikologi" className="mt-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

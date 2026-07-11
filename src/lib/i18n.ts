@@ -11,6 +11,7 @@ const EN: Record<string, string> = {
   'Ringkasan': 'Overview',
   'Trading': 'Trading',
   'Jurnal & Analisa': 'Journal & Analysis',
+  'Tools': 'Tools',
   'Akun': 'Account',
   'Bantuan': 'Help',
 
