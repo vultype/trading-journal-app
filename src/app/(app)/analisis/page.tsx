@@ -9,6 +9,7 @@ import { EquityCurve } from '@/components/charts/EquityCurve'
 import { PnLCalendar } from '@/components/charts/PnLCalendar'
 import { HourAnalysis } from '@/components/charts/HourAnalysis'
 import { TradeTimeScatter, DaySummaryTable, InsightsCard } from '@/components/charts/AnalyticsWidgets'
+import { GroupComparison } from '@/components/charts/GroupComparison'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
@@ -263,9 +264,7 @@ export default function AnalisisPage() {
           <TabsList className="w-full flex flex-nowrap md:flex-wrap justify-start md:justify-center h-auto gap-1.5 bg-transparent p-0">
             {([
               ['summary', LayoutGrid, 'Summary'],
-              ['kalender', CalendarDays, 'Kalender P&L'],
               ['time', Clock, 'Time Analysis'],
-              ['equity', LineChart, 'Equity'],
               ['strategi', Target, 'Strategi'],
               ['pair', Coins, 'Pair'],
               ['psikologi', Brain, 'Psikologi'],
@@ -280,6 +279,9 @@ export default function AnalisisPage() {
 
       {/* ── SUMMARY TAB (WIN / LOSS / PF + overview + streak) ── */}
       <TabsContent value="summary" className="mt-6 space-y-6">
+      {/* ── Insight by AI (point utama) ── */}
+      <InsightsCard trades={normalTrades} stats={stats} fmt={fmt} variant="hero" />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Winning Trades */}
         <Card className="border-emerald-500/20 bg-card">
@@ -417,20 +419,80 @@ export default function AnalisisPage() {
           </div>
         </div>
       )}
-      </TabsContent>
+      {/* ── Equity Curve (dipindah ke Summary) ── */}
+      <div>
+        <h2 className="text-sm font-bold mb-2 flex items-center gap-2"><LineChart size={15} className="text-primary"/> Equity Curve</h2>
+        <Card>
+          <CardContent className="pt-5">
+            {curve.length > 1 ? <EquityCurve data={curve} fmt={fmt}/> : <p className="text-sm text-muted-foreground text-center py-8">Butuh minimal 2 trade</p>}
+          </CardContent>
+        </Card>
+      </div>
 
-        {/* ── KALENDER ── */}
-        <TabsContent value="kalender" className="mt-4">
-          <Card>
-            <CardContent className="pt-5">
-              <PnLCalendar
-                trades={trades}
-                fmt={fmt}
-                onDayClick={(date, dayTrades) => { setCalDayDate(date); setCalDayTrades(dayTrades) }}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* ── P&L per Bulan + Distribusi ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="text-sm">P&L per Bulan</CardTitle></CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={byMonth} margin={{top:4,right:4,bottom:4,left:0}}>
+                <XAxis dataKey="name" tick={{fontSize:10}} tickLine={false} axisLine={false}/>
+                <YAxis tick={{fontSize:10}} tickLine={false} axisLine={false} width={55} tickFormatter={v=>fmt(v)}/>
+                <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={(v)=>[fmt(Number(v)),'P&L']}/>
+                <ReferenceLine y={0} stroke="var(--border)"/>
+                <Bar dataKey="pnl" radius={[4,4,0,0]}>
+                  {byMonth.map((e,i)=><Cell key={i} fill={e.pnl>=0?C_WIN:C_LOSS} fillOpacity={0.8}/>)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Distribusi Hasil</CardTitle></CardHeader>
+          <CardContent>
+            {(() => {
+              const total = piePnL.reduce((s, e) => s + e.value, 0)
+              return (
+                <div className="flex items-center gap-4">
+                  <div className="relative shrink-0" style={{ width: 150, height: 200 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={piePnL} cx="50%" cy="50%" innerRadius={54} outerRadius={78} dataKey="value" paddingAngle={4} cornerRadius={6} stroke="none">
+                          {piePnL.map((e,i)=><Cell key={i} fill={e.color}/>)}
+                        </Pie>
+                        <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={(v:any, n:any)=>[`${v} trade (${total>0?Math.round(Number(v)/total*100):0}%)`, n]}/>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-2xl font-black tracking-tight">{total}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</span>
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {piePnL.map((e,i)=>(
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full" style={{background:e.color}}/>{e.name}</span>
+                        <span className="font-semibold">{e.value} <span className="text-muted-foreground text-xs">({total>0?Math.round(e.value/total*100):0}%)</span></span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Kalender P&L (dipindah ke Summary) ── */}
+      <div>
+        <h2 className="text-sm font-bold mb-2 flex items-center gap-2"><CalendarDays size={15} className="text-primary"/> Kalender P&L</h2>
+        <Card>
+          <CardContent className="pt-5">
+            <PnLCalendar trades={trades} fmt={fmt} onDayClick={(date, dayTrades) => { setCalDayDate(date); setCalDayTrades(dayTrades) }} />
+          </CardContent>
+        </Card>
+      </div>
+      </TabsContent>
 
         {/* ── TIME ANALYSIS (merge Jam + Waktu) ── */}
         <TabsContent value="time" className="mt-4 space-y-4">
@@ -511,71 +573,9 @@ export default function AnalisisPage() {
           )}
         </TabsContent>
 
-        {/* ── EQUITY ── */}
-        <TabsContent value="equity" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader><CardTitle className="text-sm">Equity Curve</CardTitle></CardHeader>
-            <CardContent>{curve.length > 1 ? <EquityCurve data={curve}/> : <p className="text-sm text-muted-foreground text-center py-8">Butuh minimal 2 trade</p>}</CardContent>
-          </Card>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader><CardTitle className="text-sm">P&L per Bulan</CardTitle></CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={byMonth} margin={{top:4,right:4,bottom:4,left:0}}>
-                    <XAxis dataKey="name" tick={{fontSize:10}} tickLine={false} axisLine={false}/>
-                    <YAxis tick={{fontSize:10}} tickLine={false} axisLine={false} width={55} tickFormatter={v=>fmt(v)}/>
-                    <Tooltip contentStyle={TooltipStyle} formatter={(v)=>[fmt(Number(v)),'P&L']}/>
-                    <ReferenceLine y={0} stroke="var(--border)"/>
-                    <Bar dataKey="pnl" radius={[4,4,0,0]}>
-                      {byMonth.map((e,i)=><Cell key={i} fill={e.pnl>=0?C_WIN:C_LOSS} fillOpacity={0.8}/>)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Distribusi Hasil</CardTitle></CardHeader>
-              <CardContent>
-                {(() => {
-                  const total = piePnL.reduce((s, e) => s + e.value, 0)
-                  return (
-                    <div className="flex items-center gap-4">
-                      <div className="relative shrink-0" style={{ width: 150, height: 200 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={piePnL} cx="50%" cy="50%" innerRadius={54} outerRadius={78} dataKey="value" paddingAngle={4} cornerRadius={6} stroke="none">
-                              {piePnL.map((e,i)=><Cell key={i} fill={e.color}/>)}
-                            </Pie>
-                            <Tooltip contentStyle={TooltipStyle} itemStyle={tipItem} labelStyle={tipLabel} formatter={(v:any, n:any)=>[`${v} trade (${total>0?Math.round(Number(v)/total*100):0}%)`, n]}/>
-                          </PieChart>
-                        </ResponsiveContainer>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-2xl font-black tracking-tight">{total}</span>
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</span>
-                        </div>
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        {piePnL.map((e,i)=>(
-                          <div key={i} className="flex items-center justify-between text-sm">
-                            <span className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full" style={{background:e.color}}/>
-                              {e.name}
-                            </span>
-                            <span className="font-semibold">{e.value} <span className="text-muted-foreground text-xs">({total>0?Math.round(e.value/total*100):0}%)</span></span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })()}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
         {/* ── STRATEGI ── */}
         <TabsContent value="strategi" className="mt-4 space-y-4">
+          <GroupComparison data={byStrategy} fmt={fmt} label="Strategi" />
           {byStrategy.length === 0 ? (
             <Card className="border-dashed"><CardContent className="py-12 text-center text-sm text-muted-foreground">Belum ada data strategi</CardContent></Card>
           ) : (
@@ -616,6 +616,7 @@ export default function AnalisisPage() {
 
         {/* ── PAIR ── */}
         <TabsContent value="pair" className="mt-4 space-y-4">
+          <GroupComparison data={byPair} fmt={fmt} label="Pair" />
           <Card>
             <CardHeader><CardTitle className="text-sm">Win Rate per Pair</CardTitle></CardHeader>
             <CardContent className="space-y-3">

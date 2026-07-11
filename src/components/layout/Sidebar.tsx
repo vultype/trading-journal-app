@@ -7,8 +7,11 @@ import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
   FlaskConical, LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
-  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart,
+  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart, Crown,
 } from 'lucide-react'
+
+// Plan mock — semua user Free untuk saat ini
+const PLAN: 'free' | 'pro' = 'free'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
 import { useStore } from '@/lib/store'
@@ -65,17 +68,10 @@ const LOCK_MSG = 'Catat trade pertama di Dashboard dulu untuk membuka menu ini'
 
 export function Sidebar() {
   const path   = usePathname()
-  const router = useRouter()
-  const { theme, setTheme } = useTheme()
   const groups = useGroups()
   const t = useT()
   const { isLocked } = useMenuLock()
   const [openMenu, setOpenMenu] = useState<string | null>('/finance')
-
-  async function logout() {
-    await createClient().auth.signOut()
-    router.replace('/login')
-  }
 
   return (
     <aside className="hidden md:flex w-56 shrink-0 border-r border-border/50 bg-sidebar flex-col py-5 px-3">
@@ -144,23 +140,24 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="flex flex-col gap-1 mt-3 pt-3 border-t border-border/40">
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all border border-transparent"
-        >
-          {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
-          {theme === 'dark' ? t('Light Mode') : t('Dark Mode')}
-        </button>
-
-        <button
-          onClick={logout}
-          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 transition-all border border-transparent"
-        >
-          <LogOut size={15}/>
-          {t('Keluar')}
-        </button>
-      </div>
+      {/* Upgrade to Pro card (khusus Free) */}
+      {PLAN === 'free' && (
+        <Link href="/subscription"
+          className="mt-3 block rounded-2xl p-[1px] bg-gradient-to-br from-primary/60 via-primary/20 to-transparent">
+          <div className="rounded-2xl bg-sidebar/80 p-3.5">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/15 ring-1 ring-primary/25">
+                <Crown size={13} className="text-primary" />
+              </span>
+              <p className="text-sm font-bold">Upgrade ke Pro</p>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-snug mb-2.5">Buka multi-akun, analisa jam & sesi, export data, dan lainnya.</p>
+            <span className="flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold py-1.5">
+              Upgrade Sekarang
+            </span>
+          </div>
+        </Link>
+      )}
     </aside>
   )
 }

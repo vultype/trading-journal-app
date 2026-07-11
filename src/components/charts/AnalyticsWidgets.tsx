@@ -122,7 +122,7 @@ export function DaySummaryTable({ trades, fmt }: { trades: Trade[]; fmt: (n: num
 }
 
 // ── Auto Insights ──────────────────────────────────────────────────────────────
-export function InsightsCard({ trades, stats, fmt }: { trades: Trade[]; stats: DashboardStats; fmt: (n: number) => string }) {
+export function InsightsCard({ trades, stats, fmt, variant = 'default' }: { trades: Trade[]; stats: DashboardStats; fmt: (n: number) => string; variant?: 'default' | 'hero' }) {
   const insights = useMemo(() => {
     const normal = trades.filter(t => !t.is_overtrade)
     if (normal.length < 3) return []
@@ -177,6 +177,41 @@ export function InsightsCard({ trades, stats, fmt }: { trades: Trade[]; stats: D
   }, [trades, stats, fmt])
 
   if (insights.length === 0) return null
+
+  if (variant === 'hero') {
+    return (
+      <div className="relative rounded-2xl overflow-hidden p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/40">
+        <div className="relative rounded-2xl bg-[#060d0b] overflow-hidden">
+          {/* glow accents */}
+          <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-primary/25 blur-3xl" />
+          <div className="absolute -bottom-24 -left-16 w-64 h-64 rounded-full bg-cyan-500/15 blur-3xl" />
+          <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
+          <div className="relative p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <span className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/20 ring-1 ring-primary/40">
+                <Lightbulb size={20} className="text-primary" />
+              </span>
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                  Insight by AI
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-primary px-2 py-0.5 rounded-full bg-primary/15 ring-1 ring-primary/30">Datalitiq AI</span>
+                </h3>
+                <p className="text-xs text-white/45">Analisa performa trading kamu secara otomatis</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {insights.map((ins, i) => (
+                <div key={i} className="flex items-start gap-3 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3.5 py-3 backdrop-blur-sm">
+                  <span className={`shrink-0 mt-0.5 ${ins.color}`}><ins.icon size={16} /></span>
+                  <p className="text-sm text-white/90 leading-snug">{ins.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Card className="h-full relative overflow-hidden bg-gradient-to-br from-primary/8 via-transparent to-transparent">
