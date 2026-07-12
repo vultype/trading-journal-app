@@ -73,6 +73,13 @@ const C = {
       { icon: Brain, t: 'Insight AI yang benar-benar actionable', d: 'Bukan sekadar angka. Datalitiq menganalisa ratusan trade-mu dan memberi rekomendasi konkret: jam terbaik entry, strategi paling profit, hingga peringatan overtrade.', img: '/landing/insight-ai.png' },
       { icon: Clock, t: 'Tahu jam & sesi paling menguntungkan', d: 'Heatmap jam trading, chart P&L per jam, dan performa per sesi (Asia/London/Overlap/NY). Fokuskan energimu di waktu yang benar-benar cuan.', img: '/landing/time-analysis.png' },
     ],
+    galleryTitle: 'Satu aplikasi, semua yang kamu butuh',
+    gallerySub: 'Jelajahi setiap sudut Datalitiq — dari jurnal sampai analisa mendalam.',
+    gallery: [
+      { icon: CalendarDays, t: 'Kalender P&L' }, { icon: BookOpen, t: 'Jurnal Harian' },
+      { icon: GitCompare, t: 'Komparasi Strategi & Pair' }, { icon: Wallet, t: 'Tracking Deposit & Withdraw' },
+      { icon: Zap, t: 'Simulator Money Management' }, { icon: Gauge, t: 'Datalitiq Score' },
+    ],
     reviewsTitle: 'Dipakai trader yang serius berkembang',
     reviews: [
       { name: 'Rangga P.', role: 'Trader XAUUSD', text: 'Baru sadar 70% loss saya di jam yang sama. Setelah tahu dari Datalitiq, win rate naik drastis dalam sebulan.', stars: 5 },
@@ -146,6 +153,13 @@ const C = {
       { icon: LineChart, t: 'A complete analytics dashboard', d: 'Datalitiq Score, equity curve, drawdown, daily net P&L, and time-of-day performance — visualized cleanly and clearly.', img: '/landing/dashboard.png' },
       { icon: Brain, t: 'AI insights that are actually actionable', d: 'Not just numbers. Datalitiq analyzes hundreds of your trades and gives concrete recommendations: best entry hours, most profitable strategy, even overtrade warnings.', img: '/landing/insight-ai.png' },
       { icon: Clock, t: 'Know your most profitable hours & sessions', d: 'Trading-hour heatmap, P&L-per-hour chart, and per-session performance (Asia/London/Overlap/NY). Focus your energy where it truly pays.', img: '/landing/time-analysis.png' },
+    ],
+    galleryTitle: 'One app, everything you need',
+    gallerySub: 'Explore every corner of Datalitiq — from journaling to deep analysis.',
+    gallery: [
+      { icon: CalendarDays, t: 'P&L Calendar' }, { icon: BookOpen, t: 'Daily Journal' },
+      { icon: GitCompare, t: 'Strategy & Pair Comparison' }, { icon: Wallet, t: 'Deposit & Withdraw Tracking' },
+      { icon: Zap, t: 'Money-Management Simulator' }, { icon: Gauge, t: 'Datalitiq Score' },
     ],
     reviewsTitle: 'Used by traders serious about growth',
     reviews: [
@@ -308,6 +322,21 @@ function Shot({ src, alt, fallback }: { src?: string; alt?: string; fallback?: R
       {src && !err
         ? <img ref={ref} src={src} alt={alt} onError={() => setErr(true)} className="w-full block" />
         : (fallback ?? <MockDashboard />)}
+    </div>
+  )
+}
+
+// ── Placeholder preview modern (dummy) ──
+function Ph({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden border border-white/10 bg-[#0a1210] aspect-[16/10]">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/12 via-transparent to-cyan-500/8" />
+      <div className="absolute inset-0 dtq-shimmer" />
+      <div className="absolute top-2.5 left-2.5 flex gap-1"><span className="w-1.5 h-1.5 rounded-full bg-white/15" /><span className="w-1.5 h-1.5 rounded-full bg-white/15" /><span className="w-1.5 h-1.5 rounded-full bg-white/15" /></div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5">
+        <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/15 ring-1 ring-primary/25"><Icon size={22} className="text-primary" /></span>
+        <span className="text-[9px] uppercase tracking-[0.2em] text-white/25">Preview</span>
+      </div>
     </div>
   )
 }
@@ -517,6 +546,27 @@ export function LandingPage() {
         ))}
       </section>
 
+      {/* ── Feature gallery (placeholder dummy) ── */}
+      <section className="max-w-6xl mx-auto px-5 py-16">
+        <Reveal>
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <span className="text-xs font-bold uppercase tracking-widest text-primary">Galeri</span>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">{t.galleryTitle}</h2>
+            <p className="text-sm text-white/50 mt-3">{t.gallerySub}</p>
+          </div>
+        </Reveal>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {t.gallery.map((g, i) => (
+            <Reveal key={i} delay={(i % 3) * 90}>
+              <div className="group">
+                <Ph icon={g.icon} label={g.t} />
+                <p className="text-sm font-semibold mt-3 text-white/80">{g.t}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       {/* ── Testimoni ── */}
       <section id="reviews" className="max-w-6xl mx-auto px-5 py-16">
         <Reveal><h2 className="text-2xl md:text-3xl font-black tracking-tight text-center mb-12">{t.reviewsTitle}</h2></Reveal>
@@ -646,6 +696,8 @@ export function LandingPage() {
         .dtq-float2 { animation: dtq-float 4.5s ease-in-out infinite 0.8s; }
         @keyframes dtq-pulse { 0%,100% { opacity: .6 } 50% { opacity: 1 } }
         .dtq-pulse { animation: dtq-pulse 5s ease-in-out infinite; }
+        .dtq-shimmer { background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.06) 50%, transparent 65%); background-size: 200% 100%; animation: dtq-shimmer 2.6s linear infinite; }
+        @keyframes dtq-shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
       `}</style>
     </div>
   )

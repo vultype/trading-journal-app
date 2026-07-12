@@ -59,13 +59,11 @@ function useFlat(): NavItem[] {
 }
 
 function useMenuLock() {
-  const { trades } = useStore()
-  const hasTrades = trades.length > 0
-  const isLocked = (href: string) => !hasTrades && !ALWAYS_UNLOCKED.includes(href)
-  return { hasTrades, isLocked }
+  // Lock dinonaktifkan — semua menu bisa diakses langsung
+  return { hasTrades: true, isLocked: (_href: string) => false }
 }
 
-const LOCK_MSG = 'Catat trade pertama di Dashboard dulu untuk membuka menu ini'
+const LOCK_MSG = ''
 
 export function Sidebar() {
   const path   = usePathname()
