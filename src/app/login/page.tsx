@@ -24,6 +24,14 @@ export default function LoginPage() {
       .then(({ data }) => setLogoUrl((data?.logo_url as string | null) ?? null))
   }, [])
 
+  // Tujuan redirect setelah login (mis. dari tombol checkout di homepage).
+  // Hanya izinkan path relatif (diawali '/') untuk mencegah open-redirect.
+  function nextTarget() {
+    if (typeof window === 'undefined') return '/dashboard'
+    const n = new URLSearchParams(window.location.search).get('next')
+    return n && n.startsWith('/') && !n.startsWith('//') ? n : '/dashboard'
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setError('')
@@ -35,7 +43,7 @@ export default function LoginPage() {
         const { data, error: err } = await sb.auth.signUp({ email, password: pass })
         if (err) { setError(err.message); setBusy(false); return }
         if (data.session) {
-          router.replace('/dashboard')
+          router.replace(nextTarget())
           return
         }
         setDone(true); setBusy(false)
@@ -44,7 +52,7 @@ export default function LoginPage() {
 
       const { error: err } = await sb.auth.signInWithPassword({ email, password: pass })
       if (err) { setError('Email atau password salah.'); setBusy(false); return }
-      router.replace('/dashboard')
+      router.replace(nextTarget())
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kesalahan. Coba lagi.'
       setError(msg)

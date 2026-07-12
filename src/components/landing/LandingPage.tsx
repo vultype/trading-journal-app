@@ -26,17 +26,17 @@ const pkgPrice = (base: number, months: number, off: number) => Math.round(base 
 
 const C = {
   id: {
-    nav: { features: 'Fitur', pricing: 'Harga', faq: 'FAQ', reviews: 'Testimoni', login: 'Masuk', cta: 'Coba Gratis', dash: 'Buka Dashboard' },
+    nav: { features: 'Fitur', pricing: 'Harga', faq: 'FAQ', reviews: 'Testimoni', login: 'Masuk', cta: 'Mulai Sekarang', dash: 'Buka Dashboard' },
     hero: {
       badge: 'Data > Feeling · Jurnal & Analitik AI',
       title: ['Stop Rugi Karena Feeling.', 'Trading Disiplin Berbasis Data.'],
       sub: 'Trader konsisten menang bukan karena hoki — tapi karena punya data. Datalitiq kasih kamu AI insight, skor performa, dan analisa mendalam supaya kamu lebih disiplin dan berhenti mengulang kerugian.',
-      cta1: 'Coba Demo Gratis', cta2: 'Lihat Fitur', trust: 'Data-driven · Disiplin · Konsisten',
+      cta1: 'Mulai dengan Standar', cta2: 'Lihat Fitur', trust: 'Data-driven · Disiplin · Konsisten',
       floatA: 'Win Rate naik 12%', floatB: 'Datalitiq Score 87',
     },
     trustBar: 'Dipercaya trader XAUUSD, Forex, Crypto & Saham',
     stats: [
-      { v: 'Rp0', l: 'Biaya untuk mulai' }, { v: '5 mnt', l: 'Setup sampai jalan' },
+      { v: 'Rp59rb', l: 'Mulai dari / bulan' }, { v: '5 mnt', l: 'Setup sampai jalan' },
       { v: '6', l: 'Metrik Datalitiq Score' }, { v: '24/7', l: 'Analisa AI otomatis' },
     ],
     problem: {
@@ -76,9 +76,12 @@ const C = {
     galleryTitle: 'Satu aplikasi, semua yang kamu butuh',
     gallerySub: 'Jelajahi setiap sudut Datalitiq — dari jurnal sampai analisa mendalam.',
     gallery: [
-      { icon: CalendarDays, t: 'Kalender P&L' }, { icon: BookOpen, t: 'Jurnal Harian' },
-      { icon: GitCompare, t: 'Komparasi Strategi & Pair' }, { icon: Wallet, t: 'Tracking Deposit & Withdraw' },
-      { icon: Zap, t: 'Simulator Money Management' }, { icon: Gauge, t: 'Datalitiq Score' },
+      { icon: CalendarDays, t: 'Kalender P&L & Equity', d: 'Lihat profit setiap hari dalam kalender berwarna, plus kurva equity yang terus kamu pantau.', kind: 'calendar', tag: 'Visual', span: 'col-span-2 lg:col-span-4', wide: true },
+      { icon: Gauge, t: 'Datalitiq Score', d: 'Skor disiplin trading 0–100, diperbarui tiap trade.', kind: 'gauge', tag: 'AI', span: 'col-span-2 lg:col-span-2', wide: false },
+      { icon: BookOpen, t: 'Jurnal Harian', d: 'Catat alasan & emosi tiap entry.', kind: 'journal', tag: 'Jurnal', span: 'col-span-2 sm:col-span-1 lg:col-span-2', wide: false },
+      { icon: GitCompare, t: 'Komparasi Strategi & Pair', d: 'Bandingkan performa antar setup.', kind: 'compare', tag: 'Analisa', span: 'col-span-2 sm:col-span-1 lg:col-span-2', wide: false },
+      { icon: Wallet, t: 'Deposit & Withdraw', d: 'Pantau arus dana broker kamu.', kind: 'wallet', tag: 'Keuangan', span: 'col-span-2 sm:col-span-1 lg:col-span-2', wide: false },
+      { icon: Zap, t: 'Simulator Money Management', d: 'Latih risk-reward & position sizing tanpa menyentuh data trade asli — uji strategimu sebelum eksekusi nyata.', kind: 'sim', tag: 'Tools', span: 'col-span-2 lg:col-span-6', wide: true },
     ],
     reviewsTitle: 'Dipakai trader yang serius berkembang',
     reviews: [
@@ -87,37 +90,37 @@ const C = {
       { name: 'Bima S.', role: 'Prop Firm Trader', text: 'Jurnal + mood tracker bikin saya jauh lebih disiplin. Overtrade saya turun banyak sejak pakai ini.', stars: 5 },
     ],
     pricingTitle: 'Harga sederhana, transparan',
-    pricingSub: 'Mulai gratis. Upgrade kapan pun kamu siap.',
+    pricingSub: 'Pilih paket yang sesuai. Bisa upgrade kapan pun kamu siap.',
     popular: 'Paling Populer', month: '/bln', forever: 'selamanya',
     plans: [
-      { name: 'Standar', price: 'Gratis', tagline: 'Untuk mulai mencatat trading', cta: 'Mulai Gratis', highlight: false, features: ['Catat trade tanpa batas', '1 akun broker', 'Dashboard & statistik dasar', 'Jurnal harian & Kalender P&L', 'Insight AI (3 temuan)'] },
-      { name: 'Professional', price: 'Rp99.000', tagline: 'Untuk trader yang serius berkembang', cta: 'Upgrade ke Pro', highlight: true, features: ['Semua fitur Standar', 'Multi akun broker', 'Insight AI lengkap + Datalitiq Score', 'Analisa jam & sesi trading', 'Komparasi strategi & pair', 'Upload screenshot chart', 'Export data (CSV/JSON)', 'Prioritas support'] },
+      { name: 'Standar', price: 'Rp59.000', tagline: 'Untuk trader yang mulai serius', cta: 'Pilih Standar', highlight: false, features: ['Catat trade tanpa batas', '1 akun broker', 'Dashboard & statistik dasar', 'Jurnal harian & Kalender P&L', 'Insight AI (3 temuan)'] },
+      { name: 'Professional', price: 'Rp129.000', tagline: 'Untuk trader yang serius berkembang', cta: 'Pilih Professional', highlight: true, features: ['Semua fitur Standar', 'Multi akun broker', 'Insight AI lengkap + Datalitiq Score', 'Analisa jam & sesi trading', 'Komparasi strategi & pair', 'Upload screenshot chart', 'Export data (CSV/JSON)', 'Prioritas support'] },
     ],
     faqTitle: 'Pertanyaan yang sering ditanya',
     faqs: [
       { q: 'Apakah data saya aman?', a: 'Ya. Data disimpan aman di Supabase dengan proteksi Row-Level Security — hanya kamu yang bisa mengakses datamu.' },
       { q: 'Apakah bisa untuk banyak akun broker?', a: 'Paket Professional mendukung multi-akun broker. Paket Standar mendukung 1 akun.' },
       { q: 'Bagaimana cara upgrade ke Professional?', a: 'Lewat transfer bank (BCA). Setelah transfer, konfirmasi ke admin via WhatsApp dan akunmu diaktifkan.' },
-      { q: 'Apakah perlu kartu kredit untuk daftar?', a: 'Tidak. Paket Standar gratis selamanya tanpa kartu kredit.' },
+      { q: 'Bagaimana cara pembayarannya?', a: 'Pembayaran lewat transfer bank Mandiri. Setelah transfer, paket aktif otomatis begitu diverifikasi (maks. 1×24 jam).' },
       { q: 'Broker apa saja yang didukung?', a: 'Semua broker — cukup catat trade-mu manual. Kami mendukung Forex, Crypto, Saham, dan Prop Firm.' },
     ],
     finalTitle: 'Siap trading dengan data, bukan feeling?',
     finalSub: 'Gabung sekarang dan mulai ukur performa trading kamu yang sebenarnya.',
-    finalCta: 'Mulai Gratis Sekarang',
+    finalCta: 'Mulai Sekarang',
     footerTagline: 'Jurnal & analitik trading untuk trader serius.',
   },
   en: {
-    nav: { features: 'Features', pricing: 'Pricing', faq: 'FAQ', reviews: 'Reviews', login: 'Sign in', cta: 'Try Free', dash: 'Open Dashboard' },
+    nav: { features: 'Features', pricing: 'Pricing', faq: 'FAQ', reviews: 'Reviews', login: 'Sign in', cta: 'Get Started', dash: 'Open Dashboard' },
     hero: {
       badge: 'Data > Feeling · AI Trading Journal & Analytics',
       title: ['Stop Losing on Feelings.', 'Trade with Data & Discipline.'],
       sub: "Consistent traders don't win on luck — they win on data. Datalitiq gives you AI insights, a performance score, and deep analytics so you stay disciplined and stop repeating losses.",
-      cta1: 'Try Free Demo', cta2: 'See Features', trust: 'Data-driven · Disciplined · Consistent',
+      cta1: 'Start with Standard', cta2: 'See Features', trust: 'Data-driven · Disciplined · Consistent',
       floatA: 'Win Rate up 12%', floatB: 'Datalitiq Score 87',
     },
     trustBar: 'Trusted by XAUUSD, Forex, Crypto & Stock traders',
     stats: [
-      { v: '$0', l: 'To get started' }, { v: '5 min', l: 'Setup to running' },
+      { v: 'Rp59K', l: 'Starts from / mo' }, { v: '5 min', l: 'Setup to running' },
       { v: '6', l: 'Datalitiq Score metrics' }, { v: '24/7', l: 'Automatic AI analysis' },
     ],
     problem: {
@@ -157,9 +160,12 @@ const C = {
     galleryTitle: 'One app, everything you need',
     gallerySub: 'Explore every corner of Datalitiq — from journaling to deep analysis.',
     gallery: [
-      { icon: CalendarDays, t: 'P&L Calendar' }, { icon: BookOpen, t: 'Daily Journal' },
-      { icon: GitCompare, t: 'Strategy & Pair Comparison' }, { icon: Wallet, t: 'Deposit & Withdraw Tracking' },
-      { icon: Zap, t: 'Money-Management Simulator' }, { icon: Gauge, t: 'Datalitiq Score' },
+      { icon: CalendarDays, t: 'P&L & Equity Calendar', d: 'See daily profit in a color-coded calendar, plus an equity curve you keep an eye on.', kind: 'calendar', tag: 'Visual', span: 'col-span-2 lg:col-span-4', wide: true },
+      { icon: Gauge, t: 'Datalitiq Score', d: 'A 0–100 discipline score, updated every trade.', kind: 'gauge', tag: 'AI', span: 'col-span-2 lg:col-span-2', wide: false },
+      { icon: BookOpen, t: 'Daily Journal', d: 'Log the reason & emotion per entry.', kind: 'journal', tag: 'Journal', span: 'col-span-2 sm:col-span-1 lg:col-span-2', wide: false },
+      { icon: GitCompare, t: 'Strategy & Pair Comparison', d: 'Compare performance across setups.', kind: 'compare', tag: 'Analytics', span: 'col-span-2 sm:col-span-1 lg:col-span-2', wide: false },
+      { icon: Wallet, t: 'Deposit & Withdraw', d: 'Track your broker cash flow.', kind: 'wallet', tag: 'Finance', span: 'col-span-2 sm:col-span-1 lg:col-span-2', wide: false },
+      { icon: Zap, t: 'Money-Management Simulator', d: 'Practice risk-reward & position sizing without touching real trade data — test before you execute live.', kind: 'sim', tag: 'Tools', span: 'col-span-2 lg:col-span-6', wide: true },
     ],
     reviewsTitle: 'Used by traders serious about growth',
     reviews: [
@@ -168,23 +174,23 @@ const C = {
       { name: 'Bima S.', role: 'Prop Firm Trader', text: 'Journal + mood tracker made me way more disciplined. My overtrading dropped a lot since using this.', stars: 5 },
     ],
     pricingTitle: 'Simple, transparent pricing',
-    pricingSub: "Start free. Upgrade whenever you're ready.",
+    pricingSub: "Pick the plan that fits. Upgrade whenever you're ready.",
     popular: 'Most Popular', month: '/mo', forever: 'forever',
     plans: [
-      { name: 'Standard', price: 'Free', tagline: 'To start journaling your trades', cta: 'Start Free', highlight: false, features: ['Unlimited trade logging', '1 broker account', 'Basic dashboard & stats', 'Daily journal & P&L calendar', 'AI Insights (3 findings)'] },
-      { name: 'Professional', price: '$7', tagline: 'For traders serious about growth', cta: 'Upgrade to Pro', highlight: true, features: ['Everything in Standard', 'Multiple broker accounts', 'Full AI Insights + Datalitiq Score', 'Hour & session analysis', 'Strategy & pair comparison', 'Chart screenshot upload', 'Data export (CSV/JSON)', 'Priority support'] },
+      { name: 'Standard', price: 'Rp59K', tagline: 'For traders getting serious', cta: 'Choose Standard', highlight: false, features: ['Unlimited trade logging', '1 broker account', 'Basic dashboard & stats', 'Daily journal & P&L calendar', 'AI Insights (3 findings)'] },
+      { name: 'Professional', price: 'Rp129K', tagline: 'For traders serious about growth', cta: 'Choose Professional', highlight: true, features: ['Everything in Standard', 'Multiple broker accounts', 'Full AI Insights + Datalitiq Score', 'Hour & session analysis', 'Strategy & pair comparison', 'Chart screenshot upload', 'Data export (CSV/JSON)', 'Priority support'] },
     ],
     faqTitle: 'Frequently asked questions',
     faqs: [
       { q: 'Is my data safe?', a: 'Yes. Data is stored securely in Supabase with Row-Level Security — only you can access your data.' },
       { q: 'Can I use multiple broker accounts?', a: 'The Professional plan supports multiple broker accounts. Standard supports 1 account.' },
       { q: 'How do I upgrade to Professional?', a: 'Via bank transfer (BCA). After transferring, confirm with admin on WhatsApp and your account is activated.' },
-      { q: 'Do I need a credit card to sign up?', a: 'No. The Standard plan is free forever with no credit card.' },
+      { q: 'How does payment work?', a: 'Payment is via Mandiri bank transfer. Once you transfer, your plan activates as soon as it is verified (within 24 hours).' },
       { q: 'Which brokers are supported?', a: 'All brokers — just log your trades manually. We support Forex, Crypto, Stocks, and Prop Firms.' },
     ],
     finalTitle: 'Ready to trade with data, not feelings?',
     finalSub: 'Join now and start measuring your real trading performance.',
-    finalCta: 'Start Free Now',
+    finalCta: 'Get Started Now',
     footerTagline: 'Trading journal & analytics for serious traders.',
   },
 }
@@ -327,15 +333,76 @@ function Shot({ src, alt, fallback }: { src?: string; alt?: string; fallback?: R
 }
 
 // ── Placeholder preview modern (dummy) ──
-function Ph({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+// Mini mockup per fitur (dummy, tanpa data asli)
+function Mini({ kind }: { kind: string }) {
+  if (kind === 'calendar') {
+    const on = [1, 2, 7, 9, 14, 15, 16, 21, 23, 24, 27], bad = [4, 11, 18, 25]
+    return (
+      <div className="grid grid-cols-7 gap-1.5 w-full max-w-[240px]">
+        {Array.from({ length: 28 }).map((_, i) => (
+          <span key={i} className={`aspect-square rounded-[4px] ${on.includes(i) ? 'bg-primary/70' : bad.includes(i) ? 'bg-red-500/40' : 'bg-white/[0.06]'}`} />
+        ))}
+      </div>
+    )
+  }
+  if (kind === 'gauge') {
+    return (
+      <svg viewBox="0 0 120 72" className="w-full max-w-[150px] text-primary">
+        <path d="M12 62 A48 48 0 0 1 108 62" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="10" strokeLinecap="round" />
+        <path d="M12 62 A48 48 0 0 1 98 30" fill="none" stroke="currentColor" strokeWidth="10" strokeLinecap="round" />
+        <text x="60" y="58" textAnchor="middle" fill="#fff" fontSize="22" fontWeight="800">82</text>
+      </svg>
+    )
+  }
+  if (kind === 'journal') {
+    return (
+      <div className="w-full space-y-2 max-w-[200px]">
+        <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-primary" /><div className="h-1.5 rounded bg-white/15 flex-1" /></div>
+        {[85, 65, 92].map((w, i) => <div key={i} className="h-1.5 rounded bg-white/10" style={{ width: `${w}%` }} />)}
+      </div>
+    )
+  }
+  if (kind === 'compare') {
+    return (
+      <div className="flex items-end gap-2.5 h-16">
+        {[42, 68, 54, 90].map((h, i) => <div key={i} className={`w-4 rounded-t ${i === 3 ? 'bg-primary/70' : 'bg-white/12'}`} style={{ height: `${h}%` }} />)}
+      </div>
+    )
+  }
+  if (kind === 'wallet') {
+    return (
+      <div className="space-y-1.5 w-full max-w-[190px]">
+        <div className="flex items-center justify-between rounded-lg bg-primary/10 px-2.5 py-1.5"><span className="text-[10px] text-primary">Deposit</span><span className="text-[10px] font-bold text-primary tabular-nums">+Rp10jt</span></div>
+        <div className="flex items-center justify-between rounded-lg bg-white/5 px-2.5 py-1.5"><span className="text-[10px] text-white/50">Withdraw</span><span className="text-[10px] font-bold text-white/60 tabular-nums">−Rp4jt</span></div>
+      </div>
+    )
+  }
+  // sim — sparkline naik
   return (
-    <div className="relative rounded-xl overflow-hidden border border-white/10 bg-[#0a1210] aspect-[16/10]">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/12 via-transparent to-cyan-500/8" />
-      <div className="absolute inset-0 dtq-shimmer" />
-      <div className="absolute top-2.5 left-2.5 flex gap-1"><span className="w-1.5 h-1.5 rounded-full bg-white/15" /><span className="w-1.5 h-1.5 rounded-full bg-white/15" /><span className="w-1.5 h-1.5 rounded-full bg-white/15" /></div>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5">
-        <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/15 ring-1 ring-primary/25"><Icon size={22} className="text-primary" /></span>
-        <span className="text-[9px] uppercase tracking-[0.2em] text-white/25">Preview</span>
+    <svg viewBox="0 0 220 60" className="w-full max-w-[340px] text-primary">
+      <polyline points="0,46 28,40 56,49 84,30 112,35 140,18 168,24 196,11 220,6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+type GalleryItem = { icon: React.ElementType; t: string; d: string; kind: string; tag: string; span: string; wide: boolean }
+
+function BentoTile({ item, index }: { item: GalleryItem; index: number }) {
+  const { icon: Icon, t: title, d, kind, tag, wide } = item
+  return (
+    <div className={`group relative h-full rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.045] to-transparent p-5 overflow-hidden hover:border-primary/30 transition-colors ${wide ? 'md:flex md:items-center md:gap-6' : ''}`}>
+      <div className="absolute inset-0 dtq-shimmer opacity-0 group-hover:opacity-100 transition-opacity" />
+      <span className="absolute top-3 right-4 text-4xl font-black text-white/[0.04] select-none">{String(index + 1).padStart(2, '0')}</span>
+      <div className={`relative ${wide ? 'md:flex-1' : ''}`}>
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/25"><Icon size={17} className="text-primary" /></span>
+          <span className="text-[9px] font-bold uppercase tracking-widest text-primary/80 bg-primary/10 rounded-full px-2 py-0.5">{tag}</span>
+        </div>
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        <p className="text-xs text-white/45 mt-1 leading-relaxed">{d}</p>
+      </div>
+      <div className={`relative flex items-center justify-center rounded-xl bg-black/25 border border-white/[0.06] p-4 ${wide ? 'mt-4 md:mt-0 md:w-[46%]' : 'mt-4'}`}>
+        <Mini kind={kind} />
       </div>
     </div>
   )
@@ -372,6 +439,10 @@ export function LandingPage() {
   function switchLang(l: Lang) { setLang(l); if (typeof window !== 'undefined') localStorage.setItem('dtq_lang', l) }
 
   const primaryHref = loggedIn ? '/dashboard' : '/login'
+  const checkoutHref = (plan: string, months: number) => {
+    const target = `/checkout?plan=${plan}&months=${months}`
+    return loggedIn ? target : `/login?next=${encodeURIComponent(target)}`
+  }
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white overflow-x-hidden">
@@ -412,7 +483,7 @@ export function LandingPage() {
             </h1>
             <p className="text-base text-white/60 mt-5 leading-relaxed max-w-lg">{t.hero.sub}</p>
             <div className="flex flex-wrap items-center gap-3 mt-7">
-              <Link href={primaryHref} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
+              <Link href={loggedIn ? '/dashboard' : checkoutHref('standar', 1)} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
                 {loggedIn ? t.nav.dash : t.hero.cta1} <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <a href="#features" className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors">{t.hero.cta2}</a>
@@ -555,13 +626,10 @@ export function LandingPage() {
             <p className="text-sm text-white/50 mt-3">{t.gallerySub}</p>
           </div>
         </Reveal>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 auto-rows-fr">
           {t.gallery.map((g, i) => (
-            <Reveal key={i} delay={(i % 3) * 90}>
-              <div className="group">
-                <Ph icon={g.icon} label={g.t} />
-                <p className="text-sm font-semibold mt-3 text-white/80">{g.t}</p>
-              </div>
+            <Reveal key={i} delay={(i % 3) * 90} className={g.span}>
+              <BentoTile item={g as GalleryItem} index={i} />
             </Reveal>
           ))}
         </div>
@@ -642,14 +710,14 @@ export function LandingPage() {
                         </li>
                       ))}
                     </ul>
-                    <Link href={primaryHref} className={`w-full text-center rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25' : 'bg-white/10 text-white'}`}>{p.cta}</Link>
+                    <Link href={checkoutHref(p.highlight ? 'pro' : 'standar', d.months)} className={`w-full text-center rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25' : 'bg-white/10 text-white'}`}>{p.cta}</Link>
                   </div>
                 </div>
               </Reveal>
             )
           })}
         </div>
-        <Reveal><p className="text-center text-xs text-white/40 mt-6">Semua paket termasuk uji coba gratis · Pembayaran via transfer BCA · Bisa berhenti kapan saja</p></Reveal>
+        <Reveal><p className="text-center text-xs text-white/40 mt-6">Pembayaran via transfer bank Mandiri · Aktivasi setelah verifikasi · Bisa berhenti kapan saja</p></Reveal>
       </section>
 
       {/* ── FAQ ── */}
@@ -665,7 +733,7 @@ export function LandingPage() {
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
             <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">{t.finalTitle}</h2>
             <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">{t.finalSub}</p>
-            <Link href={primaryHref} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
+            <Link href={loggedIn ? '/dashboard' : checkoutHref('standar', 1)} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? t.nav.dash : t.finalCta} <ArrowRight size={16} />
             </Link>
           </div>

@@ -93,7 +93,7 @@ export default function SubscriptionPage() {
       </div>
 
       <p className="text-center text-xs text-muted-foreground">
-        Pembayaran via transfer bank Mandiri. Semua paket termasuk uji coba gratis · bisa berhenti kapan saja.
+        Pembayaran via transfer bank Mandiri · Aktivasi setelah verifikasi admin · bisa berhenti kapan saja.
       </p>
     </div>
   )
