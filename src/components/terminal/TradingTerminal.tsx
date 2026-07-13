@@ -220,7 +220,7 @@ const wib = (ts: number) => new Date(ts).toLocaleTimeString('id-ID', { timeZone:
 
 function Panel({ title, icon: Icon, right, children, className = '' }: { title: string; icon: React.ElementType; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-xl border border-white/10 bg-white/[0.02] p-3 flex flex-col ${className}`}>
+    <div className={`rounded-2xl border border-white/[0.06] bg-[#0b100e] p-3.5 flex flex-col ${className}`}>
       <div className="flex items-center justify-between mb-2.5">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40"><Icon size={12} /> {title}</span>
         {right}
@@ -237,27 +237,39 @@ function Spark({ data, color = '#34d399' }: { data: number[]; color?: string }) 
   return <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-6"><polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" /></svg>
 }
 
-function Gauge({ score, label }: { score: number; label: string }) {
-  const W = 220, H = 128, cx = 110, cy = 116, rOut = 92, rIn = 74, N = 44
-  const polar = (r: number, deg: number) => { const rad = deg * Math.PI / 180; return [cx + r * Math.cos(rad), cy - r * Math.sin(rad)] as const }
-  const frac = (score + 100) / 200
-  const [nx, ny] = polar(rIn - 6, 180 - frac * 180)
-  const col = score > 20 ? '#34d399' : score < -20 ? '#f87171' : '#fbbf24'
+function meterZone(score: number) {
+  if (score <= -60) return { name: 'Strong Sell', color: '#ef4444', idx: 0 }
+  if (score < -20) return { name: 'Sell', color: '#f87171', idx: 1 }
+  if (score < 20) return { name: 'Neutral', color: '#9ca3af', idx: 2 }
+  if (score < 60) return { name: 'Buy', color: '#34d399', idx: 3 }
+  return { name: 'Strong Buy', color: '#10b981', idx: 4 }
+}
+
+// Meter gaya TradingView "Technicals" — tipis, 5 zona, jarum putih
+function Gauge({ score }: { score: number }) {
+  const cx = 120, cy = 118, r = 84
+  const polar = (rr: number, deg: number) => { const a = deg * Math.PI / 180; return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)] as const }
+  const seg = (a0: number, a1: number) => { let pts = ''; for (let i = 0; i <= 16; i++) { const a = a0 + (a1 - a0) * i / 16; const [x, y] = polar(r, a); pts += `${x.toFixed(1)},${y.toFixed(1)} ` } return pts.trim() }
+  const zones = [
+    { a0: 180, a1: 146, color: '#ef4444' }, { a0: 144, a1: 110, color: '#f87171' },
+    { a0: 108, a1: 72, color: '#9ca3af' }, { a0: 70, a1: 36, color: '#34d399' }, { a0: 34, a1: 0, color: '#10b981' },
+  ]
+  const active = meterZone(score).idx
+  const frac = (clamp(score, -100, 100) + 100) / 200
+  const [nx, ny] = polar(r - 10, 180 - frac * 180)
+  const labels = [
+    { t: 'Strong sell', x: 6, y: 114, anc: 'start', idx: 0 },
+    { t: 'Sell', x: 44, y: 42, anc: 'middle', idx: 1 },
+    { t: 'Neutral', x: 120, y: 20, anc: 'middle', idx: 2 },
+    { t: 'Buy', x: 196, y: 42, anc: 'middle', idx: 3 },
+    { t: 'Strong buy', x: 234, y: 114, anc: 'end', idx: 4 },
+  ]
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-      {Array.from({ length: N + 1 }).map((_, k) => {
-        const fr = k / N, deg = 180 - fr * 180
-        const [x1, y1] = polar(rIn, deg), [x2, y2] = polar(rOut, deg)
-        const c = fr < 0.38 ? '#f87171' : fr < 0.62 ? '#fbbf24' : '#34d399'
-        const on = Math.abs(fr - frac) < 0.03
-        return <line key={k} x1={x1} y1={y1} x2={x2} y2={y2} stroke={c} strokeWidth={on ? 4 : 2.4} opacity={on ? 1 : 0.55} />
-      })}
-      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={col} strokeWidth={3.5} strokeLinecap="round" />
-      <circle cx={cx} cy={cy} r={5} fill={col} />
-      <text x={cx} y={cy - 26} textAnchor="middle" fill={col} fontSize="30" fontWeight="800">{score > 0 ? '+' : ''}{Math.round(score)}</text>
-      <text x={cx} y={cy - 8} textAnchor="middle" fill={col} fontSize="12" fontWeight="700">{label}</text>
-      <text x={16} y={cy + 10} fill="#f87171" fontSize="9" fontWeight="700">BEARISH</text>
-      <text x={W - 16} y={cy + 10} textAnchor="end" fill="#34d399" fontSize="9" fontWeight="700">BULLISH</text>
+    <svg viewBox="0 0 240 130" className="w-full">
+      {zones.map((z, i) => <polyline key={i} points={seg(z.a0, z.a1)} fill="none" stroke={z.color} strokeWidth={i === active ? 7 : 5} strokeLinecap="round" opacity={i === active ? 1 : 0.2} />)}
+      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r={4.5} fill="#fff" />
+      {labels.map(l => <text key={l.t} x={l.x} y={l.y} textAnchor={l.anc as 'start' | 'middle' | 'end'} fontSize="8.5" fontWeight={l.idx === active ? 700 : 500} fill={l.idx === active ? zones[l.idx].color : 'rgba(255,255,255,0.32)'}>{l.t}</text>)}
     </svg>
   )
 }
@@ -384,14 +396,19 @@ export function TradingTerminal() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5">
         {/* ── Row 1: Signal Meter · Bias & Confidence · Narrative ── */}
         <Panel title="Signal Meter · XAU/USD" icon={Compass} className="lg:col-span-4">
-          <Gauge score={sc.overall} label={sc.label} />
+          <p className="text-[10px] text-white/35 -mt-1.5 mb-1">Rangkuman makro · teknikal · sentimen</p>
+          <div className="flex flex-col items-center">
+            <div className="w-[210px] max-w-full"><Gauge score={sc.overall} /></div>
+            <p className="text-lg font-black -mt-2 leading-none" style={{ color: meterZone(sc.overall).color }}>{meterZone(sc.overall).name}</p>
+            <p className="text-[10px] text-white/35 mt-1 tabular-nums">Skor {sc.overall > 0 ? '+' : ''}{Math.round(sc.overall)} · Confidence {sc.confidence}%</p>
+          </div>
           {sltp ? (
-            <div className="grid grid-cols-3 gap-1.5 mt-1 text-center">
-              <div className="rounded-lg bg-red-500/8 py-1.5"><p className="text-[9px] uppercase tracking-wider text-white/35">SL</p><p className="text-[11px] font-bold text-red-400 tabular-nums">{f2(sltp.sl)}</p></div>
-              <div className="rounded-lg bg-emerald-500/8 py-1.5"><p className="text-[9px] uppercase tracking-wider text-white/35">TP1</p><p className="text-[11px] font-bold text-emerald-400 tabular-nums">{f2(sltp.tp1)}</p></div>
-              <div className="rounded-lg bg-emerald-500/8 py-1.5"><p className="text-[9px] uppercase tracking-wider text-white/35">TP2</p><p className="text-[11px] font-bold text-emerald-400 tabular-nums">{f2(sltp.tp2)}</p></div>
+            <div className="grid grid-cols-3 gap-1.5 mt-2.5 text-center">
+              <div className="rounded-xl bg-red-500/8 py-1.5"><p className="text-[9px] uppercase tracking-wider text-white/35">SL</p><p className="text-[11px] font-bold text-red-400 tabular-nums">{f2(sltp.sl)}</p></div>
+              <div className="rounded-xl bg-emerald-500/8 py-1.5"><p className="text-[9px] uppercase tracking-wider text-white/35">TP1</p><p className="text-[11px] font-bold text-emerald-400 tabular-nums">{f2(sltp.tp1)}</p></div>
+              <div className="rounded-xl bg-emerald-500/8 py-1.5"><p className="text-[9px] uppercase tracking-wider text-white/35">TP2</p><p className="text-[11px] font-bold text-emerald-400 tabular-nums">{f2(sltp.tp2)}</p></div>
             </div>
-          ) : <p className="text-[10px] text-white/35 text-center mt-1">Bias netral — belum ada saran arah.</p>}
+          ) : <p className="text-[10px] text-white/35 text-center mt-2">Bias netral — belum ada saran arah.</p>}
         </Panel>
 
         <Panel title="Bias & Confidence" icon={GaugeIcon} className="lg:col-span-4"
