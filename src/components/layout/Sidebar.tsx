@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
   FlaskConical, LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
-  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart, Crown,
+  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart, Crown, Radio,
 } from 'lucide-react'
 
 // Plan mock — semua user Free untuk saat ini
@@ -36,6 +36,7 @@ const billing: NavItem    = { href: '/billing',      label: 'Tagihan',   icon: R
 const settings: NavItem   = { href: '/settings',     label: 'Setting',   icon: Settings }
 const panduan: NavItem    = { href: '/panduan',      label: 'Panduan',   icon: HelpCircle }
 const adminItem: NavItem  = { href: '/admin',        label: 'Admin',     icon: Shield }
+const terminalItem: NavItem = { href: '/terminal',   label: 'Terminal XAU', icon: Radio }
 
 // Menu yang tetap terbuka sebelum user mencatat trade pertama
 export const ALWAYS_UNLOCKED = ['/dashboard', '/panduan']
@@ -43,11 +44,12 @@ export const ALWAYS_UNLOCKED = ['/dashboard', '/panduan']
 function useGroups(): NavGroup[] {
   const { isAdmin } = useStore()
   const account: NavItem[] = [subscription, billing, settings, ...(isAdmin ? [adminItem] : [])]
+  const tools: NavItem[] = [simulator, ...(isAdmin ? [terminalItem] : [])]
   return [
     { label: 'Ringkasan',       items: [dashboard] },
     { label: 'Trading',         items: [trades, finance] },
     { label: 'Jurnal & Analisa', items: [analisis, journal] },
-    { label: 'Tools',           items: [simulator] },
+    { label: 'Tools',           items: tools },
     { label: 'Akun',            items: account },
     { label: 'Bantuan',         items: [panduan] },
   ]
