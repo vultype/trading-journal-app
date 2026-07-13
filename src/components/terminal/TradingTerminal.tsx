@@ -4,6 +4,8 @@
  * TERMINAL XAUUSD — Fase 1 (UI + feed SIMULASI)
  * Semua angka di-generate lokal dengan model faktor (dollar & risk) yang membuat
  * DXY/yield/VIX/S&P/Nasdaq/BTC berkorelasi konsisten ke emas. BUKAN data pasar asli.
+ * Panel Inflasi & Kebijakan (CPI/Core CPI/PCE/Fed Funds/Real Yield) juga dummy — nanti
+ * diambil dari FRED (provider yang sama untuk DXY/US10Y) di Fase 2/3.
  * Fase 2: ganti `useSimFeed()` dengan stream tick asli worker OANDA + feed makro.
  */
 
@@ -12,7 +14,7 @@ import Link from 'next/link'
 import {
   Activity, TrendingUp, TrendingDown, Gauge as GaugeIcon, CalendarClock, Newspaper, Layers,
   Radio, AlertTriangle, ArrowLeft, Clock, Wifi, Users, Building2,
-  Circle, Minus, Sparkles, Target, Waves, Crosshair, Compass, BarChart3,
+  Circle, Minus, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Landmark,
 } from 'lucide-react'
 
 // ─────────────────────────── konstanta ───────────────────────────
@@ -327,6 +329,33 @@ function AssetCard({ meta, a }: { meta: typeof ASSET_META[number]; a: Asset }) {
   )
 }
 
+type MacroItem = { name: string; sub: string; value: number; prior: number; dec: number; unit: string; impact: 'High' | 'Med'; corr: number; nextMs?: number; daily?: boolean }
+
+function MacroCard({ m, now }: { m: MacroItem; now: number }) {
+  const delta = m.value - m.prior
+  const impact = Math.sign(delta) * m.corr
+  const imp = impact > 0.01 ? { t: 'Bullish', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.01 ? { t: 'Bearish', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
+  const down = delta < 0
+  const days = m.nextMs ? Math.max(0, Math.ceil((m.nextMs - now) / 86_400_000)) : null
+  return (
+    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-xs font-bold text-white/85">{m.name}</span>
+        <span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span>
+      </div>
+      <p className="text-[9px] text-white/35 mb-1.5 leading-snug">{m.sub}</p>
+      <div className="flex items-end justify-between mb-1.5">
+        <span className="text-lg font-black tabular-nums">{m.value.toFixed(m.dec)}{m.unit}</span>
+        <span className={`text-[10px] font-bold tabular-nums flex items-center gap-0.5 ${down ? 'text-emerald-400' : 'text-red-400'}`}>{down ? '↓' : '↑'} {m.prior.toFixed(m.dec)}{m.unit}</span>
+      </div>
+      <div className="flex items-center justify-between text-[9px] pt-1.5 border-t border-white/5">
+        <span className={`font-bold uppercase ${m.impact === 'High' ? 'text-red-400/70' : 'text-amber-400/70'}`}>{m.impact}</span>
+        <span className="text-white/35">{m.daily ? 'Diperbarui harian' : days === 0 ? 'Rilis hari ini' : `Rilis ${days}h lagi`}</span>
+      </div>
+    </div>
+  )
+}
+
 function useCountdown(target: number, now: number) {
   const ms = target - now, past = ms < 0, abs = Math.abs(ms)
   const m = Math.floor(abs / 60000), s = Math.floor((abs % 60000) / 1000)
@@ -368,6 +397,14 @@ export function TradingTerminal() {
     { name: 'Fed Speak — Powell', imp: 'Med', fc: '—', prev: '—', at: now + 5 * 3600_000 },
     { name: 'Initial Jobless Claims', imp: 'Med', fc: '232K', prev: '229K', at: now + 20 * 3600_000 },
     { name: 'US Retail Sales (MoM)', imp: 'High', fc: '0.3%', prev: '0.1%', at: now + 26 * 3600_000 },
+  ]
+
+  const MACRO: MacroItem[] = [
+    { name: 'CPI (YoY)', sub: 'Inflasi headline AS', value: 3.3, prior: 3.5, dec: 1, unit: '%', impact: 'High', corr: -1, nextMs: eventAtRef.current },
+    { name: 'Core CPI (YoY)', sub: 'Inflasi inti (ex food & energy)', value: 2.9, prior: 3.0, dec: 1, unit: '%', impact: 'High', corr: -1, nextMs: eventAtRef.current },
+    { name: 'Core PCE (YoY)', sub: 'Gauge favorit The Fed', value: 2.7, prior: 2.8, dec: 1, unit: '%', impact: 'High', corr: -1, nextMs: now + 3 * 3600_000 },
+    { name: 'Fed Funds Rate', sub: 'Suku bunga acuan (batas atas)', value: 4.50, prior: 4.75, dec: 2, unit: '%', impact: 'High', corr: -1, nextMs: now + 18 * 86_400_000 },
+    { name: 'Real Yield 10Y', sub: 'Yield TIPS — turun = bullish emas', value: 1.85, prior: 1.95, dec: 2, unit: '%', impact: 'Med', corr: -1, daily: true },
   ]
 
   return (
@@ -469,6 +506,14 @@ export function TradingTerminal() {
           <div className="mt-2.5 pt-2 border-t border-white/5 space-y-1 text-[10px]">
             <div className="flex justify-between"><span className="text-white/50 flex items-center gap-1"><Building2 size={10} /> COT Managed Money</span><span className="text-emerald-400 font-bold">Net Long</span></div>
             <div className="flex justify-between"><span className="text-white/50">Commercials</span><span className="text-red-400 font-bold">Net Short</span></div>
+          </div>
+        </Panel>
+
+        {/* ── Row 3b: Inflasi & Kebijakan The Fed ── */}
+        <Panel title="Inflasi & Kebijakan The Fed" icon={Landmark} className="lg:col-span-12"
+          right={<span className="text-[9px] text-white/30">rilis bulanan · konteks kebijakan, bukan sinyal entry harian</span>}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {MACRO.map(m => <MacroCard key={m.name} m={m} now={now} />)}
           </div>
         </Panel>
 
