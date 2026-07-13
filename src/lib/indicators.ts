@@ -9,6 +9,24 @@ function ema(vals: number[], period: number): number[] {
   return out
 }
 
+// RSI (14) — nilai terakhir
+export function rsiCalc(closes: number[], period = 14): number {
+  if (closes.length < period + 1) return 50
+  let gain = 0, loss = 0
+  for (let i = closes.length - period; i < closes.length; i++) { const d = closes[i] - closes[i - 1]; if (d >= 0) gain += d; else loss -= d }
+  const rs = loss === 0 ? 100 : gain / loss
+  return 100 - 100 / (1 + rs)
+}
+
+// ATR (14) — rata-rata true range, dipakai untuk mengukur "ukuran" candle relatif volatilitas
+export function atrCalc(candles: Candle[], period = 14): number {
+  if (candles.length < 2) return 0
+  const trs: number[] = []
+  for (let i = 1; i < candles.length; i++) { const c = candles[i], p = candles[i - 1]; trs.push(Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c))) }
+  const s = trs.slice(-period)
+  return s.reduce((a, b) => a + b, 0) / s.length
+}
+
 // MACD (12,26,9) — nilai terakhir + status
 export type Macd = { macd: number; signal: number; hist: number; state: 'bullish' | 'bearish' | 'netral' }
 export function macdCalc(closes: number[], fast = 12, slow = 26, sig = 9): Macd {
