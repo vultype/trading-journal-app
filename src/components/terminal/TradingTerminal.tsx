@@ -1,12 +1,11 @@
 'use client'
 
 /*
- * TERMINAL XAUUSD — Fase 1 (UI + feed SIMULASI)
- * Semua angka di-generate lokal dengan model faktor (dollar & risk) yang membuat
- * DXY/yield/VIX/S&P/Nasdaq/BTC berkorelasi konsisten ke emas. BUKAN data pasar asli.
- * Panel Inflasi & Kebijakan (CPI/Core CPI/PCE/Fed Funds/Real Yield) juga dummy — nanti
- * diambil dari FRED (provider yang sama untuk DXY/US10Y) di Fase 2/3.
- * Fase 2: ganti `useSimFeed()` dengan stream tick asli worker OANDA + feed makro.
+ * TERMINAL XAUUSD — Hybrid: harga live + sisanya simulasi
+ * Harga & chart XAU/USD (M5/M15/H1) diambil LIVE dari Twelve Data via
+ * /api/terminal/quote & /api/terminal/candles (lihat useLiveXauFeed()).
+ * DXY/VIX/S&P/Nasdaq/BTC, retail sentiment, COT, inflasi/Fed, dan news MASIH
+ * SIMULASI (model faktor lokal) — belum disambung ke provider nyata.
  */
 
 import { useEffect, useRef, useState, useMemo } from 'react'
@@ -192,6 +191,56 @@ function useSimFeed() {
   return { feed, eventAtRef }
 }
 
+// ─────────────────────────── feed harga live (Twelve Data — Fase 2) ───────────────────────────
+type LiveFeed = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData> }
+
+function useLiveXauFeed() {
+  const [data, setData] = useState<LiveFeed | null>(null)
+  const [status, setStatus] = useState<'loading' | 'live' | 'error'>('loading')
+  const candlesRef = useRef<Partial<Record<TF, Candle[]>>>({})
+
+  useEffect(() => {
+    let stopped = false
+
+    async function pollQuote() {
+      try {
+        const res = await fetch('/api/terminal/quote')
+        const j = await res.json()
+        if (j.error) throw new Error(j.error)
+        if (stopped) return
+        setData(prev => prev ? { ...prev, price: j.price, changePct: j.changePct, dayHigh: Math.max(j.dayHigh, j.price), dayLow: Math.min(j.dayLow, j.price) } : prev)
+        setStatus('live')
+      } catch { if (!stopped) setStatus('error') }
+    }
+
+    async function pollCandles(tf: TF) {
+      try {
+        const res = await fetch(`/api/terminal/candles?tf=${tf}`)
+        const arr = await res.json()
+        if (stopped || !Array.isArray(arr) || !arr.length) return
+        const candles: Candle[] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
+        candlesRef.current[tf] = candles
+        const { M5, M15, H1 } = candlesRef.current
+        if (M5 && M15 && H1) {
+          const last = candles[candles.length - 1]
+          setData(prev => ({
+            price: prev?.price ?? last.c, changePct: prev?.changePct ?? 0,
+            dayHigh: prev?.dayHigh ?? last.c, dayLow: prev?.dayLow ?? last.c,
+            tf: { M5: computeTF(M5), M15: computeTF(M15), H1: computeTF(H1) },
+          }))
+        }
+      } catch { /* pertahankan candle lama kalau gagal */ }
+    }
+
+    pollCandles('M5'); pollCandles('M15'); pollCandles('H1'); pollQuote()
+    const qId = setInterval(pollQuote, 6000)
+    const cId = setInterval(() => { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') }, 25000)
+    return () => { stopped = true; clearInterval(qId); clearInterval(cId) }
+  }, [])
+
+  return { data, status }
+}
+
 // ─────────────────────────── skor 3 pilar ───────────────────────────
 function scores(feed: Feed) {
   const a = feed.assets
@@ -364,9 +413,21 @@ function useCountdown(target: number, now: number) {
 
 // ─────────────────────────── PAGE ───────────────────────────
 export function TradingTerminal() {
-  const { feed, eventAtRef } = useSimFeed()
-  const cd = useCountdown(eventAtRef.current, feed?.now ?? Date.now())
-  const clock = useMemo(() => feed ? new Date(feed.now).toLocaleTimeString('id-ID') : '', [feed])
+  const { feed: simFeed, eventAtRef } = useSimFeed()
+  const live = useLiveXauFeed()
+  const cd = useCountdown(eventAtRef.current, simFeed?.now ?? Date.now())
+  const clock = useMemo(() => simFeed ? new Date(simFeed.now).toLocaleTimeString('id-ID') : '', [simFeed])
+
+  const feed = useMemo(() => {
+    if (!simFeed) return null
+    if (!live.data) return simFeed
+    return {
+      ...simFeed,
+      price: live.data.price, changePct: live.data.changePct, up: live.data.changePct >= 0,
+      bid: live.data.price - simFeed.spread / 2, ask: live.data.price + simFeed.spread / 2,
+      dayHigh: live.data.dayHigh, dayLow: live.data.dayLow, tf: live.data.tf,
+    }
+  }, [simFeed, live.data])
 
   if (!feed) return <div className="min-h-screen flex items-center justify-center bg-[#060a09] text-white/50"><Radio className="animate-pulse mr-2" /> Menghubungkan feed…</div>
 
@@ -413,11 +474,20 @@ export function TradingTerminal() {
       <header className="sticky top-0 z-30 bg-[#060a09]/95 backdrop-blur border-b border-white/8">
         <div className="px-4 h-14 flex items-center gap-4">
           <Link href="/dashboard" className="text-white/50 hover:text-white shrink-0"><ArrowLeft size={18} /></Link>
-          <div className="flex items-center gap-2 shrink-0"><span className="font-black tracking-tight">XAU/USD</span><span className="text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 rounded px-1.5 py-0.5">Simulasi · Fase 1</span></div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-black tracking-tight">XAU/USD</span>
+            {live.status === 'live' ? (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 rounded px-1.5 py-0.5">Harga Live · Twelve Data</span>
+            ) : live.status === 'error' ? (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-red-500/15 text-red-400 rounded px-1.5 py-0.5">Live Gagal · Fallback Simulasi</span>
+            ) : (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 rounded px-1.5 py-0.5">Menghubungkan Live…</span>
+            )}
+          </div>
           <div className="flex items-baseline gap-2"><span className={`text-2xl font-black tabular-nums ${feed.up ? 'text-emerald-400' : 'text-red-400'}`}>{f2(feed.price)}</span><span className={`text-xs font-bold tabular-nums ${feed.up ? 'text-emerald-400' : 'text-red-400'}`}>{feed.up ? '+' : ''}{feed.changePct.toFixed(2)}%</span></div>
           <div className="hidden md:flex items-center gap-4 text-[11px] text-white/50 tabular-nums">
             <span>Bid <b className="text-white/80">{f2(feed.bid)}</b></span><span>Ask <b className="text-white/80">{f2(feed.ask)}</b></span>
-            <span>Spread <b className={feed.spread > 0.45 ? 'text-amber-400' : 'text-white/80'}>${feed.spread.toFixed(2)}</b></span>
+            <span>Spread <b className={feed.spread > 0.45 ? 'text-amber-400' : 'text-white/80'}>${feed.spread.toFixed(2)}</b>{live.status === 'live' && <span className="text-white/25"> (indikatif)</span>}</span>
             <span>H <b className="text-emerald-400/80">{f2(feed.dayHigh)}</b></span><span>L <b className="text-red-400/80">{f2(feed.dayLow)}</b></span>
           </div>
           <div className="ml-auto flex items-center gap-3 shrink-0">
@@ -577,7 +647,7 @@ export function TradingTerminal() {
         </Panel>
       </div>
 
-      <p className="text-center text-[10px] text-white/25 pb-6">Terminal XAUUSD · Fase 1 — angka masih SIMULASI (model faktor). Fase 2 disambung ke stream tick asli OANDA + feed makro.</p>
+      <p className="text-center text-[10px] text-white/25 pb-6">Terminal XAUUSD · Harga & chart XAU/USD live dari Twelve Data (polling ~5-25 dtk, bukan tick per milidetik). Bid/Ask/Spread masih indikatif. Makro, retail sentiment, COT, & news masih SIMULASI.</p>
     </div>
   )
 }
