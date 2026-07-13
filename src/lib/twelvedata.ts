@@ -28,6 +28,21 @@ export async function fetchQuote(): Promise<TDQuote> {
 
 const TD_INTERVAL: Record<'M5' | 'M15' | 'H1', string> = { M5: '5min', M15: '15min', H1: '1h' }
 
+export type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
+
+// Pivot harian standar dari OHLC hari sebelumnya (candle 1day, ambil bar kemarin)
+export async function fetchDailyPivots(): Promise<Pivots | null> {
+  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=1day&outputsize=2&apikey=${key()}`, { cache: 'no-store' })
+  const j = await res.json()
+  if (j.status === 'error' || j.code) throw new Error(j.message || 'Twelve Data pivots error')
+  const v = (j.values ?? []) as { high: string; low: string; close: string }[]
+  if (v.length < 2) return null
+  const prev = v[1] // v[0] = hari ini (masih terbentuk), v[1] = kemarin (selesai)
+  const H = parseFloat(prev.high), L = parseFloat(prev.low), C = parseFloat(prev.close)
+  const P = (H + L + C) / 3
+  return { P, R1: 2 * P - L, R2: P + (H - L), S1: 2 * P - H, S2: P - (H - L) }
+}
+
 export async function fetchCandles(tf: 'M5' | 'M15' | 'H1', outputsize = 60): Promise<TDCandle[]> {
   const interval = TD_INTERVAL[tf]
   const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=${interval}&outputsize=${outputsize}&apikey=${key()}`, { cache: 'no-store' })

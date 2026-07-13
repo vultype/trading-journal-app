@@ -1,68 +1,36 @@
 'use client'
 
 /*
- * TERMINAL XAUUSD — Hybrid: harga live + sisanya simulasi
- * Harga & chart XAU/USD (M5/M15/H1) diambil LIVE dari Twelve Data via
- * /api/terminal/quote & /api/terminal/candles (lihat useLiveXauFeed()).
- * DXY/VIX/S&P/Nasdaq/BTC, retail sentiment, COT, inflasi/Fed, dan news MASIH
- * SIMULASI (model faktor lokal) — belum disambung ke provider nyata.
+ * TERMINAL XAUUSD — 100% data real (tanpa simulasi)
+ * - Harga & chart XAU/USD M5/M15/H1 + pivot harian: Twelve Data
+ * - BTC/USD: Twelve Data
+ * - Makro (Indeks Dolar, US10Y, Real Yield, CPI, Core CPI, Core PCE, Fed Funds): FRED
+ * - Sentimen berita: Google News RSS → Claude AI (tombol Analisa AI)
+ * Panel yang belum ada sumber real (VIX, indeks saham, retail/COT, kalender) DIHAPUS.
+ * Semua skor turunan (signal meter, bias, momentum, pivot, volatilitas) dihitung dari data real.
  */
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
-  Activity, TrendingUp, TrendingDown, Gauge as GaugeIcon, CalendarClock, Newspaper, Layers,
-  Radio, AlertTriangle, ArrowLeft, Clock, Wifi, Users, Building2,
-  Circle, Minus, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Landmark,
+  Activity, Gauge as GaugeIcon, Newspaper, Layers,
+  Radio, ArrowLeft, Clock, Wifi, WifiOff, Landmark,
+  Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3,
   Loader2, RefreshCw,
 } from 'lucide-react'
 
-// ─────────────────────────── konstanta ───────────────────────────
-const BASE_PRICE = 2685.4
-const TICK_MS = 800
 type TF = 'M5' | 'M15' | 'H1'
 const TFS: TF[] = ['M5', 'M15', 'H1']
-const TF_MS: Record<TF, number> = { M5: 4000, M15: 12000, H1: 48000 }
-const TF_N: Record<TF, number> = { M5: 60, M15: 48, H1: 40 }
 
 type Candle = { o: number; h: number; l: number; c: number; t: number; v: number }
 type Bias = { label: 'LONG' | 'SHORT' | 'NETRAL'; score: number }
 type TFData = { candles: Candle[]; ema9: number[]; ema21: number[]; vwapArr: number[]; rsi: number; atr: number; vwap: number; bias: Bias }
 type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
-type Asset = { value: number; chgPct: number; hist: number[] }
-type AssetKey = 'dxy' | 'us10y' | 'vix' | 'sp' | 'ndx' | 'btc'
-type Feed = {
-  price: number; bid: number; ask: number; spread: number
-  dayHigh: number; dayLow: number; changePct: number; up: boolean
-  tf: Record<TF, TFData>
-  assets: Record<AssetKey, Asset>
-  retailLong: number
-  contrarian: { label: 'LONG' | 'SHORT' | 'NETRAL'; strength: 'lemah' | 'sedang' | 'kuat' }
-  tradeable: { ok: boolean; reason: string }
-  pivots: Pivots
-  vol: { label: 'Rendah' | 'Normal' | 'Tinggi'; ratio: number }
-  session: string; now: number
-}
+type MacroPoint = { key: string; value: number; prior: number; date: string }
 
-const ASSET_META: { key: AssetKey; name: string; sub: string; corr: number; dec: number; prefix?: string; suffix?: string; live?: boolean }[] = [
-  { key: 'dxy', name: 'DXY', sub: 'Indeks Dolar', corr: -1, dec: 2 },
-  { key: 'us10y', name: 'US10Y', sub: 'Yield 10 Thn', corr: -1, dec: 2, suffix: '%' },
-  { key: 'vix', name: 'VIX', sub: 'Indeks Ketakutan', corr: 1, dec: 2 },
-  { key: 'sp', name: 'S&P 500', sub: 'Saham AS', corr: -0.5, dec: 0 },
-  { key: 'ndx', name: 'Nasdaq', sub: 'Saham Teknologi', corr: -0.5, dec: 0 },
-  { key: 'btc', name: 'Bitcoin', sub: 'Kripto', corr: 0.4, dec: 0, prefix: '$', live: true },
-]
+const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x))
 
-const HEADLINES: { src: 'Reuters' | 'Bloomberg'; senti: number; text: string; time: string }[] = [
-  { src: 'Reuters', senti: 1, text: 'Emas menguat, ekspektasi pemangkasan suku bunga Fed meningkat', time: '3m' },
-  { src: 'Bloomberg', senti: -1, text: 'Dolar rebound usai data tenaga kerja AS kuat, tekan logam mulia', time: '12m' },
-  { src: 'Reuters', senti: 1, text: 'Ketegangan geopolitik dorong permintaan safe-haven emas', time: '25m' },
-  { src: 'Bloomberg', senti: 0, text: 'Investor emas berhati-hati jelang rilis inflasi AS malam ini', time: '40m' },
-  { src: 'Reuters', senti: 1, text: 'Bank sentral global lanjutkan akumulasi emas kuartal ini', time: '1j' },
-]
-const NARRATIVE_N = HEADLINES.reduce((a, h) => a + h.senti, 0) / HEADLINES.length
-
-// ─────────────────────────── util indikator ───────────────────────────
+// ─────────────────────────── indikator ───────────────────────────
 function emaArr(vals: number[], period: number): number[] {
   const k = 2 / (period + 1); const out: number[] = []; let prev = vals[0] ?? 0
   vals.forEach((v, i) => { prev = i ? v * k + prev * (1 - k) : v; out.push(prev) })
@@ -97,229 +65,152 @@ function computeTF(candles: Candle[]): TFData {
   const bias: Bias = score >= 2 ? { label: 'LONG', score } : score <= -2 ? { label: 'SHORT', score } : { label: 'NETRAL', score }
   return { candles, ema9, ema21, vwapArr, rsi, atr, vwap, bias }
 }
-const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x))
 
-// ─────────────────────────── engine simulasi ───────────────────────────
-function useSimFeed() {
-  const [feed, setFeed] = useState<Feed | null>(null)
-  const st = useRef<any>(null)
-  const eventAtRef = useRef<number>(Date.now() + (8 + Math.random() * 22) * 60_000)
-
-  useEffect(() => {
-    const now = Date.now()
-    const seedSeries = (n: number, body: number): Candle[] => {
-      const arr: Candle[] = []; let p = BASE_PRICE - n * body * 0.12
-      for (let i = 0; i < n; i++) {
-        const o = p, c = o + (Math.random() - 0.46) * body
-        const h = Math.max(o, c) + Math.random() * body * 0.4, l = Math.min(o, c) - Math.random() * body * 0.4
-        arr.push({ o, h, l, c, t: now, v: 120 + Math.random() * 380 }); p = c
-      }
-      arr[arr.length - 1].c = BASE_PRICE; return arr
-    }
-    const series: Record<TF, Candle[]> = { M5: seedSeries(TF_N.M5, 3.2), M15: seedSeries(TF_N.M15, 5.5), H1: seedSeries(TF_N.H1, 9) }
-    const prevH = BASE_PRICE + 12, prevL = BASE_PRICE - 15, prevC = BASE_PRICE - 3
-    const P = (prevH + prevL + prevC) / 3
-    const pivots: Pivots = { P, R1: 2 * P - prevL, R2: P + (prevH - prevL), S1: 2 * P - prevH, S2: P - (prevH - prevL) }
-    const opens = { dxy: 103.8, us10y: 4.25, vix: 15.5, sp: 5420, ndx: 19100, btc: 68000 }
-    const mkHist = (v: number) => Array.from({ length: 40 }, () => v)
-
-    st.current = {
-      price: BASE_PRICE, series, last: { M5: now, M15: now, H1: now },
-      dayHigh: BASE_PRICE + 6.2, dayLow: BASE_PRICE - 9.4, open: BASE_PRICE - 4,
-      dollarF: 0, riskF: 0, drift: 0.04, retail: 62, spread: 0.18, pivots, atrBase: 2.6, opens,
-      hist: { dxy: mkHist(opens.dxy), us10y: mkHist(opens.us10y), vix: mkHist(opens.vix), sp: mkHist(opens.sp), ndx: mkHist(opens.ndx), btc: mkHist(opens.btc) },
-    }
-
-    const id = setInterval(() => {
-      const s = st.current, t = Date.now()
-      // model faktor: dolar & risk (mean-reverting random walk)
-      const ddollar = (Math.random() - 0.5) * 0.5 - s.dollarF * 0.03
-      const drisk = (Math.random() - 0.5) * 0.5 - s.riskF * 0.03
-      s.dollarF += ddollar; s.riskF += drisk
-      const goldDelta = -ddollar * 1.6 - drisk * 0.4 + (Math.random() - 0.5) * 0.8
-      s.price = Math.max(1, s.price + goldDelta)
-      s.dayHigh = Math.max(s.dayHigh, s.price); s.dayLow = Math.min(s.dayLow, s.price)
-      s.spread += (0.18 - s.spread) * 0.2 + (Math.random() < 0.05 ? Math.random() * 0.7 : 0)
-      s.spread = clamp(s.spread, 0.1, 1.4)
-      s.retail += -Math.sign(goldDelta) * Math.random() * 0.8 + (Math.random() - 0.5) * 0.5
-      s.retail = clamp(s.retail, 20, 88)
-
-      // aset turunan dari faktor
-      const av: Record<AssetKey, number> = {
-        dxy: 103.8 + s.dollarF * 0.6,
-        us10y: Math.max(1, 4.25 + s.dollarF * 0.06),
-        vix: Math.max(9, 15.5 - s.riskF * 1.2),
-        sp: 5420 + s.riskF * 22,
-        ndx: 19100 + s.riskF * 95,
-        btc: 68000 + s.riskF * 450 - s.dollarF * 380,
-      }
-      const assets = {} as Record<AssetKey, Asset>
-      for (const k of Object.keys(av) as AssetKey[]) {
-        s.hist[k] = [...s.hist[k].slice(-39), av[k]]
-        assets[k] = { value: av[k], chgPct: ((av[k] - s.opens[k]) / s.opens[k]) * 100, hist: s.hist[k] }
-      }
-
-      for (const tf of TFS) {
-        const arr: Candle[] = s.series[tf]; const last = arr[arr.length - 1]
-        if (t - s.last[tf] >= TF_MS[tf]) { s.series[tf] = [...arr.slice(-(TF_N[tf] - 1)), { o: s.price, h: s.price, l: s.price, c: s.price, t, v: 120 + Math.random() * 380 }]; s.last[tf] = t }
-        else { last.c = s.price; last.h = Math.max(last.h, s.price); last.l = Math.min(last.l, s.price); last.v += 8 }
-      }
-      const tf: Record<TF, TFData> = { M5: computeTF(s.series.M5), M15: computeTF(s.series.M15), H1: computeTF(s.series.H1) }
-
-      const cLabel = s.retail > 62 ? 'SHORT' : s.retail < 38 ? 'LONG' : 'NETRAL'
-      const dist = Math.abs(s.retail - 50)
-      const strength = dist > 25 ? 'kuat' : dist > 13 ? 'sedang' : 'lemah'
-      const msToEvent = eventAtRef.current - t
-      let ok = true, reason = 'Spread & volatilitas sehat'
-      if (msToEvent < 5 * 60_000 && msToEvent > -2 * 60_000) { ok = false; reason = 'News high-impact < 5 menit' }
-      else if (s.spread > 0.45) { ok = false; reason = 'Spread melebar' }
-      else if (tf.M5.atr < 0.6) { ok = false; reason = 'Volatilitas terlalu rendah' }
-      const ratio = tf.M5.atr / s.atrBase
-      const volLabel = ratio < 0.8 ? 'Rendah' : ratio > 1.4 ? 'Tinggi' : 'Normal'
-      const h = new Date(t).getUTCHours()
-      const session = h >= 12 && h < 16 ? 'London × New York' : h >= 7 && h < 12 ? 'London' : h >= 16 && h < 21 ? 'New York' : 'Asia'
-      const changePct = ((s.price - s.open) / s.open) * 100
-
-      setFeed({
-        price: s.price, bid: s.price - s.spread / 2, ask: s.price + s.spread / 2, spread: s.spread,
-        dayHigh: s.dayHigh, dayLow: s.dayLow, changePct, up: changePct >= 0, tf, assets,
-        retailLong: s.retail, contrarian: { label: cLabel, strength },
-        tradeable: { ok, reason }, pivots: s.pivots, vol: { label: volLabel, ratio }, session, now: t,
-      })
-    }, TICK_MS)
-    return () => clearInterval(id)
-  }, [])
-  return { feed, eventAtRef }
+// ─────────────────────────── live hooks ───────────────────────────
+function useClock() {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
+  return now
 }
 
-// ─────────────────────────── feed harga live (Twelve Data — Fase 2) ───────────────────────────
-type LiveFeed = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData> }
-
+type LiveXau = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData> }
 function useLiveXauFeed() {
-  const [data, setData] = useState<LiveFeed | null>(null)
+  const [data, setData] = useState<LiveXau | null>(null)
   const [status, setStatus] = useState<'loading' | 'live' | 'error'>('loading')
   const candlesRef = useRef<Partial<Record<TF, Candle[]>>>({})
 
   useEffect(() => {
     let stopped = false
-
     async function pollQuote() {
       try {
-        const res = await fetch('/api/terminal/quote')
-        const j = await res.json()
+        const res = await fetch('/api/terminal/quote'); const j = await res.json()
         if (j.error) throw new Error(j.error)
         if (stopped) return
         setData(prev => prev ? { ...prev, price: j.price, changePct: j.changePct, dayHigh: Math.max(j.dayHigh, j.price), dayLow: Math.min(j.dayLow, j.price) } : prev)
         setStatus('live')
-      } catch { if (!stopped) setStatus('error') }
+      } catch { if (!stopped) setStatus(candlesRef.current.M5 ? 'live' : 'error') }
     }
-
     async function pollCandles(tf: TF) {
       try {
-        const res = await fetch(`/api/terminal/candles?tf=${tf}`)
-        const arr = await res.json()
+        const res = await fetch(`/api/terminal/candles?tf=${tf}`); const arr = await res.json()
         if (stopped || !Array.isArray(arr) || !arr.length) return
-        const candles: Candle[] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
-        candlesRef.current[tf] = candles
+        candlesRef.current[tf] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
         const { M5, M15, H1 } = candlesRef.current
         if (M5 && M15 && H1) {
-          const last = candles[candles.length - 1]
+          const last = M5[M5.length - 1]
           setData(prev => ({
             price: prev?.price ?? last.c, changePct: prev?.changePct ?? 0,
             dayHigh: prev?.dayHigh ?? last.c, dayLow: prev?.dayLow ?? last.c,
             tf: { M5: computeTF(M5), M15: computeTF(M15), H1: computeTF(H1) },
           }))
+          setStatus('live')
         }
-      } catch { /* pertahankan candle lama kalau gagal */ }
+      } catch { /* pertahankan candle lama */ }
     }
-
-    // Free tier Twelve Data = 8 kredit/menit, 800/hari. Cadence dijaga hemat +
-    // berhenti saat tab tidak terlihat, biar tidak boros kuota.
-    const visible = () => typeof document === 'undefined' || !document.hidden
-    const safeQuote = () => { if (visible()) pollQuote() }
-    const safeCandles = () => { if (visible()) { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') } }
-
+    // Ambil hanya timeframe yang belum ada — biar tidak boros kredit saat retry.
+    const fetchMissing = () => { for (const tf of TFS) if (!candlesRef.current[tf]) pollCandles(tf) }
+    const complete = () => TFS.every(tf => candlesRef.current[tf])
+    const hidden = () => typeof document !== 'undefined' && document.hidden
     pollCandles('M5'); pollCandles('M15'); pollCandles('H1'); pollQuote()
-    const qId = setInterval(safeQuote, 20_000)      // harga ~20 dtk (≈3 kredit/mnt)
-    const cId = setInterval(safeCandles, 180_000)   // candle ~3 mnt (≈1 kredit/mnt)
-    const onVis = () => { if (visible()) { pollQuote() } }
+    const qId = setInterval(() => { if (!hidden()) pollQuote() }, 20_000)
+    // Loop awal: terus coba timeframe yg gagal (rate-limit) sampai lengkap — tetap jalan walau hidden agar tab background akhirnya termuat; no-op setelah lengkap
+    const ensureId = setInterval(() => { if (!complete()) fetchMissing() }, 15_000)
+    // Refresh berkala semua candle tiap 3 menit (hanya kalau sudah lengkap & tab terlihat)
+    const cId = setInterval(() => { if (complete() && !hidden()) { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') } }, 180_000)
+    const onVis = () => { if (!hidden()) pollQuote() }
     document.addEventListener('visibilitychange', onVis)
-    return () => { stopped = true; clearInterval(qId); clearInterval(cId); document.removeEventListener('visibilitychange', onVis) }
+    return () => { stopped = true; clearInterval(qId); clearInterval(ensureId); clearInterval(cId); document.removeEventListener('visibilitychange', onVis) }
   }, [])
-
   return { data, status }
 }
 
-// ─────────────────────────── cross-asset live (BTC via Twelve Data) ───────────────────────────
 function useCrossAsset() {
   const [btc, setBtc] = useState<{ price: number; changePct: number } | null>(null)
   useEffect(() => {
     let stopped = false
     const poll = async () => {
-      if (typeof document !== 'undefined' && document.hidden) return
-      try {
-        const res = await fetch('/api/terminal/crossasset')
-        const j = await res.json()
-        if (stopped || j.error) return
-        if (j['BTC/USD']) setBtc(j['BTC/USD'])
-      } catch { /* pertahankan nilai lama */ }
+      try { const res = await fetch('/api/terminal/crossasset'); const j = await res.json(); if (!stopped && j['BTC/USD']) setBtc(j['BTC/USD']) } catch { /* keep */ }
     }
     poll()
-    const id = setInterval(poll, 180_000) // 3 menit — hemat kuota
+    const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) poll() }, 180_000)
     return () => { stopped = true; clearInterval(id) }
   }, [])
   return { btc }
 }
 
-// ─────────────────────────── News AI (on-demand, klik tombol) ───────────────────────────
-type NewsAI = {
-  verdict: 'Bullish' | 'Bearish' | 'Netral'; score: number; narrative: string
-  drivers: string[]; headlines: { text: string; source: string; sentiment: 'bull' | 'bear' | 'neutral' }[]; fetchedAt: string
+function useMacro() {
+  const [map, setMap] = useState<Record<string, MacroPoint> | null>(null)
+  useEffect(() => {
+    let stopped = false
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/terminal/macro'); const arr = await res.json()
+        if (stopped || !Array.isArray(arr)) return
+        const m: Record<string, MacroPoint> = {}
+        for (const p of arr as MacroPoint[]) m[p.key] = p
+        setMap(m)
+      } catch { /* keep */ }
+    }
+    poll(); const id = setInterval(poll, 3600_000) // makro harian → 1 jam cukup
+    return () => { stopped = true; clearInterval(id) }
+  }, [])
+  return map
 }
+
+function usePivots() {
+  const [pivots, setPivots] = useState<Pivots | null>(null)
+  useEffect(() => {
+    let stopped = false
+    const poll = async () => {
+      try { const res = await fetch('/api/terminal/pivots'); const j = await res.json(); if (!stopped && j.P) setPivots(j) } catch { /* keep */ }
+    }
+    poll(); const id = setInterval(poll, 3600_000)
+    return () => { stopped = true; clearInterval(id) }
+  }, [])
+  return pivots
+}
+
+type NewsAI = { verdict: 'Bullish' | 'Bearish' | 'Netral'; score: number; narrative: string; drivers: string[]; headlines: { text: string; source: string; sentiment: 'bull' | 'bear' | 'neutral' }[]; fetchedAt: string }
 function useNewsAI() {
   const [data, setData] = useState<NewsAI | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const analyze = async () => {
     setLoading(true); setError(null)
-    try {
-      const res = await fetch('/api/terminal/news-ai')
-      const j = await res.json()
-      if (j.error) throw new Error(j.error)
-      setData(j)
-    } catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') }
-    finally { setLoading(false) }
+    try { const res = await fetch('/api/terminal/news-ai'); const j = await res.json(); if (j.error) throw new Error(j.error); setData(j) }
+    catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') } finally { setLoading(false) }
   }
   return { data, loading, error, analyze }
 }
 
-// ─────────────────────────── skor 3 pilar ───────────────────────────
-function scores(feed: Feed) {
-  const a = feed.assets
-  const dxyN = clamp(a.dxy.chgPct / 0.5, -1, 1)
-  const yldN = clamp(a.us10y.chgPct / 2, -1, 1)
-  const spN = clamp(a.sp.chgPct / 1, -1, 1)
-  const ndxN = clamp(a.ndx.chgPct / 1.3, -1, 1)
-  const vixN = clamp(a.vix.chgPct / 6, -1, 1)
-  const btcN = clamp(a.btc.chgPct / 2, -1, 1)
-  const contra = clamp((50 - feed.retailLong) / 25, -1, 1)
-  const macro = clamp(-dxyN * 0.6 - yldN * 0.4, -1, 1) * 100
-  const tech = clamp((feed.tf.M5.bias.score + feed.tf.M15.bias.score + feed.tf.H1.bias.score) / 9, -1, 1) * 100
-  const senti = clamp(vixN * 0.3 + btcN * 0.15 + NARRATIVE_N * 0.3 + contra * 0.15 - spN * 0.06 - ndxN * 0.04, -1, 1) * 100
-  const overall = macro * 0.35 + tech * 0.4 + senti * 0.25
+// ─────────────────────────── scoring ───────────────────────────
+function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, btcChg: number | null) {
+  const tech = clamp((tf.M5.bias.score + tf.M15.bias.score + tf.H1.bias.score) / 9, -1, 1) * 100
+  const dir = (k: string) => { const p = macro?.[k]; return p ? Math.sign(p.value - p.prior) : 0 }
+  const macroScore = clamp(-(dir('dollar') * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
+  const btcN = btcChg != null ? clamp(btcChg / 3, -1, 1) : 0
+  const senti = newsScore != null ? clamp(newsScore / 100 * 0.75 + btcN * 0.25, -1, 1) * 100 : clamp(btcN * 0.5, -1, 1) * 100
+  const overall = macroScore * 0.3 + tech * 0.45 + senti * 0.25
   const label: 'LONG' | 'SHORT' | 'NETRAL' = overall > 20 ? 'LONG' : overall < -20 ? 'SHORT' : 'NETRAL'
   const sgn = (x: number) => Math.sign(Math.round(x))
-  const agree = new Set([sgn(macro), sgn(tech), sgn(senti)]).size === 1 ? 3 : (sgn(macro) === sgn(tech) || sgn(tech) === sgn(senti) || sgn(macro) === sgn(senti)) ? 2 : 1
-  const mag = (Math.abs(macro) + Math.abs(tech) + Math.abs(senti)) / 3
+  const agree = new Set([sgn(macroScore), sgn(tech), sgn(senti)]).size === 1 ? 3 : (sgn(macroScore) === sgn(tech) || sgn(tech) === sgn(senti) || sgn(macroScore) === sgn(senti)) ? 2 : 1
+  const mag = (Math.abs(macroScore) + Math.abs(tech) + Math.abs(senti)) / 3
   const confidence = Math.round(clamp((agree / 3) * 0.6 + (mag / 100) * 0.4, 0, 1) * 100)
-  return { macro, tech, senti, overall, label, confidence }
+  return { macro: macroScore, tech, senti, overall, label, confidence }
+}
+function confluence(tf: Record<TF, TFData>) {
+  const labels = TFS.map(t => tf[t].bias.label)
+  const longs = labels.filter(l => l === 'LONG').length, shorts = labels.filter(l => l === 'SHORT').length
+  let label: 'LONG' | 'SHORT' | 'NETRAL' = 'NETRAL', strength: 'campur' | 'sedang' | 'kuat' = 'campur'
+  if (longs === 3) { label = 'LONG'; strength = 'kuat' } else if (shorts === 3) { label = 'SHORT'; strength = 'kuat' }
+  else if (longs === 2 && shorts === 0) { label = 'LONG'; strength = 'sedang' } else if (shorts === 2 && longs === 0) { label = 'SHORT'; strength = 'sedang' }
+  return { label, strength, longs, shorts }
 }
 
 // ─────────────────────────── helpers UI ───────────────────────────
 const f2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const biasColor = (l: string) => l === 'LONG' ? 'text-emerald-400' : l === 'SHORT' ? 'text-red-400' : 'text-white/60'
 const biasBg = (l: string) => l === 'LONG' ? 'bg-emerald-500/15 text-emerald-400' : l === 'SHORT' ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/60'
-const wib = (ts: number) => new Date(ts).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }) + ' WIB'
 
 function Panel({ title, icon: Icon, right, children, className = '' }: { title: string; icon: React.ElementType; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
@@ -332,9 +223,8 @@ function Panel({ title, icon: Icon, right, children, className = '' }: { title: 
     </div>
   )
 }
-
 function Spark({ data, color = '#34d399' }: { data: number[]; color?: string }) {
-  if (!data.length) return null
+  if (data.length < 2) return <div className="h-6" />
   const min = Math.min(...data), max = Math.max(...data), range = max - min || 1
   const pts = data.map((v, i) => `${(i / (data.length - 1)) * 100},${30 - ((v - min) / range) * 30}`).join(' ')
   return <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-6"><polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" /></svg>
@@ -347,26 +237,16 @@ function meterZone(score: number) {
   if (score < 60) return { name: 'Buy', color: '#34d399', idx: 3 }
   return { name: 'Strong Buy', color: '#10b981', idx: 4 }
 }
-
-// Meter gaya TradingView "Technicals" — tipis, 5 zona, jarum putih
 function Gauge({ score }: { score: number }) {
   const cx = 120, cy = 118, r = 84
   const polar = (rr: number, deg: number) => { const a = deg * Math.PI / 180; return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)] as const }
   const seg = (a0: number, a1: number) => { let pts = ''; for (let i = 0; i <= 16; i++) { const a = a0 + (a1 - a0) * i / 16; const [x, y] = polar(r, a); pts += `${x.toFixed(1)},${y.toFixed(1)} ` } return pts.trim() }
-  const zones = [
-    { a0: 180, a1: 146, color: '#ef4444' }, { a0: 144, a1: 110, color: '#f87171' },
-    { a0: 108, a1: 72, color: '#9ca3af' }, { a0: 70, a1: 36, color: '#34d399' }, { a0: 34, a1: 0, color: '#10b981' },
-  ]
+  const zones = [{ a0: 180, a1: 146, color: '#ef4444' }, { a0: 144, a1: 110, color: '#f87171' }, { a0: 108, a1: 72, color: '#9ca3af' }, { a0: 70, a1: 36, color: '#34d399' }, { a0: 34, a1: 0, color: '#10b981' }]
   const active = meterZone(score).idx
   const frac = (clamp(score, -100, 100) + 100) / 200
   const [nx, ny] = polar(r - 10, 180 - frac * 180)
-  const labels = [
-    { t: 'Strong sell', x: 6, y: 114, anc: 'start', idx: 0 },
-    { t: 'Sell', x: 44, y: 42, anc: 'middle', idx: 1 },
-    { t: 'Neutral', x: 120, y: 20, anc: 'middle', idx: 2 },
-    { t: 'Buy', x: 196, y: 42, anc: 'middle', idx: 3 },
-    { t: 'Strong buy', x: 234, y: 114, anc: 'end', idx: 4 },
-  ]
+  const col = score > 20 ? '#34d399' : score < -20 ? '#f87171' : '#fbbf24'
+  const labels = [{ t: 'Strong sell', x: 6, y: 114, anc: 'start', idx: 0 }, { t: 'Sell', x: 44, y: 42, anc: 'middle', idx: 1 }, { t: 'Neutral', x: 120, y: 20, anc: 'middle', idx: 2 }, { t: 'Buy', x: 196, y: 42, anc: 'middle', idx: 3 }, { t: 'Strong buy', x: 234, y: 114, anc: 'end', idx: 4 }]
   return (
     <svg viewBox="0 0 240 130" className="w-full">
       {zones.map((z, i) => <polyline key={i} points={seg(z.a0, z.a1)} fill="none" stroke={z.color} strokeWidth={i === active ? 7 : 5} strokeLinecap="round" opacity={i === active ? 1 : 0.2} />)}
@@ -376,7 +256,6 @@ function Gauge({ score }: { score: number }) {
     </svg>
   )
 }
-
 function PillarBar({ label, score }: { label: string; score: number }) {
   const pos = score >= 0, w = Math.min(50, Math.abs(score) / 2)
   return (
@@ -389,9 +268,8 @@ function PillarBar({ label, score }: { label: string; score: number }) {
     </div>
   )
 }
-
-function CandleChart({ d, price, up, compact = false }: { d: TFData; price: number; up: boolean; compact?: boolean }) {
-  const W = 900, H = compact ? 220 : 360, padR = 52, padB = 6, padT = 8
+function CandleChart({ d, price, up }: { d: TFData; price: number; up: boolean }) {
+  const W = 900, H = 220, padR = 52, padB = 6, padT = 8
   const cs = d.candles
   const lo = Math.min(...cs.map(c => c.l), d.vwap), hi = Math.max(...cs.map(c => c.h), d.vwap)
   const pad = (hi - lo) * 0.08 || 1, min = lo - pad, max = hi + pad, plotW = W - padR
@@ -413,119 +291,91 @@ function CandleChart({ d, price, up, compact = false }: { d: TFData; price: numb
   )
 }
 
-function AssetCard({ meta, a }: { meta: typeof ASSET_META[number]; a: Asset }) {
-  const impact = Math.sign(a.chgPct) * meta.corr
-  const imp = impact > 0.05 ? { t: 'Bullish', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.05 ? { t: 'Bearish', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
-  const up = a.chgPct >= 0
+// Kartu makro/lintas-aset dari data real
+type CardMeta = { name: string; sub: string; dec: number; unit?: string; prefix?: string; corr: number; src: string }
+function DataCard({ meta, value, prior, changePct, spark }: { meta: CardMeta; value: number | null; prior?: number | null; changePct?: number | null; spark?: number[] }) {
+  if (value == null) return (
+    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5 flex flex-col justify-center items-center min-h-[76px]"><Loader2 size={14} className="animate-spin text-white/30" /><span className="text-[9px] text-white/30 mt-1">{meta.name}</span></div>
+  )
+  const chg = changePct != null ? changePct : (prior != null && prior !== 0 ? ((value - prior) / prior) * 100 : 0)
+  const impact = Math.sign(chg) * meta.corr
+  const imp = impact > 0.02 ? { t: 'Bullish', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.02 ? { t: 'Bearish', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
+  const up = chg >= 0
   return (
     <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5">
-      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85 flex items-center gap-1">{meta.name}{meta.live ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Live" /> : null}</span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span></div>
-      <div className="text-[9px] text-white/35 mb-1 flex items-center gap-1">{meta.sub}{!meta.live && <span className="text-white/25 text-[8px]">· sim</span>}</div>
+      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85 flex items-center gap-1">{meta.name}<span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title={`Live · ${meta.src}`} /></span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span></div>
+      <div className="text-[9px] text-white/35 mb-1">{meta.sub}</div>
       <div className="flex items-end justify-between">
-        <span className="text-sm font-black tabular-nums">{meta.prefix ?? ''}{a.value.toLocaleString('en-US', { minimumFractionDigits: meta.dec, maximumFractionDigits: meta.dec })}{meta.suffix ?? ''}</span>
-        <span className={`text-[10px] font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{a.chgPct.toFixed(2)}%</span>
+        <span className="text-sm font-black tabular-nums">{meta.prefix ?? ''}{value.toLocaleString('en-US', { minimumFractionDigits: meta.dec, maximumFractionDigits: meta.dec })}{meta.unit ?? ''}</span>
+        <span className={`text-[10px] font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{chg.toFixed(2)}%</span>
       </div>
-      <Spark data={a.hist} color={up ? '#34d399' : '#f87171'} />
+      {spark ? <Spark data={spark} color={up ? '#34d399' : '#f87171'} /> : <p className="text-[8px] text-white/25 mt-1">{prior != null ? `sebelumnya ${meta.prefix ?? ''}${prior.toFixed(meta.dec)}${meta.unit ?? ''}` : ''}</p>}
     </div>
   )
 }
 
-type MacroItem = { name: string; sub: string; value: number; prior: number; dec: number; unit: string; impact: 'High' | 'Med'; corr: number; nextMs?: number; daily?: boolean }
-
-function MacroCard({ m, now }: { m: MacroItem; now: number }) {
-  const delta = m.value - m.prior
-  const impact = Math.sign(delta) * m.corr
-  const imp = impact > 0.01 ? { t: 'Bullish', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.01 ? { t: 'Bearish', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
-  const down = delta < 0
-  const days = m.nextMs ? Math.max(0, Math.ceil((m.nextMs - now) / 86_400_000)) : null
-  return (
-    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5">
-      <div className="flex items-center justify-between gap-1">
-        <span className="text-xs font-bold text-white/85">{m.name}</span>
-        <span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span>
-      </div>
-      <p className="text-[9px] text-white/35 mb-1.5 leading-snug">{m.sub}</p>
-      <div className="flex items-end justify-between mb-1.5">
-        <span className="text-lg font-black tabular-nums">{m.value.toFixed(m.dec)}{m.unit}</span>
-        <span className={`text-[10px] font-bold tabular-nums flex items-center gap-0.5 ${down ? 'text-emerald-400' : 'text-red-400'}`}>{down ? '↓' : '↑'} {m.prior.toFixed(m.dec)}{m.unit}</span>
-      </div>
-      <div className="flex items-center justify-between text-[9px] pt-1.5 border-t border-white/5">
-        <span className={`font-bold uppercase ${m.impact === 'High' ? 'text-red-400/70' : 'text-amber-400/70'}`}>{m.impact}</span>
-        <span className="text-white/35">{m.daily ? 'Diperbarui harian' : days === 0 ? 'Rilis hari ini' : `Rilis ${days}h lagi`}</span>
-      </div>
-    </div>
-  )
+const CROSS_META: Record<string, CardMeta> = {
+  dollar: { name: 'Indeks Dolar', sub: 'Broad USD Index · FRED', dec: 2, corr: -1, src: 'FRED' },
+  us10y: { name: 'US10Y', sub: 'Yield Treasury 10 Thn · FRED', dec: 2, unit: '%', corr: -1, src: 'FRED' },
+  btc: { name: 'Bitcoin', sub: 'Kripto (debasement) · TD', dec: 0, prefix: '$', corr: 0.4, src: 'Twelve Data' },
 }
-
-function useCountdown(target: number, now: number) {
-  const ms = target - now, past = ms < 0, abs = Math.abs(ms)
-  const m = Math.floor(abs / 60000), s = Math.floor((abs % 60000) / 1000)
-  return { text: `${past ? '-' : ''}${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`, ms }
-}
+const MACRO_META: { key: string; meta: CardMeta }[] = [
+  { key: 'cpi', meta: { name: 'CPI (YoY)', sub: 'Inflasi headline AS · FRED', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
+  { key: 'corecpi', meta: { name: 'Core CPI (YoY)', sub: 'Inflasi inti (ex food/energy)', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
+  { key: 'corepce', meta: { name: 'Core PCE (YoY)', sub: 'Gauge favorit The Fed', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
+  { key: 'fedfunds', meta: { name: 'Fed Funds Rate', sub: 'Suku bunga acuan', dec: 2, unit: '%', corr: -1, src: 'FRED' } },
+  { key: 'realyield', meta: { name: 'Real Yield 10Y', sub: 'TIPS — turun = bullish emas', dec: 2, unit: '%', corr: -1, src: 'FRED' } },
+]
 
 // ─────────────────────────── PAGE ───────────────────────────
 export function TradingTerminal() {
-  const { feed: simFeed, eventAtRef } = useSimFeed()
+  const now = useClock()
   const live = useLiveXauFeed()
-  const news = useNewsAI()
   const cross = useCrossAsset()
-  const cd = useCountdown(eventAtRef.current, simFeed?.now ?? Date.now())
-  const clock = useMemo(() => simFeed ? new Date(simFeed.now).toLocaleTimeString('id-ID') : '', [simFeed])
+  const macro = useMacro()
+  const pivotsLive = usePivots()
+  const news = useNewsAI()
 
-  const feed = useMemo(() => {
-    if (!simFeed) return null
-    let f = simFeed
-    if (live.data) {
-      f = {
-        ...f,
-        price: live.data.price, changePct: live.data.changePct, up: live.data.changePct >= 0,
-        bid: live.data.price - simFeed.spread / 2, ask: live.data.price + simFeed.spread / 2,
-        dayHigh: live.data.dayHigh, dayLow: live.data.dayLow, tf: live.data.tf,
-      }
-    }
-    if (cross.btc) {
-      f = { ...f, assets: { ...f.assets, btc: { ...f.assets.btc, value: cross.btc.price, chgPct: cross.btc.changePct } } }
-    }
-    return f
-  }, [simFeed, live.data, cross.btc])
+  const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
+  const h = new Date(now).getUTCHours()
+  const session = h >= 12 && h < 16 ? 'London × New York' : h >= 7 && h < 12 ? 'London' : h >= 16 && h < 21 ? 'New York' : 'Asia'
 
-  if (!feed) return <div className="min-h-screen flex items-center justify-center bg-[#060a09] text-white/50"><Radio className="animate-pulse mr-2" /> Menghubungkan feed…</div>
+  if (!live.data) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#060a09] text-white/50 gap-3">
+        {live.status === 'error' ? <WifiOff className="text-red-400" /> : <Radio className="animate-pulse text-primary" />}
+        <p className="text-sm">{live.status === 'error' ? 'Data Twelve Data belum tersedia (limit 8/menit) — mencoba lagi…' : 'Menghubungkan data pasar…'}</p>
+      </div>
+    )
+  }
 
-  const sc = scores(feed)
+  const feed = live.data
+  const up = feed.changePct >= 0
+  const sc = scores(feed.tf, macro, news.data?.score ?? null, cross.btc?.changePct ?? null)
+  const conf = confluence(feed.tf)
   const dir = sc.label
   const atr = feed.tf.M15.atr
   const sltp = dir === 'LONG' ? { sl: feed.price - 1.5 * atr, tp1: feed.price + 1.5 * atr, tp2: feed.price + 3 * atr }
     : dir === 'SHORT' ? { sl: feed.price + 1.5 * atr, tp1: feed.price - 1.5 * atr, tp2: feed.price - 3 * atr } : null
 
+  // volatilitas dari ATR M5 (real): ATR pendek vs baseline panjang
+  const m5 = feed.tf.M5.candles
+  const atrNow = atrLast(m5, 7), atrBase = atrLast(m5, Math.min(40, m5.length - 1)) || atrNow
+  const volRatio = atrBase ? atrNow / atrBase : 1
+  const volLabel = volRatio < 0.75 ? 'Rendah' : volRatio > 1.4 ? 'Tinggi' : 'Normal'
+
   let action: string
-  if (!feed.tradeable.ok) action = `⚠ ${feed.tradeable.reason} — tahan dulu.`
-  else if (sc.confidence < 40) action = 'Sinyal lemah/campur — tunggu konfirmasi arah.'
+  if (sc.confidence < 40) action = 'Sinyal lemah/campur — tunggu konfirmasi arah.'
   else if (dir === 'LONG') action = 'Bias LONG — cari pullback ke VWAP/EMA21 untuk entry.'
   else if (dir === 'SHORT') action = 'Bias SHORT — cari retest ke VWAP/EMA21 untuk entry.'
   else action = 'Netral — tunggu arah dominan.'
 
-  const levels = [
-    { label: 'R2', v: feed.pivots.R2, k: 'res' }, { label: 'R1', v: feed.pivots.R1, k: 'res' },
-    { label: 'Pivot', v: feed.pivots.P, k: 'piv' }, { label: 'VWAP', v: feed.tf.M15.vwap, k: 'vwap' },
-    { label: 'S1', v: feed.pivots.S1, k: 'sup' }, { label: 'S2', v: feed.pivots.S2, k: 'sup' },
-  ].map(l => ({ ...l, dist: feed.price - l.v })).sort((a, b) => b.v - a.v)
-
-  const now = feed.now
-  const CAL = [
-    { name: 'US CPI (YoY)', imp: 'High', fc: '3.1%', prev: '3.3%', at: eventAtRef.current },
-    { name: 'US Core PCE', imp: 'High', fc: '2.6%', prev: '2.7%', at: now + 3 * 3600_000 },
-    { name: 'Fed Speak — Powell', imp: 'Med', fc: '—', prev: '—', at: now + 5 * 3600_000 },
-    { name: 'Initial Jobless Claims', imp: 'Med', fc: '232K', prev: '229K', at: now + 20 * 3600_000 },
-    { name: 'US Retail Sales (MoM)', imp: 'High', fc: '0.3%', prev: '0.1%', at: now + 26 * 3600_000 },
-  ]
-
-  const MACRO: MacroItem[] = [
-    { name: 'CPI (YoY)', sub: 'Inflasi headline AS', value: 3.3, prior: 3.5, dec: 1, unit: '%', impact: 'High', corr: -1, nextMs: eventAtRef.current },
-    { name: 'Core CPI (YoY)', sub: 'Inflasi inti (ex food & energy)', value: 2.9, prior: 3.0, dec: 1, unit: '%', impact: 'High', corr: -1, nextMs: eventAtRef.current },
-    { name: 'Core PCE (YoY)', sub: 'Gauge favorit The Fed', value: 2.7, prior: 2.8, dec: 1, unit: '%', impact: 'High', corr: -1, nextMs: now + 3 * 3600_000 },
-    { name: 'Fed Funds Rate', sub: 'Suku bunga acuan (batas atas)', value: 4.50, prior: 4.75, dec: 2, unit: '%', impact: 'High', corr: -1, nextMs: now + 18 * 86_400_000 },
-    { name: 'Real Yield 10Y', sub: 'Yield TIPS — turun = bullish emas', value: 1.85, prior: 1.95, dec: 2, unit: '%', impact: 'Med', corr: -1, daily: true },
-  ]
+  const pivots = pivotsLive
+  const levels = pivots ? [
+    { label: 'R2', v: pivots.R2, k: 'res' }, { label: 'R1', v: pivots.R1, k: 'res' },
+    { label: 'Pivot', v: pivots.P, k: 'piv' }, { label: 'VWAP', v: feed.tf.M15.vwap, k: 'vwap' },
+    { label: 'S1', v: pivots.S1, k: 'sup' }, { label: 'S2', v: pivots.S2, k: 'sup' },
+  ].map(l => ({ ...l, dist: feed.price - l.v })).sort((a, b) => b.v - a.v) : []
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white">
@@ -535,34 +385,28 @@ export function TradingTerminal() {
           <Link href="/dashboard" className="text-white/50 hover:text-white shrink-0"><ArrowLeft size={18} /></Link>
           <div className="flex items-center gap-2 shrink-0">
             <span className="font-black tracking-tight">XAU/USD</span>
-            {live.status === 'live' ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 rounded px-1.5 py-0.5">Harga Live · Twelve Data</span>
-            ) : live.status === 'error' ? (
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-red-500/15 text-red-400 rounded px-1.5 py-0.5">Live Gagal · Fallback Simulasi</span>
-            ) : (
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 rounded px-1.5 py-0.5">Menghubungkan Live…</span>
-            )}
+            <span className={`text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 ${live.status === 'live' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>{live.status === 'live' ? 'Data Real · Twelve Data' : 'Menyegarkan…'}</span>
           </div>
-          <div className="flex items-baseline gap-2"><span className={`text-2xl font-black tabular-nums ${feed.up ? 'text-emerald-400' : 'text-red-400'}`}>{f2(feed.price)}</span><span className={`text-xs font-bold tabular-nums ${feed.up ? 'text-emerald-400' : 'text-red-400'}`}>{feed.up ? '+' : ''}{feed.changePct.toFixed(2)}%</span></div>
+          <div className="flex items-baseline gap-2"><span className={`text-2xl font-black tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{f2(feed.price)}</span><span className={`text-xs font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{feed.changePct.toFixed(2)}%</span></div>
           <div className="hidden md:flex items-center gap-4 text-[11px] text-white/50 tabular-nums">
-            <span>Bid <b className="text-white/80">{f2(feed.bid)}</b></span><span>Ask <b className="text-white/80">{f2(feed.ask)}</b></span>
-            <span>Spread <b className={feed.spread > 0.45 ? 'text-amber-400' : 'text-white/80'}>${feed.spread.toFixed(2)}</b>{live.status === 'live' && <span className="text-white/25"> (indikatif)</span>}</span>
             <span>H <b className="text-emerald-400/80">{f2(feed.dayHigh)}</b></span><span>L <b className="text-red-400/80">{f2(feed.dayLow)}</b></span>
+            <span>ATR M15 <b className="text-white/80">${feed.tf.M15.atr.toFixed(2)}</b></span>
           </div>
           <div className="ml-auto flex items-center gap-3 shrink-0">
-            <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {feed.session}</span>
-            <span className={`flex items-center gap-1.5 text-[11px] font-bold rounded-full px-2.5 py-1 ${feed.tradeable.ok ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}><Circle size={8} className={`${feed.tradeable.ok ? 'fill-emerald-400 text-emerald-400' : 'fill-red-400 text-red-400'} animate-pulse`} />{feed.tradeable.ok ? 'TRADEABLE' : 'HATI-HATI'}</span>
+            <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {session}</span>
+            <span className={`flex items-center gap-1.5 text-[11px] font-bold rounded-full px-2.5 py-1 ${volLabel === 'Rendah' ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+              <Circle size={8} className={`${volLabel === 'Rendah' ? 'fill-amber-400 text-amber-400' : 'fill-emerald-400 text-emerald-400'}`} /> Volatilitas {volLabel}
+            </span>
             <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/40"><Clock size={11} /> {clock}</span>
-            <span className="flex items-center gap-1 text-[10px] text-emerald-400"><Wifi size={12} /> live</span>
+            <span className={`flex items-center gap-1 text-[10px] ${live.status === 'live' ? 'text-emerald-400' : 'text-amber-400'}`}>{live.status === 'live' ? <Wifi size={12} /> : <RefreshCw size={11} className="animate-spin" />} live</span>
           </div>
         </div>
-        {!feed.tradeable.ok && <div className="px-4 py-1.5 bg-red-500/10 border-t border-red-500/20 flex items-center gap-2 text-[11px] text-red-300"><AlertTriangle size={12} /> {feed.tradeable.reason} — pertimbangkan menunggu.</div>}
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5">
-        {/* ── Row 1: Signal Meter · Bias & Confidence · Narrative ── */}
+        {/* ── Row 1: Signal Meter · Bias & Confidence · News AI ── */}
         <Panel title="Signal Meter · XAU/USD" icon={Compass} className="lg:col-span-4">
-          <p className="text-[10px] text-white/35 -mt-1.5 mb-1">Rangkuman makro · teknikal · sentimen</p>
+          <p className="text-[10px] text-white/35 -mt-1.5 mb-1">Rangkuman makro · teknikal · sentimen (semua real)</p>
           <div className="flex flex-col items-center">
             <div className="w-[210px] max-w-full"><Gauge score={sc.overall} /></div>
             <p className="text-lg font-black -mt-2 leading-none" style={{ color: meterZone(sc.overall).color }}>{meterZone(sc.overall).name}</p>
@@ -585,12 +429,13 @@ export function TradingTerminal() {
               <span className="absolute inset-0 flex items-center justify-center text-xs font-black tabular-nums">{sc.confidence}%</span>
             </div>
             <div className="flex-1 space-y-2">
-              <PillarBar label="Makro" score={sc.macro} />
+              <PillarBar label="Makro (FRED)" score={sc.macro} />
               <PillarBar label="Teknikal" score={sc.tech} />
               <PillarBar label="Sentimen" score={sc.senti} />
             </div>
           </div>
           <div className="flex items-start gap-1.5 pt-2 border-t border-white/5"><Target size={13} className="text-primary mt-0.5 shrink-0" /><p className="text-[11px] text-white/85 font-medium leading-snug">{action}</p></div>
+          {!news.data && <p className="text-[9px] text-white/25 mt-1.5">Pilar sentimen menguat setelah klik "Analisa AI" pada panel berita.</p>}
         </Panel>
 
         <Panel title="Sentimen Berita · Analisa AI" icon={Newspaper} className="lg:col-span-4"
@@ -603,36 +448,23 @@ export function TradingTerminal() {
               <button onClick={news.analyze} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3.5 py-2 hover:opacity-90 transition-opacity"><Sparkles size={13} /> Analisa AI</button>
             </div>
           )}
-          {news.loading && (
-            <div className="flex flex-col items-center justify-center flex-1 py-6 gap-2 text-white/50"><Loader2 size={20} className="animate-spin text-primary" /><p className="text-[10px]">Membaca berita & menganalisa…</p></div>
-          )}
-          {news.error && !news.loading && (
-            <div className="flex flex-col items-center justify-center flex-1 py-4 gap-2 text-center">
-              <p className="text-[10px] text-red-400">Gagal: {news.error}</p>
-              <button onClick={news.analyze} className="text-[10px] font-semibold text-primary hover:underline">Coba lagi</button>
-            </div>
-          )}
+          {news.loading && (<div className="flex flex-col items-center justify-center flex-1 py-6 gap-2 text-white/50"><Loader2 size={20} className="animate-spin text-primary" /><p className="text-[10px]">Membaca berita & menganalisa…</p></div>)}
+          {news.error && !news.loading && (<div className="flex flex-col items-center justify-center flex-1 py-4 gap-2 text-center"><p className="text-[10px] text-red-400">Gagal: {news.error}</p><button onClick={news.analyze} className="text-[10px] font-semibold text-primary hover:underline">Coba lagi</button></div>)}
           {news.data && !news.loading && (() => {
-            const nd = news.data
-            const pct = Math.round((nd.score + 100) / 2)
+            const nd = news.data; const pct = Math.round((nd.score + 100) / 2)
             const vc = nd.verdict === 'Bullish' ? 'text-emerald-400' : nd.verdict === 'Bearish' ? 'text-red-400' : 'text-white/60'
             return (
               <div className="flex flex-col gap-2 overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className={`text-sm font-black ${vc}`}>{nd.verdict}</span>
-                  <span className="text-[10px] text-white/40 tabular-nums">skor {nd.score > 0 ? '+' : ''}{nd.score}</span>
-                </div>
+                <div className="flex items-center justify-between"><span className={`text-sm font-black ${vc}`}>{nd.verdict}</span><span className="text-[10px] text-white/40 tabular-nums">skor {nd.score > 0 ? '+' : ''}{nd.score}</span></div>
                 <div className="h-1.5 rounded-full overflow-hidden bg-red-500/25"><div className="h-full bg-emerald-400" style={{ width: `${pct}%` }} /></div>
                 <p className="text-[10px] text-white/70 leading-snug">{nd.narrative}</p>
-                {nd.drivers.length > 0 && (
-                  <div className="flex flex-wrap gap-1">{nd.drivers.map((d, i) => <span key={i} className="text-[9px] bg-white/5 text-white/55 rounded px-1.5 py-0.5">{d}</span>)}</div>
-                )}
+                {nd.drivers.length > 0 && <div className="flex flex-wrap gap-1">{nd.drivers.map((d, i) => <span key={i} className="text-[9px] bg-white/5 text-white/55 rounded px-1.5 py-0.5">{d}</span>)}</div>}
                 <div className="space-y-1 pt-1 border-t border-white/5 overflow-hidden">
-                  {nd.headlines.slice(0, 4).map((h, i) => (
+                  {nd.headlines.slice(0, 4).map((hl, i) => (
                     <div key={i} className="flex items-start gap-1.5">
-                      <span className="text-[8px] font-bold uppercase rounded px-1 py-0.5 mt-0.5 shrink-0 bg-white/8 text-white/50">{h.source.slice(0, 10)}</span>
-                      <p className="text-[10px] text-white/60 leading-snug flex-1">{h.text}</p>
-                      <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${h.sentiment === 'bull' ? 'bg-emerald-400' : h.sentiment === 'bear' ? 'bg-red-400' : 'bg-white/30'}`} />
+                      <span className="text-[8px] font-bold uppercase rounded px-1 py-0.5 mt-0.5 shrink-0 bg-white/8 text-white/50">{hl.source.slice(0, 10)}</span>
+                      <p className="text-[10px] text-white/60 leading-snug flex-1">{hl.text}</p>
+                      <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${hl.sentiment === 'bull' ? 'bg-emerald-400' : hl.sentiment === 'bear' ? 'bg-red-400' : 'bg-white/30'}`} />
                     </div>
                   ))}
                 </div>
@@ -648,101 +480,77 @@ export function TradingTerminal() {
           return (
             <Panel key={tf} title={`XAU/USD · ${tf}`} icon={Activity} className="lg:col-span-4 h-[250px]"
               right={<div className="flex items-center gap-2"><span className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${biasBg(d.bias.label)}`}>{d.bias.label}</span><span className="text-[9px] text-white/40">RSI {d.rsi.toFixed(0)}</span></div>}>
-              <div className="flex-1 min-h-0"><CandleChart d={d} price={feed.price} up={feed.up} compact /></div>
+              <div className="flex-1 min-h-0"><CandleChart d={d} price={feed.price} up={up} /></div>
             </Panel>
           )
         })}
 
-        {/* ── Row 3: Cross-asset · Contrarian ── */}
-        <Panel title="Parameter Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-8"
-          right={<span className="text-[9px] text-white/30">● BTC live · sisanya sim (indeks/VIX/yield perlu tier berbayar)</span>}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {ASSET_META.map(m => <AssetCard key={m.key} meta={m} a={feed.assets[m.key]} />)}
+        {/* ── Row 3: Konfluensi MTF · Cross-asset ── */}
+        <Panel title="Konfluensi Multi-Timeframe" icon={Crosshair} className="lg:col-span-4"
+          right={<span className={`text-[10px] font-bold ${biasColor(conf.label)}`}>{conf.label === 'NETRAL' ? 'CAMPUR' : conf.label} · {conf.strength}</span>}>
+          <div className="space-y-2">
+            {TFS.map(x => {
+              const b = feed.tf[x].bias
+              return (
+                <div key={x} className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold w-8 text-white/60">{x}</span>
+                  <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden"><div className={`h-full ${b.label === 'LONG' ? 'bg-emerald-400' : b.label === 'SHORT' ? 'bg-red-400' : 'bg-white/25'}`} style={{ width: `${33 + Math.abs(b.score) * 22}%` }} /></div>
+                  <span className={`text-[10px] font-bold w-14 text-right ${biasColor(b.label)}`}>{b.label}</span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-[9px] text-white/30 mt-2 pt-2 border-t border-white/5">Entry paling aman searah TF besar (H1).</p>
+        </Panel>
+
+        <Panel title="Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-8" right={<span className="text-[9px] text-white/30">semua data real</span>}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <DataCard meta={CROSS_META.dollar} value={macro?.dollar?.value ?? null} prior={macro?.dollar?.prior} />
+            <DataCard meta={CROSS_META.us10y} value={macro?.us10y?.value ?? null} prior={macro?.us10y?.prior} />
+            <DataCard meta={CROSS_META.btc} value={cross.btc?.price ?? null} changePct={cross.btc?.changePct} />
           </div>
         </Panel>
 
-        <Panel title="Retail vs Smart Money" icon={Users} className="lg:col-span-4" right={<span className="text-[9px] text-white/30">fade retail</span>}>
-          <div className="flex justify-between text-[10px] mb-1"><span className="text-red-400 font-bold">{feed.retailLong.toFixed(0)}% Long</span><span className="text-emerald-400 font-bold">{(100 - feed.retailLong).toFixed(0)}% Short</span></div>
-          <div className="h-2.5 rounded-full overflow-hidden bg-emerald-500/25 flex"><div className="bg-red-500/70 h-full" style={{ width: `${feed.retailLong}%` }} /></div>
-          <div className="flex items-center justify-between mt-2.5">
-            <p className="text-[10px] text-white/45 max-w-[55%] leading-snug">Retail ramai {feed.retailLong > 50 ? 'LONG' : 'SHORT'} → sinyal berlawanan</p>
-            <div className="text-center"><p className="text-[9px] uppercase tracking-wider text-white/35">Kontrarian</p><p className={`text-base font-black leading-tight ${biasColor(feed.contrarian.label)}`}>{feed.contrarian.label}</p><p className="text-[9px] text-white/40">{feed.contrarian.strength}</p></div>
-          </div>
-          <div className="mt-2.5 pt-2 border-t border-white/5 space-y-1 text-[10px]">
-            <div className="flex justify-between"><span className="text-white/50 flex items-center gap-1"><Building2 size={10} /> COT Managed Money</span><span className="text-emerald-400 font-bold">Net Long</span></div>
-            <div className="flex justify-between"><span className="text-white/50">Commercials</span><span className="text-red-400 font-bold">Net Short</span></div>
-          </div>
-        </Panel>
-
-        {/* ── Row 3b: Inflasi & Kebijakan The Fed ── */}
+        {/* ── Row 4: Inflasi & Kebijakan (FRED) ── */}
         <Panel title="Inflasi & Kebijakan The Fed" icon={Landmark} className="lg:col-span-12"
-          right={<span className="text-[9px] text-white/30">rilis bulanan · konteks kebijakan, bukan sinyal entry harian</span>}>
+          right={<span className="text-[9px] text-white/30">FRED · rilis bulanan/harian · konteks kebijakan</span>}>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-            {MACRO.map(m => <MacroCard key={m.name} m={m} now={now} />)}
+            {MACRO_META.map(({ key, meta }) => <DataCard key={key} meta={meta} value={macro?.[key]?.value ?? null} prior={macro?.[key]?.prior} />)}
           </div>
         </Panel>
 
-        {/* ── Row 4: Pivot · Volatilitas ── */}
-        <Panel title="Pivot & Level Kunci" icon={Layers} className="lg:col-span-6">
-          <div className="space-y-1">
-            {levels.map(l => (
-              <div key={l.label} className="flex items-center justify-between text-[11px]">
-                <span className={`font-semibold w-12 ${l.k === 'res' ? 'text-red-400/80' : l.k === 'sup' ? 'text-emerald-400/80' : l.k === 'vwap' ? 'text-amber-400/80' : 'text-white/70'}`}>{l.label}</span>
-                <span className="tabular-nums text-white/80 flex-1 text-center">{f2(l.v)}</span>
-                <span className={`tabular-nums text-[10px] w-16 text-right ${Math.abs(l.dist) < 1.5 ? 'text-amber-400 font-bold' : 'text-white/35'}`}>{l.dist >= 0 ? '+' : ''}{l.dist.toFixed(1)}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-[9px] text-white/30 mt-2 pt-2 border-t border-white/5">Pivot harian (H/L/C kemarin). Angka kanan = jarak harga ke level.</p>
+        {/* ── Row 5: Pivot & Volatilitas ── */}
+        <Panel title="Pivot & Level Kunci" icon={Layers} className="lg:col-span-6" right={<span className="text-[9px] text-white/30">pivot harian real (TD)</span>}>
+          {levels.length ? (
+            <div className="space-y-1">
+              {levels.map(l => (
+                <div key={l.label} className="flex items-center justify-between text-[11px]">
+                  <span className={`font-semibold w-12 ${l.k === 'res' ? 'text-red-400/80' : l.k === 'sup' ? 'text-emerald-400/80' : l.k === 'vwap' ? 'text-amber-400/80' : 'text-white/70'}`}>{l.label}</span>
+                  <span className="tabular-nums text-white/80 flex-1 text-center">{f2(l.v)}</span>
+                  <span className={`tabular-nums text-[10px] w-16 text-right ${Math.abs(l.dist) < 1.5 ? 'text-amber-400 font-bold' : 'text-white/35'}`}>{l.dist >= 0 ? '+' : ''}{l.dist.toFixed(1)}</span>
+                </div>
+              ))}
+            </div>
+          ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat pivot…</div>}
+          <p className="text-[9px] text-white/30 mt-2 pt-2 border-t border-white/5">Pivot dari OHLC kemarin. Angka kanan = jarak harga ke level.</p>
         </Panel>
 
-        <Panel title="Volatilitas & Sesi" icon={Waves} className="lg:col-span-6">
-          <div className="flex items-center justify-between mb-2">
-            <div><p className="text-[10px] text-white/40">Kondisi (ATR M5)</p><p className={`text-lg font-black ${feed.vol.label === 'Tinggi' ? 'text-amber-400' : feed.vol.label === 'Rendah' ? 'text-white/50' : 'text-emerald-400'}`}>{feed.vol.label}</p></div>
-            <span className="text-xs tabular-nums text-white/50">{(feed.vol.ratio * 100).toFixed(0)}%</span>
+        <Panel title="Momentum & Volatilitas" icon={Waves} className="lg:col-span-6">
+          <div className="grid grid-cols-3 gap-2 mb-2.5 text-center">
+            <div className="rounded-lg bg-white/[0.03] py-2"><p className="text-[9px] uppercase tracking-wider text-white/35">Bias M5</p><p className={`text-sm font-black ${biasColor(feed.tf.M5.bias.label)}`}>{feed.tf.M5.bias.label}</p></div>
+            <div className="rounded-lg bg-white/[0.03] py-2"><p className="text-[9px] uppercase tracking-wider text-white/35">RSI M5</p><p className={`text-sm font-bold tabular-nums ${feed.tf.M5.rsi > 70 ? 'text-red-400' : feed.tf.M5.rsi < 30 ? 'text-emerald-400' : 'text-white/80'}`}>{feed.tf.M5.rsi.toFixed(0)}</p></div>
+            <div className="rounded-lg bg-white/[0.03] py-2"><p className="text-[9px] uppercase tracking-wider text-white/35">Volatilitas</p><p className={`text-sm font-black ${volLabel === 'Tinggi' ? 'text-amber-400' : volLabel === 'Rendah' ? 'text-white/50' : 'text-emerald-400'}`}>{volLabel}</p></div>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-            <div className="flex justify-between"><span className="text-white/50">Sesi</span><span className="text-white/80 font-semibold">{feed.session}</span></div>
-            <div className="flex justify-between"><span className="text-white/50">Range</span><span className="tabular-nums text-white/80">${(feed.dayHigh - feed.dayLow).toFixed(2)}</span></div>
-            <div className="flex justify-between"><span className="text-white/50">Spread</span><span className={feed.spread > 0.45 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>{feed.spread > 0.45 ? 'Lebar' : 'Sehat'}</span></div>
-            <div className="flex justify-between"><span className="text-white/50">ATR M15</span><span className="tabular-nums text-white/80">${feed.tf.M15.atr.toFixed(2)}</span></div>
-          </div>
-        </Panel>
-
-        {/* ── Row 5: Kalender WIB ── */}
-        <Panel title="Kalender Ekonomi (WIB)" icon={CalendarClock} className="lg:col-span-12"
-          right={<span className="text-[10px] text-white/40 flex items-center gap-1"><Crosshair size={11} /> Berikutnya: US CPI <b className={`ml-1 ${cd.ms < 5 * 60000 ? 'text-red-400' : 'text-white'}`}>{cd.text}</b></span>}>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-[11px] border-separate border-spacing-0">
-              <thead><tr className="text-white/40">
-                <th className="text-left font-semibold py-1.5 px-2">Waktu (WIB)</th><th className="text-left font-semibold py-1.5 px-2">Event</th>
-                <th className="text-center font-semibold py-1.5 px-2">Dampak</th><th className="text-right font-semibold py-1.5 px-2">Forecast</th>
-                <th className="text-right font-semibold py-1.5 px-2">Prev</th><th className="text-right font-semibold py-1.5 px-2">Hitung Mundur</th>
-              </tr></thead>
-              <tbody>
-                {CAL.map((e, i) => {
-                  const ms = e.at - now, past = ms < 0
-                  const m = Math.floor(Math.abs(ms) / 60000), hh = Math.floor(m / 60), mm = m % 60
-                  const cdText = past ? 'rilis' : hh > 0 ? `${hh}j ${mm}m` : `${mm}m`
-                  const soon = ms > 0 && ms < 30 * 60000
-                  return (
-                    <tr key={i} className={i % 2 ? 'bg-white/[0.02]' : ''}>
-                      <td className="py-1.5 px-2 tabular-nums text-white/70">{wib(e.at)}</td>
-                      <td className="py-1.5 px-2 text-white/85 font-medium">{e.name}</td>
-                      <td className="py-1.5 px-2 text-center"><span className={`text-[9px] font-bold uppercase rounded px-1.5 py-0.5 ${e.imp === 'High' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'}`}>{e.imp}</span></td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-white/70">{e.fc}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-white/50">{e.prev}</td>
-                      <td className={`py-1.5 px-2 text-right tabular-nums font-semibold ${past ? 'text-white/30' : soon ? 'text-red-400' : 'text-white/70'}`}>{cdText}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <div className="flex justify-between"><span className="text-white/50">Sesi aktif</span><span className="text-white/80 font-semibold">{session}</span></div>
+            <div className="flex justify-between"><span className="text-white/50">Range hari ini</span><span className="tabular-nums text-white/80">${(feed.dayHigh - feed.dayLow).toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-white/50">ATR M5</span><span className="tabular-nums text-white/80">${feed.tf.M5.atr.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-white/50">vs VWAP M15</span><span className={`tabular-nums font-bold ${feed.price > feed.tf.M15.vwap ? 'text-emerald-400' : 'text-red-400'}`}>{feed.price > feed.tf.M15.vwap ? '+' : ''}{(feed.price - feed.tf.M15.vwap).toFixed(1)}</span></div>
           </div>
         </Panel>
       </div>
 
-      <p className="text-center text-[10px] text-white/25 pb-6">Terminal XAUUSD · Harga & chart XAU/USD live dari Twelve Data (polling ~5-25 dtk, bukan tick per milidetik). Bid/Ask/Spread masih indikatif. Makro, retail sentiment, COT, & news masih SIMULASI.</p>
+      <p className="text-center text-[10px] text-white/25 pb-6">Terminal XAUUSD · 100% data real — Twelve Data (harga/chart/pivot/BTC) + FRED (makro) + Claude AI (sentimen berita). Harga free tier update ~20 dtk, makro rilis harian/bulanan.</p>
     </div>
   )
 }
