@@ -53,35 +53,47 @@ ${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
 
 Prinsip: dolar/yield naik = bearish emas; inflasi mereda / ekspektasi pemangkasan Fed / risk-off / geopolitik / dolar melemah = bullish emas. COT: institusi (funds) & commercials adalah smart money, retail sering kontrarian.
 
+Tugasmu: bantu trader mengambil KEPUTUSAN terbaik. Tegas, berbasis data, dan jelaskan "kenapa".
+
 Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
 {
  "verdict":"Bullish|Bearish|Netral",
  "confidence":<0..100>,
+ "keputusan":"BELI|JUAL|TUNGGU",
+ "keputusanAlasan":"<1-2 kalimat kenapa keputusan itu, tegas>",
+ "conviction":"Tinggi|Sedang|Rendah",
  "headline":"<1 kalimat kesimpulan utama yang tegas>",
  "executive":"<ringkasan eksekutif 2-3 kalimat menggabungkan semua faktor>",
- "technical":"<analisa teknikal: konfluensi TF, RSI, posisi vs VWAP, level pivot penting>",
+ "confluence":[{"faktor":"<Konfluensi TF | Dolar & Yield | Inflasi/Fed | COT | VIX/Risk | Berita>","arah":"bullish|bearish|netral","catatan":"<1 frasa singkat>"}],
+ "technical":"<analisa teknikal: konfluensi TF, RSI, ADX/kekuatan tren, posisi vs VWAP, level pivot penting>",
  "macro":"<analisa makro: dolar, yield, inflasi, arah kebijakan Fed & implikasinya ke emas>",
- "sentiment":"<analisa sentimen: berita terkini + posisi COT (retail vs institusi) + BTC>",
- "plan":{"bias":"Long|Short|Netral","entry":"<zona/kondisi entry>","sl":"<level/logika SL>","tp":"<target TP>","invalidation":"<kondisi yang membatalkan skenario>"},
+ "sentiment":"<analisa sentimen: berita terkini + posisi COT (retail vs institusi) + VIX/saham + BTC>",
+ "levelKunci":{"support":"<level/zona support terdekat>","resistance":"<level/zona resistance terdekat>"},
+ "plan":{"bias":"Bullish|Bearish|Netral","entry":"<zona/kondisi entry>","sl":"<level/logika SL>","tp":"<target TP>","invalidation":"<kondisi yang membatalkan skenario>"},
  "scenarios":[{"kondisi":"<jika ...>","aksi":"<maka ...>"}],
  "risks":["<risiko utama>"],
  "watch":["<data/event/level yang dipantau>"]
 }
 
-scenarios 2 item, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca. Berbasis data yang diberikan — jangan mengarang angka.`,
+confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca & membantu keputusan. Berbasis data yang diberikan — jangan mengarang angka.`,
       messages: [{ role: 'user', content: dataBlock }],
     })
 
     const raw = msg.content.find(b => b.type === 'text')?.text ?? '{}'
     const p = JSON.parse(extractJson(raw))
+    const dec = ['BELI', 'JUAL', 'TUNGGU'].includes(p.keputusan) ? p.keputusan : 'TUNGGU'
+    const conv = ['Tinggi', 'Sedang', 'Rendah'].includes(p.conviction) ? p.conviction : 'Sedang'
     const result = {
       verdict: p.verdict === 'Bullish' || p.verdict === 'Bearish' ? p.verdict : 'Netral',
       confidence: Math.max(0, Math.min(100, Math.round(p.confidence ?? 50))),
+      keputusan: dec, keputusanAlasan: String(p.keputusanAlasan ?? ''), conviction: conv,
       headline: String(p.headline ?? ''),
       executive: String(p.executive ?? ''),
+      confluence: Array.isArray(p.confluence) ? p.confluence.slice(0, 6).map((c: { faktor?: string; arah?: string; catatan?: string }) => ({ faktor: String(c.faktor ?? ''), arah: (['bullish', 'bearish', 'netral'].includes(c.arah ?? '') ? c.arah : 'netral') as 'bullish' | 'bearish' | 'netral', catatan: String(c.catatan ?? '') })) : [],
       technical: String(p.technical ?? ''),
       macro: String(p.macro ?? ''),
       sentiment: String(p.sentiment ?? ''),
+      levelKunci: { support: String(p.levelKunci?.support ?? ''), resistance: String(p.levelKunci?.resistance ?? '') },
       plan: { bias: String(p.plan?.bias ?? '—'), entry: String(p.plan?.entry ?? ''), sl: String(p.plan?.sl ?? ''), tp: String(p.plan?.tp ?? ''), invalidation: String(p.plan?.invalidation ?? '') },
       scenarios: Array.isArray(p.scenarios) ? p.scenarios.slice(0, 3).map((s: { kondisi?: string; aksi?: string }) => ({ kondisi: String(s.kondisi ?? ''), aksi: String(s.aksi ?? '') })) : [],
       risks: arr(p.risks, 3),
