@@ -207,7 +207,17 @@ function Panel({ title, icon: Icon, right, info, children, className = '' }: { t
   return (
     <div className={`rounded-2xl border border-white/[0.06] bg-[#0b100e] p-3.5 flex flex-col ${className}`}>
       <div className="flex items-center justify-between mb-2.5">
-        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40"><Icon size={12} /> {title}{info && <span title={info} className="cursor-help text-white/25 hover:text-white/60"><Info size={11} /></span>}</span>
+        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+          <Icon size={12} /> {title}
+          {info && (
+            <span title={info} tabIndex={0} className="group relative flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-white/60 hover:bg-primary/25 hover:text-primary focus:bg-primary/25 focus:text-primary cursor-help normal-case tracking-normal shrink-0 outline-none">
+              <Info size={10} />
+              <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 w-56 -translate-x-1/2 rounded-lg bg-black/95 border border-white/10 p-2 text-[10px] font-normal normal-case leading-snug text-white/80 opacity-0 shadow-xl transition-opacity duration-100 group-hover:opacity-100 group-focus:opacity-100">
+                {info}
+              </span>
+            </span>
+          )}
+        </span>
         {right}
       </div>
       {children}
