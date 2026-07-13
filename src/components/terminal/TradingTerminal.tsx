@@ -94,24 +94,26 @@ function useLiveXauFeed() {
     const missing = () => { for (const tf of TFS) if (!candlesRef.current[tf]) pollCandles(tf) }
     const complete = () => TFS.every(tf => candlesRef.current[tf])
     pollCandles('M5'); pollCandles('M15'); pollCandles('H1'); pollQuote()
-    const qId = setInterval(() => { if (!hidden()) pollQuote() }, 20_000)
-    const eId = setInterval(() => { if (!complete()) missing() }, 15_000)
-    const cId = setInterval(() => { if (complete() && !hidden()) { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') } }, 180_000)
+    const qId = setInterval(() => { if (!hidden()) pollQuote() }, 8_000) // paket Grow (55/menit) — lebih responsif
+    const eId = setInterval(() => { if (!complete()) missing() }, 10_000)
+    const cId = setInterval(() => { if (complete() && !hidden()) { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') } }, 60_000)
     const onVis = () => { if (!hidden()) pollQuote() }
     document.addEventListener('visibilitychange', onVis)
     return () => { stopped = true; clearInterval(qId); clearInterval(eId); clearInterval(cId); document.removeEventListener('visibilitychange', onVis) }
   }, [])
   return { data, status }
 }
+type CrossQuote = { price: number; changePct: number } | null
+type CrossMap = { 'BTC/USD': CrossQuote; SPY: CrossQuote; QQQ: CrossQuote; VIXY: CrossQuote; UUP: CrossQuote }
 function useCrossAsset() {
-  const [btc, setBtc] = useState<{ price: number; changePct: number } | null>(null)
+  const [map, setMap] = useState<CrossMap | null>(null)
   useEffect(() => {
     let stopped = false
-    const poll = async () => { try { const j = await (await fetch('/api/terminal/crossasset')).json(); if (!stopped && j['BTC/USD']) setBtc(j['BTC/USD']) } catch { } }
-    poll(); const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) poll() }, 180_000)
+    const poll = async () => { try { const j = await (await fetch('/api/terminal/crossasset')).json(); if (!stopped && j['BTC/USD']) setMap(j) } catch { } }
+    poll(); const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) poll() }, 45_000)
     return () => { stopped = true; clearInterval(id) }
   }, [])
-  return { btc }
+  return { btc: map?.['BTC/USD'] ?? null, spy: map?.SPY ?? null, qqq: map?.QQQ ?? null, vixy: map?.VIXY ?? null, uup: map?.UUP ?? null }
 }
 function useMacro() {
   const [map, setMap] = useState<Record<string, MacroPoint> | null>(null)
@@ -157,12 +159,15 @@ function useNews() {
 }
 
 // ─────────────────────────── scoring & sintesis ───────────────────────────
-function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, btcChg: number | null) {
+function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, cross: { btc: number | null; vixy: number | null; spy: number | null }) {
   const tech = clamp((tf.M5.bias.score + tf.M15.bias.score + tf.H1.bias.score) / 9, -1, 1) * 100
   const dir = (k: string) => { const p = macro?.[k]; return p ? Math.sign(p.value - p.prior) : 0 }
   const macroScore = clamp(-(dir('dollar') * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
-  const btcN = btcChg != null ? clamp(btcChg / 3, -1, 1) : 0
-  const senti = newsScore != null ? clamp(newsScore / 100 * 0.75 + btcN * 0.25, -1, 1) * 100 : clamp(btcN * 0.5, -1, 1) * 100
+  const btcN = cross.btc != null ? clamp(cross.btc / 3, -1, 1) : 0
+  const vixN = cross.vixy != null ? clamp(cross.vixy / 4, -1, 1) : 0 // VIX naik = takut = bullish emas
+  const spyN = cross.spy != null ? clamp(-cross.spy / 1.5, -1, 1) : 0 // saham risk-on kuat = tekan emas
+  const riskN = clamp(btcN * 0.35 + vixN * 0.4 + spyN * 0.25, -1, 1)
+  const senti = newsScore != null ? clamp(newsScore / 100 * 0.7 + riskN * 0.3, -1, 1) * 100 : riskN * 100
   const overall = macroScore * 0.3 + tech * 0.45 + senti * 0.25
   const label: 'LONG' | 'SHORT' | 'NETRAL' = overall > 20 ? 'LONG' : overall < -20 ? 'SHORT' : 'NETRAL'
   const sgn = (x: number) => Math.sign(Math.round(x))
@@ -260,6 +265,10 @@ const CROSS_META: Record<string, CardMeta> = {
   dollar: { name: 'Indeks Dolar', sub: 'Broad USD Index · FRED', dec: 2, corr: -1, src: 'FRED' },
   us10y: { name: 'US10Y', sub: 'Yield Treasury 10 Thn · FRED', dec: 2, unit: '%', corr: -1, src: 'FRED' },
   btc: { name: 'Bitcoin', sub: 'Kripto (debasement) · TD', dec: 0, prefix: '$', corr: 0.4, src: 'Twelve Data' },
+  spy: { name: 'S&P 500', sub: 'Proxy: SPY ETF · TD', dec: 2, prefix: '$', corr: -0.5, src: 'Twelve Data' },
+  qqq: { name: 'Nasdaq 100', sub: 'Proxy: QQQ ETF · TD', dec: 2, prefix: '$', corr: -0.5, src: 'Twelve Data' },
+  vixy: { name: 'VIX (Ketakutan)', sub: 'Proxy: VIXY ETF · TD', dec: 2, prefix: '$', corr: 1, src: 'Twelve Data' },
+  uup: { name: 'Dolar (real-time)', sub: 'Proxy: UUP ETF · TD', dec: 2, prefix: '$', corr: -1, src: 'Twelve Data' },
 }
 const MACRO_META: { key: string; meta: CardMeta }[] = [
   { key: 'cpi', meta: { name: 'CPI (YoY)', sub: 'Inflasi headline AS · FRED', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
@@ -309,7 +318,7 @@ export function TradingTerminal() {
 
   const feed = live.data, up = feed.changePct >= 0
   const aiScore = ai.data ? (ai.data.verdict === 'Bullish' ? ai.data.confidence : ai.data.verdict === 'Bearish' ? -ai.data.confidence : 0) : null
-  const sc = scores(feed.tf, macro, aiScore, cross.btc?.changePct ?? null)
+  const sc = scores(feed.tf, macro, aiScore, { btc: cross.btc?.changePct ?? null, vixy: cross.vixy?.changePct ?? null, spy: cross.spy?.changePct ?? null })
   const conf = confluence(feed.tf)
   const dir = sc.label, atr = feed.tf.M15.atr
   const sltp = dir === 'LONG' ? { sl: feed.price - 1.5 * atr, tp1: feed.price + 1.5 * atr, tp2: feed.price + 3 * atr } : dir === 'SHORT' ? { sl: feed.price + 1.5 * atr, tp1: feed.price - 1.5 * atr, tp2: feed.price - 3 * atr } : null
@@ -342,6 +351,12 @@ export function TradingTerminal() {
     macro: macro ? Object.fromEntries(Object.entries(macro).map(([k, v]) => [k, { value: v.value, prior: v.prior }])) : null,
     cot: cot ? { date: cot.date, funds: { net: cot.funds.net, deltaNet: cot.funds.deltaNet }, commercials: { net: cot.commercials.net }, retail: { net: cot.retail.net, deltaNet: cot.retail.deltaNet } } : null,
     btc: cross.btc ? { price: Math.round(cross.btc.price), changePct: +cross.btc.changePct.toFixed(2) } : null,
+    riskAssets: {
+      spy: cross.spy ? +cross.spy.changePct.toFixed(2) : null,
+      qqq: cross.qqq ? +cross.qqq.changePct.toFixed(2) : null,
+      vix: cross.vixy ? +cross.vixy.changePct.toFixed(2) : null,
+      dollarRealtime: cross.uup ? +cross.uup.changePct.toFixed(2) : null,
+    },
   }
 
   const pivots = pivotsLive
@@ -517,15 +532,19 @@ export function TradingTerminal() {
         </div>
 
         {/* Row 3: Cross-asset · COT · Pivot */}
-        <Panel title="Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-5" info="Dolar & yield naik → emas cenderung turun. BTC sebagai proksi aset debasement. Dampak dihitung otomatis." right={<span className="text-[9px] text-white/30">FRED + TD</span>}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <Panel title="Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-12" info="Dolar & yield naik, saham risk-on kuat → emas cenderung turun. VIX naik (takut) & BTC (debasement) → cenderung bullish emas. Dampak dihitung otomatis dari arah pergerakan." right={<span className="text-[9px] text-white/30">FRED + Twelve Data (real-time)</span>}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
             <DataCard meta={CROSS_META.dollar} value={macro?.dollar?.value ?? null} prior={macro?.dollar?.prior} />
+            <DataCard meta={CROSS_META.uup} value={cross.uup?.price ?? null} changePct={cross.uup?.changePct} />
             <DataCard meta={CROSS_META.us10y} value={macro?.us10y?.value ?? null} prior={macro?.us10y?.prior} />
+            <DataCard meta={CROSS_META.vixy} value={cross.vixy?.price ?? null} changePct={cross.vixy?.changePct} />
+            <DataCard meta={CROSS_META.spy} value={cross.spy?.price ?? null} changePct={cross.spy?.changePct} />
+            <DataCard meta={CROSS_META.qqq} value={cross.qqq?.price ?? null} changePct={cross.qqq?.changePct} />
             <DataCard meta={CROSS_META.btc} value={cross.btc?.price ?? null} changePct={cross.btc?.changePct} />
           </div>
         </Panel>
 
-        <Panel title="COT — Retail vs Institusi" icon={Users} className="lg:col-span-4" info="Commitment of Traders (CFTC, mingguan). Funds = spekulan besar/institusi, Commercials = hedger/bank (smart money), Retail = trader kecil (sering jadi sinyal kontrarian). Δ = perubahan dari minggu lalu." right={cot ? <span className="text-[9px] text-white/30">{cot.date}</span> : null}>
+        <Panel title="COT — Retail vs Institusi" icon={Users} className="lg:col-span-6" info="Commitment of Traders (CFTC, mingguan). Funds = spekulan besar/institusi, Commercials = hedger/bank (smart money), Retail = trader kecil (sering jadi sinyal kontrarian). Δ = perubahan dari minggu lalu." right={cot ? <span className="text-[9px] text-white/30">{cot.date}</span> : null}>
           {cot ? (
             <div className="divide-y divide-white/5">
               <CotRow label="🏛️ Funds (Institusi)" g={cot.funds} hint="Non-commercial: hedge fund & spekulan besar. Trend-follower." />
@@ -536,7 +555,7 @@ export function TradingTerminal() {
           ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat COT…</div>}
         </Panel>
 
-        <Panel title="Pivot & Level Kunci" icon={Layers} className="lg:col-span-3" info="Pivot standar dari OHLC hari sebelumnya (data real). R = resistance, S = support. Angka kanan = jarak harga ke level.">
+        <Panel title="Pivot & Level Kunci" icon={Layers} className="lg:col-span-6" info="Pivot standar dari OHLC hari sebelumnya (data real). R = resistance, S = support. Angka kanan = jarak harga ke level.">
           {levels.length ? (
             <div className="space-y-1">{levels.map(l => (
               <div key={l.label} className="flex items-center justify-between text-[11px]">

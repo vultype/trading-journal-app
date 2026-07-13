@@ -42,6 +42,7 @@ export async function POST(req: Request) {
 - Makro (FRED): Indeks Dolar ${snap.macro?.dollar?.value} (prior ${snap.macro?.dollar?.prior}), US10Y ${snap.macro?.us10y?.value}% (prior ${snap.macro?.us10y?.prior}), Real Yield ${snap.macro?.realyield?.value}%, CPI ${snap.macro?.cpi?.value}% (prior ${snap.macro?.cpi?.prior}), Core CPI ${snap.macro?.corecpi?.value}%, Core PCE ${snap.macro?.corepce?.value}%, Fed Funds ${snap.macro?.fedfunds?.value}%
 - COT (${snap.cot?.date}): Funds/institusi net ${snap.cot?.funds?.net} (Δ${snap.cot?.funds?.deltaNet}), Commercials net ${snap.cot?.commercials?.net}, Retail net ${snap.cot?.retail?.net} (Δ${snap.cot?.retail?.deltaNet})
 - Bitcoin: ${snap.btc?.price} (${snap.btc?.changePct}%)
+- Aset risiko real-time (Twelve Data): S&P 500 ${snap.riskAssets?.spy}%, Nasdaq 100 ${snap.riskAssets?.qqq}%, VIX (proxy ETF) ${snap.riskAssets?.vix}%, Dolar real-time (proxy UUP) ${snap.riskAssets?.dollarRealtime}%
 HEADLINE BERITA (2 hari):
 ${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
 

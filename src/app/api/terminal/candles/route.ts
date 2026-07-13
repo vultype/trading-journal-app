@@ -4,7 +4,7 @@ import { fetchCandles } from '@/lib/twelvedata'
 type TF = 'M5' | 'M15' | 'H1'
 const VALID: TF[] = ['M5', 'M15', 'H1']
 const cache = new Map<TF, { data: Awaited<ReturnType<typeof fetchCandles>>; at: number }>()
-const TTL_MS = 20_000
+const TTL_MS = 45_000
 
 export async function GET(req: Request) {
   const tf = (new URL(req.url).searchParams.get('tf') ?? 'M5') as TF
