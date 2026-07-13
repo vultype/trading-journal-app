@@ -74,6 +74,16 @@ function ChipBtn({ active, color, onClick, children }: {
 
 type MarketStructure = 'bullish' | 'bearish' | 'ranging' | ''
 
+// Tag sesi market dari jam entry (WIB). Selaras dengan HourAnalysis.
+function sessionTag(time: string): { label: string; emoji: string; color: string } | null {
+  const h = parseInt(time.slice(0, 2), 10)
+  if (isNaN(h)) return null
+  if (h >= 5 && h < 15)  return { label: 'Asia',    emoji: '🌏', color: 'text-sky-400/70' }
+  if (h >= 15 && h < 20) return { label: 'London',  emoji: '🇬🇧', color: 'text-violet-400/70' }
+  if (h >= 20 && h < 24) return { label: 'Overlap', emoji: '🔥', color: 'text-orange-400/70' }
+  return { label: 'New York', emoji: '🗽', color: 'text-amber-400/70' }
+}
+
 type FormData = {
   account_id: string; date: string; entry_time: string
   pair: string; direction: 'long' | 'short'
@@ -690,7 +700,7 @@ export default function TradesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] text-muted-foreground">
-                    {['Tanggal','Pair','Arah','Strategi','P&L','Hasil','Plan',''].map(h => (
+                    {['Tanggal','Jam','Pair','Arah','Strategi','P&L','Hasil','Plan',''].map(h => (
                       <th key={h} className={`px-3 py-3 font-semibold ${h === 'P&L' ? 'text-right' : h === 'Hasil' ? 'text-center' : 'text-left'}`}>{h}</th>
                     ))}
                   </tr>
@@ -702,7 +712,14 @@ export default function TradesPage() {
                       onClick={() => setDetail(t)}>
                       <td className="px-3 py-3">
                         <div className="text-xs font-medium">{t.date}</div>
-                        {t.entry_time && <div className="text-[10px] text-muted-foreground/60">{t.entry_time}</div>}
+                      </td>
+                      <td className="px-3 py-3">
+                        {t.entry_time ? (() => { const s = sessionTag(t.entry_time!); return (
+                          <>
+                            <div className="text-xs font-semibold tabular-nums">{t.entry_time}</div>
+                            {s && <div className={`text-[9px] font-medium ${s.color}`}>{s.emoji} {s.label}</div>}
+                          </>
+                        ) })() : <span className="text-xs text-muted-foreground/40">—</span>}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1.5">
