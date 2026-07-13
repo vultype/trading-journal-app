@@ -12,6 +12,22 @@ const SUPABASE_URL = 'https://lmoduthkogsystlnljlb.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxtb2R1dGhrb2dzeXN0bG5samxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1NDA1MDEsImV4cCI6MjA5ODExNjUwMX0.bVWD_H9bYzvE4lK6hg-mjw5nA0_qYi1D2vzROzhL-4Q'
 const STATE_ID = 'XAUUSD:M15'
 
+// Sesi yang dipantau (jam lokal WIB). Tambah entri di sini untuk memantau sesi lain
+// (mis. London/New York) nanti — endpoint aktif kalau jam sekarang jatuh di salah satu.
+const SESSIONS: { name: string; startHour: number; endHour: number }[] = [
+  { name: 'Asia', startHour: 7, endHour: 9 }, // 07:00–09:00 WIB
+]
+
+function currentWibHour(): number {
+  const h = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hourCycle: 'h23' }).format(new Date())
+  return parseInt(h, 10)
+}
+
+function activeSession(): string | null {
+  const h = currentWibHour()
+  return SESSIONS.find(s => h >= s.startHour && h < s.endHour)?.name ?? null
+}
+
 async function getLastAlertedCandleTime(): Promise<number | null> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/momentum_alert_state?id=eq.${encodeURIComponent(STATE_ID)}&select=last_candle_time`, {
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }, cache: 'no-store',
@@ -28,11 +44,12 @@ async function saveAlertedCandleTime(candleTime: number) {
   })
 }
 
-function buildMessage(s: MomentumSignal): string {
+function buildMessage(s: MomentumSignal, sessionName: string): string {
   const arrow = s.direction === 'bullish' ? '🟢📈' : '🔴📉'
   const dirLabel = s.direction === 'bullish' ? 'BULLISH' : 'BEARISH'
   const waktu = new Date(s.candleTime).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
   return `${arrow} *Momentum Candle ${dirLabel}* — XAU/USD M15\n\n` +
+    `Sesi: *${sessionName}*\n` +
     `Harga: *${s.price.toFixed(2)}*\n` +
     `Body candle: *${s.bodyRatio.toFixed(1)}x* ATR rata-rata\n` +
     `Momentum score: *${s.momentum >= 0 ? '+' : ''}${s.momentum.toFixed(0)}*\n` +
@@ -58,20 +75,23 @@ export async function GET(req: Request) {
   if (!expected) return NextResponse.json({ error: 'CRON_SECRET belum diset di server' }, { status: 503 })
   if (secret !== expected) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
+  const session = activeSession()
+  if (!session) return NextResponse.json({ checked: false, reason: `di luar jam sesi yang dipantau (${SESSIONS.map(s => `${s.name} ${String(s.startHour).padStart(2, '0')}:00–${String(s.endHour).padStart(2, '0')}:00 WIB`).join(', ')})` })
+
   const botToken = process.env.TELEGRAM_BOT_TOKEN, chatId = process.env.TELEGRAM_CHAT_ID
   if (!botToken || !chatId) return NextResponse.json({ error: 'Telegram belum dikonfigurasi (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)' }, { status: 503 })
 
   try {
     const candles = await fetchCandles('M15', 150)
     const signal = detectMomentumCandle(candles)
-    if (!signal) return NextResponse.json({ checked: true, triggered: false })
+    if (!signal) return NextResponse.json({ checked: true, session, triggered: false })
 
     const lastAlerted = await getLastAlertedCandleTime()
-    if (lastAlerted === signal.candleTime) return NextResponse.json({ checked: true, triggered: true, alerted: false, reason: 'candle ini sudah dinotifikasi' })
+    if (lastAlerted === signal.candleTime) return NextResponse.json({ checked: true, session, triggered: true, alerted: false, reason: 'candle ini sudah dinotifikasi' })
 
-    await sendTelegram(buildMessage(signal))
+    await sendTelegram(buildMessage(signal, session))
     await saveAlertedCandleTime(signal.candleTime)
-    return NextResponse.json({ checked: true, triggered: true, alerted: true, signal })
+    return NextResponse.json({ checked: true, session, triggered: true, alerted: true, signal })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal cek momentum candle' }, { status: 502 })
   }
