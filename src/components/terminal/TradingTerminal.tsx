@@ -14,6 +14,7 @@ import {
   Activity, TrendingUp, TrendingDown, Gauge as GaugeIcon, CalendarClock, Newspaper, Layers,
   Radio, AlertTriangle, ArrowLeft, Clock, Wifi, Users, Building2,
   Circle, Minus, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Landmark,
+  Loader2, RefreshCw,
 } from 'lucide-react'
 
 // ─────────────────────────── konstanta ───────────────────────────
@@ -43,13 +44,13 @@ type Feed = {
   session: string; now: number
 }
 
-const ASSET_META: { key: AssetKey; name: string; sub: string; corr: number; dec: number; prefix?: string; suffix?: string }[] = [
+const ASSET_META: { key: AssetKey; name: string; sub: string; corr: number; dec: number; prefix?: string; suffix?: string; live?: boolean }[] = [
   { key: 'dxy', name: 'DXY', sub: 'Indeks Dolar', corr: -1, dec: 2 },
   { key: 'us10y', name: 'US10Y', sub: 'Yield 10 Thn', corr: -1, dec: 2, suffix: '%' },
   { key: 'vix', name: 'VIX', sub: 'Indeks Ketakutan', corr: 1, dec: 2 },
   { key: 'sp', name: 'S&P 500', sub: 'Saham AS', corr: -0.5, dec: 0 },
   { key: 'ndx', name: 'Nasdaq', sub: 'Saham Teknologi', corr: -0.5, dec: 0 },
-  { key: 'btc', name: 'Bitcoin', sub: 'Kripto', corr: 0.4, dec: 0, prefix: '$' },
+  { key: 'btc', name: 'Bitcoin', sub: 'Kripto', corr: 0.4, dec: 0, prefix: '$', live: true },
 ]
 
 const HEADLINES: { src: 'Reuters' | 'Bloomberg'; senti: number; text: string; time: string }[] = [
@@ -232,13 +233,64 @@ function useLiveXauFeed() {
       } catch { /* pertahankan candle lama kalau gagal */ }
     }
 
+    // Free tier Twelve Data = 8 kredit/menit, 800/hari. Cadence dijaga hemat +
+    // berhenti saat tab tidak terlihat, biar tidak boros kuota.
+    const visible = () => typeof document === 'undefined' || !document.hidden
+    const safeQuote = () => { if (visible()) pollQuote() }
+    const safeCandles = () => { if (visible()) { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') } }
+
     pollCandles('M5'); pollCandles('M15'); pollCandles('H1'); pollQuote()
-    const qId = setInterval(pollQuote, 6000)
-    const cId = setInterval(() => { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') }, 25000)
-    return () => { stopped = true; clearInterval(qId); clearInterval(cId) }
+    const qId = setInterval(safeQuote, 20_000)      // harga ~20 dtk (≈3 kredit/mnt)
+    const cId = setInterval(safeCandles, 180_000)   // candle ~3 mnt (≈1 kredit/mnt)
+    const onVis = () => { if (visible()) { pollQuote() } }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { stopped = true; clearInterval(qId); clearInterval(cId); document.removeEventListener('visibilitychange', onVis) }
   }, [])
 
   return { data, status }
+}
+
+// ─────────────────────────── cross-asset live (BTC via Twelve Data) ───────────────────────────
+function useCrossAsset() {
+  const [btc, setBtc] = useState<{ price: number; changePct: number } | null>(null)
+  useEffect(() => {
+    let stopped = false
+    const poll = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      try {
+        const res = await fetch('/api/terminal/crossasset')
+        const j = await res.json()
+        if (stopped || j.error) return
+        if (j['BTC/USD']) setBtc(j['BTC/USD'])
+      } catch { /* pertahankan nilai lama */ }
+    }
+    poll()
+    const id = setInterval(poll, 180_000) // 3 menit — hemat kuota
+    return () => { stopped = true; clearInterval(id) }
+  }, [])
+  return { btc }
+}
+
+// ─────────────────────────── News AI (on-demand, klik tombol) ───────────────────────────
+type NewsAI = {
+  verdict: 'Bullish' | 'Bearish' | 'Netral'; score: number; narrative: string
+  drivers: string[]; headlines: { text: string; source: string; sentiment: 'bull' | 'bear' | 'neutral' }[]; fetchedAt: string
+}
+function useNewsAI() {
+  const [data, setData] = useState<NewsAI | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const analyze = async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch('/api/terminal/news-ai')
+      const j = await res.json()
+      if (j.error) throw new Error(j.error)
+      setData(j)
+    } catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') }
+    finally { setLoading(false) }
+  }
+  return { data, loading, error, analyze }
 }
 
 // ─────────────────────────── skor 3 pilar ───────────────────────────
@@ -367,8 +419,8 @@ function AssetCard({ meta, a }: { meta: typeof ASSET_META[number]; a: Asset }) {
   const up = a.chgPct >= 0
   return (
     <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5">
-      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85">{meta.name}</span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span></div>
-      <div className="text-[9px] text-white/35 mb-1">{meta.sub}</div>
+      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85 flex items-center gap-1">{meta.name}{meta.live ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Live" /> : null}</span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span></div>
+      <div className="text-[9px] text-white/35 mb-1 flex items-center gap-1">{meta.sub}{!meta.live && <span className="text-white/25 text-[8px]">· sim</span>}</div>
       <div className="flex items-end justify-between">
         <span className="text-sm font-black tabular-nums">{meta.prefix ?? ''}{a.value.toLocaleString('en-US', { minimumFractionDigits: meta.dec, maximumFractionDigits: meta.dec })}{meta.suffix ?? ''}</span>
         <span className={`text-[10px] font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{a.chgPct.toFixed(2)}%</span>
@@ -415,19 +467,27 @@ function useCountdown(target: number, now: number) {
 export function TradingTerminal() {
   const { feed: simFeed, eventAtRef } = useSimFeed()
   const live = useLiveXauFeed()
+  const news = useNewsAI()
+  const cross = useCrossAsset()
   const cd = useCountdown(eventAtRef.current, simFeed?.now ?? Date.now())
   const clock = useMemo(() => simFeed ? new Date(simFeed.now).toLocaleTimeString('id-ID') : '', [simFeed])
 
   const feed = useMemo(() => {
     if (!simFeed) return null
-    if (!live.data) return simFeed
-    return {
-      ...simFeed,
-      price: live.data.price, changePct: live.data.changePct, up: live.data.changePct >= 0,
-      bid: live.data.price - simFeed.spread / 2, ask: live.data.price + simFeed.spread / 2,
-      dayHigh: live.data.dayHigh, dayLow: live.data.dayLow, tf: live.data.tf,
+    let f = simFeed
+    if (live.data) {
+      f = {
+        ...f,
+        price: live.data.price, changePct: live.data.changePct, up: live.data.changePct >= 0,
+        bid: live.data.price - simFeed.spread / 2, ask: live.data.price + simFeed.spread / 2,
+        dayHigh: live.data.dayHigh, dayLow: live.data.dayLow, tf: live.data.tf,
+      }
     }
-  }, [simFeed, live.data])
+    if (cross.btc) {
+      f = { ...f, assets: { ...f.assets, btc: { ...f.assets.btc, value: cross.btc.price, chgPct: cross.btc.changePct } } }
+    }
+    return f
+  }, [simFeed, live.data, cross.btc])
 
   if (!feed) return <div className="min-h-screen flex items-center justify-center bg-[#060a09] text-white/50"><Radio className="animate-pulse mr-2" /> Menghubungkan feed…</div>
 
@@ -444,7 +504,6 @@ export function TradingTerminal() {
   else if (dir === 'SHORT') action = 'Bias SHORT — cari retest ke VWAP/EMA21 untuk entry.'
   else action = 'Netral — tunggu arah dominan.'
 
-  const narrativePct = Math.round((NARRATIVE_N + 1) / 2 * 100)
   const levels = [
     { label: 'R2', v: feed.pivots.R2, k: 'res' }, { label: 'R1', v: feed.pivots.R1, k: 'res' },
     { label: 'Pivot', v: feed.pivots.P, k: 'piv' }, { label: 'VWAP', v: feed.tf.M15.vwap, k: 'vwap' },
@@ -534,18 +593,53 @@ export function TradingTerminal() {
           <div className="flex items-start gap-1.5 pt-2 border-t border-white/5"><Target size={13} className="text-primary mt-0.5 shrink-0" /><p className="text-[11px] text-white/85 font-medium leading-snug">{action}</p></div>
         </Panel>
 
-        <Panel title="Sentimen Naratif · Bloomberg / Reuters" icon={Newspaper} className="lg:col-span-4"
-          right={<span className={`text-[10px] font-bold ${NARRATIVE_N > 0 ? 'text-emerald-400' : NARRATIVE_N < 0 ? 'text-red-400' : 'text-white/60'}`}>{NARRATIVE_N > 0 ? 'Bullish' : NARRATIVE_N < 0 ? 'Bearish' : 'Netral'} {narrativePct}%</span>}>
-          <div className="h-1.5 rounded-full overflow-hidden bg-red-500/25 mb-2"><div className="h-full bg-emerald-400" style={{ width: `${narrativePct}%` }} /></div>
-          <div className="space-y-1.5 overflow-hidden">
-            {HEADLINES.slice(0, 4).map((h, i) => (
-              <div key={i} className="flex items-start gap-1.5">
-                <span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 mt-0.5 shrink-0 ${h.src === 'Bloomberg' ? 'bg-orange-500/15 text-orange-300' : 'bg-blue-500/15 text-blue-300'}`}>{h.src === 'Bloomberg' ? 'BBG' : 'RTRS'}</span>
-                <p className="text-[10px] text-white/65 leading-snug flex-1">{h.text}</p>
-                <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${h.senti > 0 ? 'bg-emerald-400' : h.senti < 0 ? 'bg-red-400' : 'bg-white/30'}`} />
+        <Panel title="Sentimen Berita · Analisa AI" icon={Newspaper} className="lg:col-span-4"
+          right={news.data
+            ? <button onClick={news.analyze} disabled={news.loading} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/70 disabled:opacity-40"><RefreshCw size={10} className={news.loading ? 'animate-spin' : ''} /> Perbarui</button>
+            : <span className="text-[9px] text-white/30">on-demand</span>}>
+          {!news.data && !news.loading && !news.error && (
+            <div className="flex flex-col items-center justify-center flex-1 py-4 text-center gap-2">
+              <p className="text-[11px] text-white/45 leading-snug max-w-[85%]">Analisa sentimen headline emas/dolar/Fed dari berita real, diolah Claude AI.</p>
+              <button onClick={news.analyze} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3.5 py-2 hover:opacity-90 transition-opacity"><Sparkles size={13} /> Analisa AI</button>
+            </div>
+          )}
+          {news.loading && (
+            <div className="flex flex-col items-center justify-center flex-1 py-6 gap-2 text-white/50"><Loader2 size={20} className="animate-spin text-primary" /><p className="text-[10px]">Membaca berita & menganalisa…</p></div>
+          )}
+          {news.error && !news.loading && (
+            <div className="flex flex-col items-center justify-center flex-1 py-4 gap-2 text-center">
+              <p className="text-[10px] text-red-400">Gagal: {news.error}</p>
+              <button onClick={news.analyze} className="text-[10px] font-semibold text-primary hover:underline">Coba lagi</button>
+            </div>
+          )}
+          {news.data && !news.loading && (() => {
+            const nd = news.data
+            const pct = Math.round((nd.score + 100) / 2)
+            const vc = nd.verdict === 'Bullish' ? 'text-emerald-400' : nd.verdict === 'Bearish' ? 'text-red-400' : 'text-white/60'
+            return (
+              <div className="flex flex-col gap-2 overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-black ${vc}`}>{nd.verdict}</span>
+                  <span className="text-[10px] text-white/40 tabular-nums">skor {nd.score > 0 ? '+' : ''}{nd.score}</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden bg-red-500/25"><div className="h-full bg-emerald-400" style={{ width: `${pct}%` }} /></div>
+                <p className="text-[10px] text-white/70 leading-snug">{nd.narrative}</p>
+                {nd.drivers.length > 0 && (
+                  <div className="flex flex-wrap gap-1">{nd.drivers.map((d, i) => <span key={i} className="text-[9px] bg-white/5 text-white/55 rounded px-1.5 py-0.5">{d}</span>)}</div>
+                )}
+                <div className="space-y-1 pt-1 border-t border-white/5 overflow-hidden">
+                  {nd.headlines.slice(0, 4).map((h, i) => (
+                    <div key={i} className="flex items-start gap-1.5">
+                      <span className="text-[8px] font-bold uppercase rounded px-1 py-0.5 mt-0.5 shrink-0 bg-white/8 text-white/50">{h.source.slice(0, 10)}</span>
+                      <p className="text-[10px] text-white/60 leading-snug flex-1">{h.text}</p>
+                      <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${h.sentiment === 'bull' ? 'bg-emerald-400' : h.sentiment === 'bear' ? 'bg-red-400' : 'bg-white/30'}`} />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[8px] text-white/25 text-right">Sumber: Google News · diolah Claude AI</p>
               </div>
-            ))}
-          </div>
+            )
+          })()}
         </Panel>
 
         {/* ── Row 2: 3 chart grid ── */}
@@ -560,7 +654,8 @@ export function TradingTerminal() {
         })}
 
         {/* ── Row 3: Cross-asset · Contrarian ── */}
-        <Panel title="Parameter Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-8">
+        <Panel title="Parameter Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-8"
+          right={<span className="text-[9px] text-white/30">● BTC live · sisanya sim (indeks/VIX/yield perlu tier berbayar)</span>}>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {ASSET_META.map(m => <AssetCard key={m.key} meta={m} a={feed.assets[m.key]} />)}
           </div>
