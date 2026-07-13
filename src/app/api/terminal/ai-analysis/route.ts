@@ -37,10 +37,12 @@ export async function POST(req: Request) {
     const dataBlock = `DATA TERMINAL XAU/USD (real-time):
 - Harga: ${snap.price} (${snap.changePct >= 0 ? '+' : ''}${snap.changePct}%), sesi ${snap.session}, volatilitas ${snap.volatility}
 - Signal gabungan: ${snap.signal?.label} (skor ${snap.signal?.overall}, confidence ${snap.signal?.confidence}%) | pilar Makro ${snap.signal?.macro} Teknikal ${snap.signal?.tech} Sentimen ${snap.signal?.senti}
-- Teknikal per timeframe: M5 ${snap.tf?.M5?.bias}/RSI${snap.tf?.M5?.rsi}, M15 ${snap.tf?.M15?.bias}/RSI${snap.tf?.M15?.rsi}, H1 ${snap.tf?.H1?.bias}/RSI${snap.tf?.H1?.rsi}; ATR M15 ${snap.atrM15}; VWAP M15 ${snap.vwapM15}
+- Regime pasar: ${snap.regime} | Momentum komposit ${snap.momentum} | Bollinger squeeze: ${snap.bbSqueeze ? 'ya' : 'tidak'} | Sentimen risiko: ${snap.riskSentiment}
+- Teknikal per timeframe (bias/RSI/MACD/Stoch%K/struktur): M5 ${snap.tf?.M5?.bias}/${snap.tf?.M5?.rsi}/${snap.tf?.M5?.macd}/${snap.tf?.M5?.stoch}/${snap.tf?.M5?.struktur}, M15 ${snap.tf?.M15?.bias}/${snap.tf?.M15?.rsi}/${snap.tf?.M15?.macd}/${snap.tf?.M15?.stoch}/${snap.tf?.M15?.struktur}, H1 ${snap.tf?.H1?.bias}/${snap.tf?.H1?.rsi}/${snap.tf?.H1?.macd}/${snap.tf?.H1?.stoch}/${snap.tf?.H1?.struktur}; ADX ${snap.adx} (${snap.trendDir}); ATR M15 ${snap.atrM15}; VWAP M15 ${snap.vwapM15}
 - Pivot: P ${snap.pivots?.P}, R1 ${snap.pivots?.R1}, R2 ${snap.pivots?.R2}, S1 ${snap.pivots?.S1}, S2 ${snap.pivots?.S2}
-- Makro (FRED): Indeks Dolar ${snap.macro?.dollar?.value} (prior ${snap.macro?.dollar?.prior}), US10Y ${snap.macro?.us10y?.value}% (prior ${snap.macro?.us10y?.prior}), Real Yield ${snap.macro?.realyield?.value}%, CPI ${snap.macro?.cpi?.value}% (prior ${snap.macro?.cpi?.prior}), Core CPI ${snap.macro?.corecpi?.value}%, Core PCE ${snap.macro?.corepce?.value}%, Fed Funds ${snap.macro?.fedfunds?.value}%
+- Makro (FRED): Indeks Dolar ${snap.macro?.dollar?.value} (prior ${snap.macro?.dollar?.prior}), US10Y ${snap.macro?.us10y?.value}%, US2Y ${snap.macro?.us02y?.value}%, Yield Curve 2s10s ${snap.yieldCurve2s10}%, Real Yield ${snap.macro?.realyield?.value}%, Ekspektasi Inflasi(breakeven) ${snap.macro?.breakeven?.value}%, CPI ${snap.macro?.cpi?.value}%, Core CPI ${snap.macro?.corecpi?.value}%, Core PCE ${snap.macro?.corepce?.value}%, Fed Funds ${snap.macro?.fedfunds?.value}%, Pengangguran ${snap.macro?.unrate?.value}%
 - COT (${snap.cot?.date}): Funds/institusi net ${snap.cot?.funds?.net} (Δ${snap.cot?.funds?.deltaNet}), Commercials net ${snap.cot?.commercials?.net}, Retail net ${snap.cot?.retail?.net} (Δ${snap.cot?.retail?.deltaNet})
+- Rasio Emas/Perak (XAU/XAG): ${snap.goldSilverRatio}
 - Bitcoin: ${snap.btc?.price} (${snap.btc?.changePct}%)
 - Aset risiko real-time (Twelve Data): S&P 500 ${snap.riskAssets?.spy}%, Nasdaq 100 ${snap.riskAssets?.qqq}%, VIX (proxy ETF) ${snap.riskAssets?.vix}%, Dolar real-time (proxy UUP) ${snap.riskAssets?.dollarRealtime}%
 HEADLINE BERITA (2 hari):

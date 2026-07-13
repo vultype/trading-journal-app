@@ -11,11 +11,14 @@ export type FredSeries = {
 export const FRED_SERIES: FredSeries[] = [
   { key: 'dollar', id: 'DTWEXBGS', name: 'Indeks Dolar', sub: 'Broad USD Index (Fed)', dec: 2, unit: '', corr: -1 },
   { key: 'us10y', id: 'DGS10', name: 'US10Y', sub: 'Yield Treasury 10 Thn', dec: 2, unit: '%', corr: -1 },
+  { key: 'us02y', id: 'DGS2', name: 'US02Y', sub: 'Yield Treasury 2 Thn', dec: 2, unit: '%', corr: -1 },
   { key: 'realyield', id: 'DFII10', name: 'Real Yield 10Y', sub: 'TIPS — turun = bullish emas', dec: 2, unit: '%', corr: -1 },
+  { key: 'breakeven', id: 'T10YIE', name: 'Ekspektasi Inflasi 10Y', sub: 'Breakeven — naik = bullish emas', dec: 2, unit: '%', corr: 1 },
   { key: 'cpi', id: 'CPIAUCSL', units: 'pc1', name: 'CPI (YoY)', sub: 'Inflasi headline AS', dec: 1, unit: '%', corr: -1 },
   { key: 'corecpi', id: 'CPILFESL', units: 'pc1', name: 'Core CPI (YoY)', sub: 'Inflasi inti (ex food & energy)', dec: 1, unit: '%', corr: -1 },
   { key: 'corepce', id: 'PCEPILFE', units: 'pc1', name: 'Core PCE (YoY)', sub: 'Gauge favorit The Fed', dec: 1, unit: '%', corr: -1 },
   { key: 'fedfunds', id: 'FEDFUNDS', name: 'Fed Funds Rate', sub: 'Suku bunga acuan', dec: 2, unit: '%', corr: -1 },
+  { key: 'unrate', id: 'UNRATE', name: 'Pengangguran', sub: 'Unemployment — naik = dovish Fed', dec: 1, unit: '%', corr: 1 },
 ]
 
 export type MacroPoint = { key: string; value: number; prior: number; date: string }

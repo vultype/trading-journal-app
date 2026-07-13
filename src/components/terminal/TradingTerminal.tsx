@@ -14,19 +14,21 @@ import {
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
+  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins,
 } from 'lucide-react'
 import { AiChart, type ChartLevels } from './AiChart'
+import { macdCalc, bollinger, stochastic, marketStructure, momentumScore, type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 
 type TF = 'M5' | 'M15' | 'H1'
 const TFS: TF[] = ['M5', 'M15', 'H1']
 type Dir = 'BULLISH' | 'BEARISH' | 'NETRAL'
 type Candle = { o: number; h: number; l: number; c: number; t: number; v: number }
 type Bias = { label: Dir; score: number }
-type TFData = { candles: Candle[]; ema9: number[]; ema21: number[]; vwapArr: number[]; rsi: number; atr: number; vwap: number; adx: number; plusDI: number; minusDI: number; bias: Bias }
+type TFData = { candles: Candle[]; ema9: number[]; ema21: number[]; vwapArr: number[]; rsi: number; atr: number; vwap: number; adx: number; plusDI: number; minusDI: number; bias: Bias; macd: Macd; boll: Boll; stoch: Stoch; structure: Structure; momentum: number }
 type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
 type MacroPoint = { key: string; value: number; prior: number; date: string }
 type CotGroup = { long: number; short: number; net: number; deltaNet: number }
-type Cot = { date: string; funds: CotGroup; commercials: CotGroup; retail: CotGroup }
+type Cot = { date: string; funds: CotGroup; commercials: CotGroup; retail: CotGroup; fundsHistory: number[]; retailHistory: number[] }
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x))
 
 // ─────────────────────────── indikator ───────────────────────────
@@ -78,7 +80,9 @@ function computeTF(candles: Candle[]): TFData {
   if (price > vwap) score += 1; else score -= 1
   if (rsi > 55) score += 1; else if (rsi < 45) score -= 1
   const bias: Bias = score >= 2 ? { label: 'BULLISH', score } : score <= -2 ? { label: 'BEARISH', score } : { label: 'NETRAL', score }
-  return { candles, ema9, ema21, vwapArr, rsi, atr, vwap, adx, plusDI, minusDI, bias }
+  const macd = macdCalc(closes), boll = bollinger(closes), stoch = stochastic(candles), structure = marketStructure(candles)
+  const momentum = momentumScore(rsi, macd, stoch, boll)
+  return { candles, ema9, ema21, vwapArr, rsi, atr, vwap, adx, plusDI, minusDI, bias, macd, boll, stoch, structure, momentum }
 }
 const adxLabel = (adx: number) => adx < 20 ? 'Lemah' : adx < 25 ? 'Mulai' : adx < 40 ? 'Kuat' : 'Sangat Kuat'
 
@@ -129,7 +133,7 @@ function useCrossAsset() {
     poll(); const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) poll() }, 45_000)
     return () => { stopped = true; clearInterval(id) }
   }, [])
-  return { btc: map?.['BTC/USD'] ?? null, spy: map?.SPY ?? null, qqq: map?.QQQ ?? null, vixy: map?.VIXY ?? null, uup: map?.UUP ?? null }
+  return { btc: map?.['BTC/USD'] ?? null, spy: map?.SPY ?? null, qqq: map?.QQQ ?? null, vixy: map?.VIXY ?? null, uup: map?.UUP ?? null, xag: map?.['XAG/USD'] ?? null }
 }
 function useMacro() {
   const [map, setMap] = useState<Record<string, MacroPoint> | null>(null)
@@ -290,8 +294,10 @@ const MACRO_META: { key: string; meta: CardMeta }[] = [
   { key: 'cpi', meta: { name: 'CPI (YoY)', sub: 'Inflasi headline · FRED', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
   { key: 'corecpi', meta: { name: 'Core CPI (YoY)', sub: 'Inflasi inti', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
   { key: 'corepce', meta: { name: 'Core PCE (YoY)', sub: 'Gauge favorit Fed', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
+  { key: 'breakeven', meta: { name: 'Ekspektasi Inflasi', sub: 'Breakeven 10Y — naik = bullish', dec: 2, unit: '%', corr: 1, src: 'FRED' } },
   { key: 'fedfunds', meta: { name: 'Fed Funds Rate', sub: 'Suku bunga acuan', dec: 2, unit: '%', corr: -1, src: 'FRED' } },
   { key: 'realyield', meta: { name: 'Real Yield 10Y', sub: 'TIPS — turun = bullish', dec: 2, unit: '%', corr: -1, src: 'FRED' } },
+  { key: 'unrate', meta: { name: 'Pengangguran', sub: 'Naik = dovish (bullish)', dec: 1, unit: '%', corr: 1, src: 'FRED' } },
 ]
 function TVWidget({ src, config }: { src: string; config: Record<string, unknown> }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -327,6 +333,51 @@ function ChartPanel({ onExpand, tfData, levels }: { onExpand: () => void; tfData
       right={<button onClick={onExpand} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/80"><Maximize2 size={11} /> Perbesar</button>}>
       <div className="flex-1 min-h-0"><AiChart tfData={tfData} levels={levels} height={380} /></div>
     </Panel>
+  )
+}
+
+// ─────────────────────────── helper visual baru ───────────────────────────
+function Sparkline({ data, color = '#34d399', h = 26, w = 84 }: { data: number[]; color?: string; h?: number; w?: number }) {
+  if (!data || data.length < 2) return <div style={{ height: h, width: w }} />
+  const min = Math.min(...data), max = Math.max(...data), range = max - min || 1
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * (h - 3) - 1.5}`).join(' ')
+  const last = data[data.length - 1], first = data[0]
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />
+      <circle cx={w} cy={h - ((last - min) / range) * (h - 3) - 1.5} r={2} fill={last >= first ? '#34d399' : '#f87171'} />
+    </svg>
+  )
+}
+// Tile insight ringkas (variatif — bukan grid kartu identik)
+function StatTile({ icon: Icon, label, value, sub, tone = 'neutral', spark, sparkColor, info }: { icon: React.ElementType; label: string; value: React.ReactNode; sub?: string; tone?: 'bull' | 'bear' | 'warn' | 'neutral'; spark?: number[]; sparkColor?: string; info?: string }) {
+  const toneC = tone === 'bull' ? 'text-emerald-400' : tone === 'bear' ? 'text-red-400' : tone === 'warn' ? 'text-amber-400' : 'text-white/85'
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-[#0b100e] p-2.5 flex flex-col justify-between min-h-[74px]" title={info}>
+      <div className="flex items-center justify-between"><span className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-white/35"><Icon size={10} /> {label}</span>{info && <Info size={9} className="text-white/20" />}</div>
+      <div className="flex items-end justify-between gap-1 mt-1">
+        <div><p className={`text-base font-black leading-none ${toneC}`}>{value}</p>{sub && <p className="text-[9px] text-white/40 mt-0.5 leading-tight">{sub}</p>}</div>
+        {spark && <Sparkline data={spark} color={sparkColor ?? '#60a5fa'} />}
+      </div>
+    </div>
+  )
+}
+const cellState = (s: 'bullish' | 'bearish' | 'netral') => s === 'bullish' ? 'bg-emerald-500/15 text-emerald-400' : s === 'bearish' ? 'bg-red-500/15 text-red-400' : 'bg-white/[0.04] text-white/45'
+function HeatCell({ state, text }: { state: 'bullish' | 'bearish' | 'netral'; text: string }) {
+  return <div className={`rounded-md py-1 text-center text-[10px] font-bold ${cellState(state)}`}>{text}</div>
+}
+// meter horizontal -100..100 (dipakai untuk momentum, risk-on/off, curve)
+function MiniMeter({ value, leftLabel, rightLabel, invert }: { value: number; leftLabel: string; rightLabel: string; invert?: boolean }) {
+  const v = clamp(value, -100, 100)
+  const pos = (v + 100) / 2
+  const good = invert ? v < 0 : v > 0
+  return (
+    <div>
+      <div className="relative h-2 rounded-full bg-gradient-to-r from-red-500/40 via-white/10 to-emerald-500/40">
+        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-[#0b100e]" style={{ left: `${pos}%`, background: good ? '#34d399' : v === 0 ? '#9ca3af' : '#f87171' }} />
+      </div>
+      <div className="flex justify-between text-[8px] text-white/35 mt-1"><span>{leftLabel}</span><span>{rightLabel}</span></div>
+    </div>
   )
 }
 
@@ -380,6 +431,18 @@ export function TradingTerminal() {
   const levels = pivots ? [{ label: 'R2', v: pivots.R2, k: 'res' }, { label: 'R1', v: pivots.R1, k: 'res' }, { label: 'Pivot', v: pivots.P, k: 'piv' }, { label: 'S1', v: pivots.S1, k: 'sup' }, { label: 'S2', v: pivots.S2, k: 'sup' }].map(l => ({ ...l, dist: feed.price - l.v })).sort((a, b) => b.v - a.v) : []
   const nearest = levels.length ? levels.reduce((a, b) => Math.abs(a.dist) < Math.abs(b.dist) ? a : b) : null
 
+  // ── insight turunan (100% real) ──
+  const dayRange = feed.dayHigh - feed.dayLow
+  const dayPos = dayRange > 0 ? clamp((feed.price - feed.dayLow) / dayRange, 0, 1) : 0.5
+  const bbSqueeze = feed.tf.M15.boll.squeeze
+  const regime = adx >= 25 ? { label: 'Trending', c: 'text-emerald-400', desc: trendUp ? 'tren naik kuat' : 'tren turun kuat' } : (adx < 18 || bbSqueeze) ? { label: 'Ranging', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit' : 'sideways / lemah' } : { label: 'Transisi', c: 'text-sky-400', desc: 'tren mulai terbentuk' }
+  const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
+  // risk-on/off: >0 risk-on (cenderung bearish emas), <0 risk-off (cenderung bullish emas)
+  const riskOn = (() => { let s = 0, n = 0; if (cross.spy) { s += clamp(cross.spy.changePct / 1.5, -1, 1); n++ } if (cross.qqq) { s += clamp(cross.qqq.changePct / 1.8, -1, 1); n++ } if (cross.vixy) { s += clamp(-cross.vixy.changePct / 4, -1, 1); n++ } if (cross.btc) { s += clamp(cross.btc.changePct / 4, -1, 1) * 0.5; n += 0.5 } return n ? s / n : 0 })()
+  const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
+  const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
+  const curve2s10 = macro?.us10y && macro?.us02y ? macro.us10y.value - macro.us02y.value : null
+
   // Kesimpulan (sintesis)
   const kLines: string[] = []
   kLines.push(`Teknikal: ${conf.bulls} bullish / ${conf.bears} bearish dari 3 TF (${conf.label === 'NETRAL' ? 'campur' : conf.label.toLowerCase()}). Tren ${adxL}${adx >= 20 ? ` & ${trendUp ? 'naik' : 'turun'}` : ''}.`)
@@ -392,8 +455,10 @@ export function TradingTerminal() {
   const snapshot = {
     price: +feed.price.toFixed(2), changePct: +feed.changePct.toFixed(2), session, volatility: volLabel,
     signal: { overall: Math.round(sc.overall), label: sc.label, confidence: sc.confidence, macro: Math.round(sc.macro), tech: Math.round(sc.tech), senti: Math.round(sc.senti) },
-    tf: { M5: { bias: feed.tf.M5.bias.label, rsi: Math.round(feed.tf.M5.rsi) }, M15: { bias: feed.tf.M15.bias.label, rsi: Math.round(feed.tf.M15.rsi) }, H1: { bias: feed.tf.H1.bias.label, rsi: Math.round(feed.tf.H1.rsi) } },
+    tf: Object.fromEntries(TFS.map(t => { const d = feed.tf[t]; return [t, { bias: d.bias.label, rsi: Math.round(d.rsi), macd: d.macd.state, stoch: Math.round(d.stoch.k), struktur: d.structure.label }] })),
     adx: +adx.toFixed(0), trendDir: trendUp ? 'naik' : 'turun', atrM15: +feed.tf.M15.atr.toFixed(2), vwapM15: +feed.tf.M15.vwap.toFixed(2),
+    regime: regime.label, momentum: Math.round(avgMomentum), bbSqueeze, riskSentiment: riskOn < -0.1 ? 'risk-off' : riskOn > 0.1 ? 'risk-on' : 'netral',
+    goldSilverRatio: goldSilver ? +goldSilver.toFixed(1) : null, yieldCurve2s10: curve2s10 != null ? +curve2s10.toFixed(2) : null,
     pivots: pivotsLive ? { P: +pivotsLive.P.toFixed(2), R1: +pivotsLive.R1.toFixed(2), R2: +pivotsLive.R2.toFixed(2), S1: +pivotsLive.S1.toFixed(2), S2: +pivotsLive.S2.toFixed(2) } : null,
     macro: macro ? Object.fromEntries(Object.entries(macro).map(([k, v]) => [k, { value: v.value, prior: v.prior }])) : null,
     cot: cot ? { date: cot.date, funds: { net: cot.funds.net, deltaNet: cot.funds.deltaNet }, commercials: { net: cot.commercials.net }, retail: { net: cot.retail.net, deltaNet: cot.retail.deltaNet } } : null,
@@ -526,6 +591,10 @@ export function TradingTerminal() {
           <CotBar label="🏛️ Funds (Institusi/spekulan besar)" g={cot.funds} hint="Non-commercial: hedge fund & spekulan besar. Trend-follower." />
           <CotBar label="🏦 Commercials (hedger/bank)" g={cot.commercials} hint="Produsen/bank. Sering benar di titik ekstrem (smart money)." />
           <CotBar label="👤 Retail (trader kecil)" g={cot.retail} hint="Non-reportable: trader ritel. Sering kontrarian saat ekstrem." />
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <div className="rounded-lg bg-white/[0.03] p-2"><p className="text-[9px] text-white/40 mb-1">Tren net Institusi (12 mgg)</p><div className="flex items-center gap-2"><Sparkline data={cot.fundsHistory} color="#34d399" w={70} /><span className={`text-[10px] font-bold ${cot.fundsHistory[cot.fundsHistory.length - 1] >= cot.fundsHistory[0] ? 'text-emerald-400' : 'text-red-400'}`}>{cot.fundsHistory[cot.fundsHistory.length - 1] >= cot.fundsHistory[0] ? 'menambah long' : 'mengurangi'}</span></div></div>
+            <div className="rounded-lg bg-white/[0.03] p-2"><p className="text-[9px] text-white/40 mb-1">Tren net Retail (12 mgg)</p><div className="flex items-center gap-2"><Sparkline data={cot.retailHistory} color="#a78bfa" w={70} /><span className={`text-[10px] font-bold ${cot.retailHistory[cot.retailHistory.length - 1] >= cot.retailHistory[0] ? 'text-emerald-400' : 'text-red-400'}`}>{cot.retailHistory[cot.retailHistory.length - 1] >= cot.retailHistory[0] ? 'menambah long' : 'mengurangi'}</span></div></div>
+          </div>
           <p className="text-[9px] text-white/40 pt-2">{cot.funds.net * cot.retail.net < 0 ? 'Institusi & retail berlawanan — condong ikuti institusi.' : 'Institusi & retail searah.'} Data mingguan (lagging) — konteks, bukan sinyal entry.</p>
         </div>
       ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat COT…</div>}
@@ -548,6 +617,115 @@ export function TradingTerminal() {
   const CalendarPanel = (
     <Panel title="Kalender Ekonomi AS" icon={CalendarClock} className="h-[420px]" info="Jadwal rilis data ekonomi AS berdampak tinggi. Hindari entry menjelang rilis high-impact.">
       <div className="flex-1 min-h-0 rounded-lg overflow-hidden"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-events.js" config={TV_EVENTS} /></div>
+    </Panel>
+  )
+
+  // Strip insight (Ringkasan) — metrik turunan penting dalam satu pandangan
+  const InsightStrip = (
+    <div className="lg:col-span-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="Trending = ADX≥25 (ikuti tren). Ranging = sideways/squeeze (main pantulan)." />
+      <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
+      <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
+      <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
+      <StatTile icon={Coins} label="Rasio Emas/Perak" value={goldSilver ? goldSilver.toFixed(1) : '—'} sub={goldSilver ? (goldSilver > 85 ? 'emas relatif mahal' : goldSilver < 70 ? 'perak memimpin' : 'normal') : 'memuat'} tone="neutral" info="XAU/XAG. >85 emas mahal relatif perak (sering risk-off); <70 perak memimpin (risk-on)." />
+      <StatTile icon={GitBranch} label="Yield Curve 2s10s" value={curve2s10 != null ? `${curve2s10 >= 0 ? '+' : ''}${curve2s10.toFixed(2)}` : '—'} sub={curve2s10 != null ? (curve2s10 < 0 ? 'inversi — sinyal resesi' : 'normal') : 'memuat'} tone={curve2s10 != null && curve2s10 < 0 ? 'warn' : 'neutral'} info="Selisih yield 10Y − 2Y. Negatif (inversi) = pasar cemas resesi → mendorong ekspektasi pemangkasan Fed (bullish emas jangka menengah)." />
+    </div>
+  )
+
+  // Matrix indikator multi-timeframe (heatmap)
+  const cols = ['Tren', 'RSI', 'MACD', 'Stoch', 'Struktur']
+  const IndicatorMatrix = (
+    <Panel title="Matrix Indikator Multi-Timeframe" icon={LayoutDashboard} info="Sekilas kondisi tiap indikator di M5/M15/H1. Hijau=bullish, merah=bearish, abu=netral. Makin banyak hijau/merah sejajar = sinyal makin searah.">
+      <div className="grid grid-cols-6 gap-1 text-center">
+        <div />{cols.map(c => <div key={c} className="text-[9px] font-bold uppercase tracking-wider text-white/35 pb-1">{c}</div>)}
+        {TFS.map(t => { const d = feed.tf[t]
+          const trendS: 'bullish' | 'bearish' | 'netral' = d.ema9[d.ema9.length - 1] > d.ema21[d.ema21.length - 1] ? 'bullish' : 'bearish'
+          const rsiS: 'bullish' | 'bearish' | 'netral' = d.rsi > 55 ? 'bullish' : d.rsi < 45 ? 'bearish' : 'netral'
+          const stochS: 'bullish' | 'bearish' | 'netral' = d.stoch.k > 55 ? 'bullish' : d.stoch.k < 45 ? 'bearish' : 'netral'
+          const strucS: 'bullish' | 'bearish' | 'netral' = d.structure.label === 'Uptrend' ? 'bullish' : d.structure.label === 'Downtrend' ? 'bearish' : 'netral'
+          return (
+            <div key={t} className="contents">
+              <div className="text-[10px] font-bold text-white/60 flex items-center justify-center">{t}</div>
+              <HeatCell state={trendS} text={trendS === 'bullish' ? 'EMA↑' : 'EMA↓'} />
+              <HeatCell state={rsiS} text={d.rsi.toFixed(0)} />
+              <HeatCell state={d.macd.state} text={d.macd.state === 'bullish' ? 'MACD↑' : d.macd.state === 'bearish' ? 'MACD↓' : '—'} />
+              <HeatCell state={stochS} text={d.stoch.k.toFixed(0)} />
+              <HeatCell state={strucS} text={d.structure.label === 'Uptrend' ? 'HH/HL' : d.structure.label === 'Downtrend' ? 'LH/LL' : 'Range'} />
+            </div>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+
+  // Osilator detail (MACD, Stochastic, Bollinger) untuk M15
+  const oscTf = feed.tf.M15
+  const OscillatorPanel = (
+    <Panel title="Osilator & Bollinger (M15)" icon={Waves} info="MACD = momentum tren (histogram + = bullish). Stochastic = jenuh beli/jual jangka pendek. Bollinger %B = posisi harga di pita; squeeze = volatilitas menyempit, sering awal breakout.">
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between rounded-lg bg-white/[0.03] p-2">
+          <div><p className="text-[9px] uppercase tracking-wider text-white/35">MACD</p><p className={`text-sm font-black leading-none mt-0.5 ${dirColor(oscTf.macd.state)}`}>{oscTf.macd.state === 'bullish' ? 'Bullish' : oscTf.macd.state === 'bearish' ? 'Bearish' : 'Netral'}</p></div>
+          <div className="text-right text-[9px] text-white/45 tabular-nums"><p>MACD {oscTf.macd.macd.toFixed(2)}</p><p>Signal {oscTf.macd.signal.toFixed(2)}</p><p className={oscTf.macd.hist >= 0 ? 'text-emerald-400' : 'text-red-400'}>Hist {oscTf.macd.hist >= 0 ? '+' : ''}{oscTf.macd.hist.toFixed(2)}</p></div>
+        </div>
+        <div className="rounded-lg bg-white/[0.03] p-2">
+          <div className="flex items-center justify-between mb-1"><span className="text-[9px] uppercase tracking-wider text-white/35">Stochastic</span><span className={`text-[10px] font-bold ${oscTf.stoch.state === 'jenuh beli' ? 'text-red-400' : oscTf.stoch.state === 'jenuh jual' ? 'text-emerald-400' : 'text-white/70'}`}>{oscTf.stoch.state}</span></div>
+          <div className="relative h-2 rounded-full bg-gradient-to-r from-emerald-500/30 via-white/5 to-red-500/30"><div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-white" style={{ left: `${clamp(oscTf.stoch.k, 0, 100)}%` }} /></div>
+          <div className="flex justify-between text-[8px] text-white/35 mt-0.5"><span>%K {oscTf.stoch.k.toFixed(0)}</span><span>%D {oscTf.stoch.d.toFixed(0)}</span></div>
+        </div>
+        <div className="rounded-lg bg-white/[0.03] p-2">
+          <div className="flex items-center justify-between mb-1"><span className="text-[9px] uppercase tracking-wider text-white/35">Bollinger %B</span>{oscTf.boll.squeeze && <span className="text-[9px] font-bold text-amber-400 flex items-center gap-1"><Zap size={9} /> Squeeze</span>}</div>
+          <div className="relative h-2 rounded-full bg-white/5"><div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-sky-400" style={{ left: `${clamp(oscTf.boll.pctB * 100, 0, 100)}%` }} /></div>
+          <div className="flex justify-between text-[8px] text-white/35 mt-0.5"><span>lower</span><span>%B {(oscTf.boll.pctB * 100).toFixed(0)} · lebar {oscTf.boll.bandwidth.toFixed(2)}%</span><span>upper</span></div>
+        </div>
+      </div>
+    </Panel>
+  )
+
+  const YieldCurvePanel = (
+    <Panel title="Yield Curve & Suku Bunga" icon={GitBranch} info="Selisih yield 10Y−2Y. Inversi (negatif) = pasar khawatir resesi → ekspektasi Fed memangkas bunga → biasanya bullish emas jangka menengah.">
+      {curve2s10 != null ? (
+        <div className="space-y-3">
+          <div className="flex items-end gap-3">
+            <div><p className="text-[9px] uppercase tracking-wider text-white/35">Spread 2s10s</p><p className={`text-2xl font-black leading-none ${curve2s10 < 0 ? 'text-amber-400' : 'text-white/85'}`}>{curve2s10 >= 0 ? '+' : ''}{curve2s10.toFixed(2)}%</p></div>
+            <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 mb-1 ${curve2s10 < 0 ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'}`}>{curve2s10 < 0 ? 'Inversi' : 'Normal'}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-white/[0.03] p-2"><p className="text-[9px] text-white/40">US 2Y</p><p className="text-sm font-bold tabular-nums">{macro?.us02y?.value.toFixed(2)}%</p></div>
+            <div className="rounded-lg bg-white/[0.03] p-2"><p className="text-[9px] text-white/40">US 10Y</p><p className="text-sm font-bold tabular-nums">{macro?.us10y?.value.toFixed(2)}%</p></div>
+          </div>
+          <p className="text-[10px] text-white/50 leading-snug">{curve2s10 < 0 ? 'Kurva terbalik — historis mendahului resesi & siklus pemangkasan bunga, angin baik untuk emas.' : 'Kurva normal — ekonomi ekspansif, emas lebih bergantung pada arah inflasi & dolar.'}</p>
+        </div>
+      ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat yield…</div>}
+    </Panel>
+  )
+
+  const RiskSentimentPanel = (
+    <Panel title="Sentimen Risiko Pasar" icon={Scale} info="Emas adalah aset lindung nilai. Saat pasar takut (risk-off: VIX naik, saham turun) emas cenderung naik; saat pasar berani (risk-on) emas tertekan.">
+      <div className="mb-3">
+        <p className={`text-lg font-black leading-none ${riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}`}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</p>
+        <p className="text-[10px] text-white/45 mt-0.5">{riskOn < -0.1 ? 'Pasar cemas → mendukung emas' : riskOn > 0.1 ? 'Pasar percaya diri → menekan emas' : 'Aliran risiko seimbang'}</p>
+      </div>
+      <MiniMeter value={riskOn * 100} leftLabel="Risk-Off (bullish emas)" rightLabel="Risk-On (bearish emas)" invert />
+      <div className="grid grid-cols-3 gap-1.5 mt-3">
+        {[{ l: 'VIX', q: cross.vixy, inv: false }, { l: 'S&P', q: cross.spy, inv: true }, { l: 'BTC', q: cross.btc, inv: true }].map(x => (
+          <div key={x.l} className="rounded-lg bg-white/[0.03] py-1.5 text-center"><p className="text-[8px] text-white/35">{x.l}</p><p className={`text-[11px] font-bold tabular-nums ${x.q ? (x.q.changePct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-white/30'}`}>{x.q ? `${x.q.changePct >= 0 ? '+' : ''}${x.q.changePct.toFixed(1)}%` : '—'}</p></div>
+        ))}
+      </div>
+    </Panel>
+  )
+
+  const GoldSilverPanel = (
+    <Panel title="Rasio Emas / Perak" icon={Coins} info="XAU ÷ XAG. Rasio tinggi (>85) = emas mahal relatif perak, sering menandai fase risk-off/ketakutan. Rasio rendah (<70) = perak memimpin, biasanya risk-on/reflasi.">
+      {goldSilver ? (
+        <div className="space-y-2">
+          <div className="flex items-end gap-2"><p className="text-2xl font-black leading-none tabular-nums">{goldSilver.toFixed(1)}</p><span className={`text-[10px] font-bold mb-1 ${goldSilver > 85 ? 'text-amber-400' : goldSilver < 70 ? 'text-sky-400' : 'text-white/50'}`}>{goldSilver > 85 ? 'emas mahal' : goldSilver < 70 ? 'perak memimpin' : 'normal'}</span></div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-white/[0.03] p-2"><p className="text-[9px] text-white/40">Emas (XAU)</p><p className="text-sm font-bold tabular-nums">{f2(feed.price)}</p></div>
+            <div className="rounded-lg bg-white/[0.03] p-2"><p className="text-[9px] text-white/40">Perak (XAG)</p><p className="text-sm font-bold tabular-nums">{cross.xag ? f2(cross.xag.price) : '—'}</p></div>
+          </div>
+          {gsRelative != null && <p className="text-[10px] text-white/50 leading-snug">Hari ini emas {gsRelative >= 0 ? 'outperform' : 'underperform'} perak {Math.abs(gsRelative).toFixed(2)}% — {gsRelative >= 0 ? 'aliran defensif ke emas' : 'selera risiko membaik'}.</p>}
+        </div>
+      ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat perak…</div>}
     </Panel>
   )
   const AiPanel = (
@@ -647,31 +825,39 @@ export function TradingTerminal() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5">
         {tab === 'ringkasan' && <>
+          {InsightStrip}
           {AiPanel}
           <div className="lg:col-span-4">{SignalMeterPanel}</div>
           <div className="lg:col-span-4">{BiasPanel}</div>
           <div className="lg:col-span-4">{KesimpulanPanel}</div>
           <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{MomentumPanel}</div>
+          <div className="lg:col-span-8">{IndicatorMatrix}</div>
+          <div className="lg:col-span-4">{RiskSentimentPanel}</div>
         </>}
 
         {tab === 'teknikal' && <>
           <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
+          <div className="lg:col-span-8">{IndicatorMatrix}</div>
+          <div className="lg:col-span-4">{OscillatorPanel}</div>
           <div className="lg:col-span-6">{MomentumPanel}</div>
           <div className="lg:col-span-6">{PivotPanel}</div>
         </>}
 
         {tab === 'makro' && <>
           {CrossPanel}
+          <div className="lg:col-span-5">{YieldCurvePanel}</div>
+          <div className="lg:col-span-7">{RiskSentimentPanel}</div>
           {InflasiPanel}
           <div className="lg:col-span-12">{CalendarPanel}</div>
         </>}
 
         {tab === 'sentimen' && <>
-          <div className="lg:col-span-6">{CotPanel}</div>
-          <div className="lg:col-span-6">{NewsPanel}</div>
-          <div className="lg:col-span-12">{BiasPanel}</div>
+          <div className="lg:col-span-7">{CotPanel}</div>
+          <div className="lg:col-span-5 grid grid-rows-2 gap-2.5">{RiskSentimentPanel}{GoldSilverPanel}</div>
+          <div className="lg:col-span-7">{NewsPanel}</div>
+          <div className="lg:col-span-5">{BiasPanel}</div>
         </>}
 
         {tab === 'panduan' && <div className="lg:col-span-12"><PanduanContent /></div>}

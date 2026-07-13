@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 // dipakai proxy ETF/forex yang sangat likuid & korelasinya erat ke instrumen aslinya:
 //   SPY  = S&P 500 ETF      QQQ  = Nasdaq 100 ETF
 //   VIXY = VIX futures ETF  UUP  = US Dollar Index ETF (bullish fund)
-const SYMBOLS = 'BTC/USD,SPY,QQQ,VIXY,UUP'
+const SYMBOLS = 'BTC/USD,SPY,QQQ,VIXY,UUP,XAG/USD'
 const BASE = 'https://api.twelvedata.com'
 
 type Cross = Record<string, { price: number; changePct: number } | null>
