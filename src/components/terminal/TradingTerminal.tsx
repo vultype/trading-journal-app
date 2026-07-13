@@ -11,7 +11,7 @@ import Link from 'next/link'
 import {
   Activity, Gauge as GaugeIcon, Newspaper, Layers, Radio, ArrowLeft, Clock, Wifi, WifiOff,
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
-  Info, Users, CalendarClock, Lightbulb,
+  Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
 } from 'lucide-react'
 
 type TF = 'M5' | 'M15' | 'H1'
@@ -132,13 +132,28 @@ function useCot() {
   useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/cot')).json(); if (!s && j.date) setCot(j) } catch { } }; poll(); const id = setInterval(poll, 6 * 3600_000); return () => { s = true; clearInterval(id) } }, [])
   return cot
 }
-type NewsAI = { verdict: 'Bullish' | 'Bearish' | 'Netral'; score: number; summary: string; analysis: string; drivers: { text: string; impact: 'bull' | 'bear' | 'neutral' }[]; risks: string[]; watch: string[]; timeframe: { short: string; medium: string }; headlines: { text: string; source: string; sentiment: 'bull' | 'bear' | 'neutral' }[]; fetchedAt: string }
-function useNewsAI() {
-  const [data, setData] = useState<NewsAI | null>(null)
+type AiAnalysis = {
+  verdict: 'Bullish' | 'Bearish' | 'Netral'; confidence: number; headline: string; executive: string
+  technical: string; macro: string; sentiment: string
+  plan: { bias: string; entry: string; sl: string; tp: string; invalidation: string }
+  scenarios: { kondisi: string; aksi: string }[]; risks: string[]; watch: string[]; fetchedAt: string
+}
+function useAiAnalysis() {
+  const [data, setData] = useState<AiAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const analyze = async () => { setLoading(true); setError(null); try { const j = await (await fetch('/api/terminal/news-ai')).json(); if (j.error) throw new Error(j.error); setData(j) } catch (e) { setError(e instanceof Error ? e.message : 'gagal') } finally { setLoading(false) } }
-  return { data, loading, error, analyze }
+  const run = async (snapshot: unknown) => {
+    setLoading(true); setError(null)
+    try { const j = await (await fetch('/api/terminal/ai-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapshot) })).json(); if (j.error) throw new Error(j.error); setData(j) }
+    catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') } finally { setLoading(false) }
+  }
+  return { data, loading, error, run }
+}
+type NewsItem = { text: string; source: string; time: string; link: string }
+function useNews() {
+  const [data, setData] = useState<NewsItem[] | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/news')).json(); if (!s && Array.isArray(j)) setData(j) } catch { } }; poll(); const id = setInterval(poll, 600_000); return () => { s = true; clearInterval(id) } }, [])
+  return data
 }
 
 // ─────────────────────────── scoring & sintesis ───────────────────────────
@@ -268,8 +283,7 @@ function TVWidget({ src, config, height }: { src: string; config: Record<string,
   return <div className="tradingview-widget-container" ref={ref} style={{ height, width: '100%' }} />
 }
 const TV_CHART = { autosize: true, symbol: 'OANDA:XAUUSD', interval: '15', timezone: 'Asia/Jakarta', theme: 'dark', style: '1', locale: 'en', backgroundColor: 'rgba(11,16,14,1)', gridColor: 'rgba(255,255,255,0.04)', hide_side_toolbar: false, allow_symbol_change: false, calendar: false, support_host: 'https://www.tradingview.com' }
-const TV_EVENTS = { colorTheme: 'dark', isTransparent: true, locale: 'en', countryFilter: 'us', importanceFilter: '0,1', width: '100%', height: '100%' }
-const TV_TIMELINE = { feedMode: 'symbol', symbol: 'OANDA:XAUUSD', isTransparent: true, displayMode: 'regular', colorTheme: 'dark', locale: 'en', width: '100%', height: '100%' }
+const TV_EVENTS = { colorTheme: 'dark', isTransparent: false, locale: 'en', countryFilter: 'us', importanceFilter: '0,1', width: '100%', height: '100%' }
 
 // ─────────────────────────── PAGE ───────────────────────────
 export function TradingTerminal() {
@@ -279,7 +293,8 @@ export function TradingTerminal() {
   const macro = useMacro()
   const pivotsLive = usePivots()
   const cot = useCot()
-  const news = useNewsAI()
+  const ai = useAiAnalysis()
+  const newsItems = useNews()
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -293,7 +308,8 @@ export function TradingTerminal() {
   )
 
   const feed = live.data, up = feed.changePct >= 0
-  const sc = scores(feed.tf, macro, news.data?.score ?? null, cross.btc?.changePct ?? null)
+  const aiScore = ai.data ? (ai.data.verdict === 'Bullish' ? ai.data.confidence : ai.data.verdict === 'Bearish' ? -ai.data.confidence : 0) : null
+  const sc = scores(feed.tf, macro, aiScore, cross.btc?.changePct ?? null)
   const conf = confluence(feed.tf)
   const dir = sc.label, atr = feed.tf.M15.atr
   const sltp = dir === 'LONG' ? { sl: feed.price - 1.5 * atr, tp1: feed.price + 1.5 * atr, tp2: feed.price + 3 * atr } : dir === 'SHORT' ? { sl: feed.price + 1.5 * atr, tp1: feed.price - 1.5 * atr, tp2: feed.price - 3 * atr } : null
@@ -311,10 +327,22 @@ export function TradingTerminal() {
     kLines.push(`Makro: dolar ${dUp ? 'menguat' : 'melemah'}, yield 10Y ${yUp ? 'naik' : 'turun'} → ${(!dUp && !yUp) ? 'mendukung emas' : (dUp && yUp) ? 'menekan emas' : 'campur'}.`)
   }
   if (cot) kLines.push(`COT: institusi (funds) ${cot.funds.net >= 0 ? 'net LONG' : 'net SHORT'}, retail ${cot.retail.net >= 0 ? 'net LONG' : 'net SHORT'}${cot.funds.net * cot.retail.net < 0 ? ' — berlawanan, waspada' : ''}.`)
-  if (news.data) kLines.push(`Berita (AI): ${news.data.verdict} — ${news.data.summary}`)
-  else kLines.push('Sentimen berita belum dianalisa (klik "Analisa AI").')
+  if (ai.data) kLines.push(`Analisa AI: ${ai.data.verdict} — ${ai.data.headline}`)
+  else kLines.push('Jalankan "Analisa AI" di panel utama untuk pandangan menyeluruh.')
   const kAction = sc.confidence < 40 ? 'Sinyal lemah/campur — tunggu konfirmasi arah sebelum entry.' : dir === 'LONG' ? `Bias LONG. Cari pullback ke VWAP/EMA21. ${sltp ? `SL ${f2(sltp.sl)} · TP ${f2(sltp.tp1)}/${f2(sltp.tp2)}` : ''}` : dir === 'SHORT' ? `Bias SHORT. Cari retest ke VWAP/EMA21. ${sltp ? `SL ${f2(sltp.sl)} · TP ${f2(sltp.tp1)}/${f2(sltp.tp2)}` : ''}` : 'Netral — tunggu arah dominan.'
-  const kRisk = volLabel === 'Rendah' ? 'Volatilitas rendah — sinyal kurang reliabel, hindari over-trading.' : !news.data ? 'Konfirmasi dengan Analisa AI berita & pantau rilis data ekonomi.' : 'Pantau rilis data ekonomi & pergerakan DXY/yield.'
+  const kRisk = volLabel === 'Rendah' ? 'Volatilitas rendah — sinyal kurang reliabel, hindari over-trading.' : !ai.data ? 'Jalankan Analisa AI & pantau rilis data ekonomi.' : 'Pantau rilis data ekonomi & pergerakan DXY/yield.'
+
+  // Snapshot untuk Analisa AI menyeluruh
+  const snapshot = {
+    price: +feed.price.toFixed(2), changePct: +feed.changePct.toFixed(2), session, volatility: volLabel,
+    signal: { overall: Math.round(sc.overall), label: sc.label, confidence: sc.confidence, macro: Math.round(sc.macro), tech: Math.round(sc.tech), senti: Math.round(sc.senti) },
+    tf: { M5: { bias: feed.tf.M5.bias.label, rsi: Math.round(feed.tf.M5.rsi) }, M15: { bias: feed.tf.M15.bias.label, rsi: Math.round(feed.tf.M15.rsi) }, H1: { bias: feed.tf.H1.bias.label, rsi: Math.round(feed.tf.H1.rsi) } },
+    atrM15: +feed.tf.M15.atr.toFixed(2), vwapM15: +feed.tf.M15.vwap.toFixed(2),
+    pivots: pivotsLive ? { P: +pivotsLive.P.toFixed(2), R1: +pivotsLive.R1.toFixed(2), R2: +pivotsLive.R2.toFixed(2), S1: +pivotsLive.S1.toFixed(2), S2: +pivotsLive.S2.toFixed(2) } : null,
+    macro: macro ? Object.fromEntries(Object.entries(macro).map(([k, v]) => [k, { value: v.value, prior: v.prior }])) : null,
+    cot: cot ? { date: cot.date, funds: { net: cot.funds.net, deltaNet: cot.funds.deltaNet }, commercials: { net: cot.commercials.net }, retail: { net: cot.retail.net, deltaNet: cot.retail.deltaNet } } : null,
+    btc: cross.btc ? { price: Math.round(cross.btc.price), changePct: +cross.btc.changePct.toFixed(2) } : null,
+  }
 
   const pivots = pivotsLive
   const levels = pivots ? [{ label: 'R2', v: pivots.R2, k: 'res' }, { label: 'R1', v: pivots.R1, k: 'res' }, { label: 'Pivot', v: pivots.P, k: 'piv' }, { label: 'VWAP', v: feed.tf.M15.vwap, k: 'vwap' }, { label: 'S1', v: pivots.S1, k: 'sup' }, { label: 'S2', v: pivots.S2, k: 'sup' }].map(l => ({ ...l, dist: feed.price - l.v })).sort((a, b) => b.v - a.v) : []
@@ -347,6 +375,76 @@ export function TradingTerminal() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5">
+        {/* ── FITUR UTAMA: Analisa AI Menyeluruh ── */}
+        <div className="lg:col-span-12 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-[#0b100e] to-[#0b100e] p-4">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Brain size={17} className="text-primary" /></span>
+              <div>
+                <h2 className="text-sm font-black flex items-center gap-1.5">Analisa AI Menyeluruh <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h2>
+                <p className="text-[10px] text-white/40">Menggabungkan teknikal, makro, COT & sentimen berita jadi satu pandangan</p>
+              </div>
+            </div>
+            <button onClick={() => ai.run(snapshot)} disabled={ai.loading} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {ai.loading ? <><Loader2 size={14} className="animate-spin" /> Menganalisa…</> : ai.data ? <><RefreshCw size={13} /> Analisa Ulang</> : <><Sparkles size={14} /> Jalankan Analisa AI</>}
+            </button>
+          </div>
+
+          {!ai.data && !ai.loading && !ai.error && <div className="py-6 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> untuk analisa menyeluruh berbasis seluruh data terminal saat ini.</p></div>}
+          {ai.loading && <div className="py-8 flex flex-col items-center gap-2 text-white/50"><Loader2 size={22} className="animate-spin text-primary" /><p className="text-[11px]">Membaca semua parameter & berita, menyusun analisa…</p></div>}
+          {ai.error && !ai.loading && <div className="py-6 text-center"><p className="text-[11px] text-red-400 mb-1">Gagal: {ai.error}</p><button onClick={() => ai.run(snapshot)} className="text-[11px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
+          {ai.data && !ai.loading && (() => {
+            const a = ai.data
+            const vc = a.verdict === 'Bullish' ? 'text-emerald-400' : a.verdict === 'Bearish' ? 'text-red-400' : 'text-white/70'
+            const vbg = a.verdict === 'Bullish' ? 'bg-emerald-500/15' : a.verdict === 'Bearish' ? 'bg-red-500/15' : 'bg-white/10'
+            return (
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 flex-wrap">
+                  <span className={`text-lg font-black rounded-xl px-3 py-1 ${vbg} ${vc}`}>{a.verdict}</span>
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="text-sm font-bold text-white/90 leading-snug">{a.headline}</p>
+                    <p className="text-[11px] text-white/55 leading-snug mt-1">{a.executive}</p>
+                  </div>
+                  <div className="text-center shrink-0"><p className="text-[9px] uppercase tracking-wider text-white/35">Confidence</p><p className={`text-xl font-black ${a.confidence > 66 ? 'text-emerald-400' : a.confidence > 40 ? 'text-amber-400' : 'text-red-400'}`}>{a.confidence}%</p></div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-2.5">
+                  {[{ t: 'Teknikal', ic: Activity, v: a.technical }, { t: 'Makro', ic: Landmark, v: a.macro }, { t: 'Sentimen', ic: Users, v: a.sentiment }].map(s => (
+                    <div key={s.t} className="rounded-xl bg-white/[0.03] border border-white/5 p-2.5">
+                      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary/80 mb-1"><s.ic size={11} /> {s.t}</p>
+                      <p className="text-[11px] text-white/65 leading-relaxed">{s.v}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-2.5">
+                  <div className="rounded-xl bg-primary/[0.06] border border-primary/15 p-2.5">
+                    <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary mb-1.5"><Target size={11} /> Rencana Trading · {a.plan.bias}</p>
+                    <div className="space-y-1 text-[11px]">
+                      <div className="flex gap-2"><span className="text-white/40 w-16 shrink-0">Entry</span><span className="text-white/80">{a.plan.entry}</span></div>
+                      <div className="flex gap-2"><span className="text-red-400/70 w-16 shrink-0">Stop Loss</span><span className="text-white/80">{a.plan.sl}</span></div>
+                      <div className="flex gap-2"><span className="text-emerald-400/70 w-16 shrink-0">Take Profit</span><span className="text-white/80">{a.plan.tp}</span></div>
+                      <div className="flex gap-2"><span className="text-amber-400/70 w-16 shrink-0">Invalidasi</span><span className="text-white/70">{a.plan.invalidation}</span></div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-white/[0.03] border border-white/5 p-2.5">
+                    <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1.5"><Crosshair size={11} /> Skenario</p>
+                    <div className="space-y-1.5 text-[11px]">{a.scenarios.map((s, i) => (
+                      <p key={i} className="text-white/65 leading-snug"><span className="text-primary font-semibold">Jika</span> {s.kondisi} → <span className="text-white/85">{s.aksi}</span></p>
+                    ))}</div>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-2.5">
+                  {a.risks.length > 0 && <div><p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-400/70 mb-1"><ShieldAlert size={11} /> Risiko</p><ul className="space-y-0.5">{a.risks.map((r, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-amber-400/70">⚠</span>{r}</li>)}</ul></div>}
+                  {a.watch.length > 0 && <div><p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1"><Eye size={11} /> Dipantau</p><ul className="space-y-0.5">{a.watch.map((w, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-primary">→</span>{w}</li>)}</ul></div>}
+                </div>
+                <p className="text-[8px] text-white/25 text-right">Diolah Claude AI dari data terminal real · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}</p>
+              </div>
+            )
+          })()}
+        </div>
+
         {/* Row 1 */}
         <Panel title="Signal Meter · XAU/USD" icon={Compass} className="lg:col-span-4" info="Rangkuman keseluruhan dari 3 pilar (makro, teknikal, sentimen). Jarum ke kanan = bullish, ke kiri = bearish. Di bawahnya saran SL/TP dari ATR.">
           <p className="text-[10px] text-white/35 -mt-1.5 mb-1">Rangkuman makro · teknikal · sentimen (real)</p>
@@ -455,44 +553,22 @@ export function TradingTerminal() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">{MACRO_META.map(({ key, meta }) => <DataCard key={key} meta={meta} value={macro?.[key]?.value ?? null} prior={macro?.[key]?.prior} />)}</div>
         </Panel>
 
-        {/* Row 5: News AI · Kalender · Berita TV */}
-        <Panel title="Analisa Sentimen AI" icon={Sparkles} className="lg:col-span-6" info="Headline berita emas/dolar/Fed diambil real dari Google News lalu dianalisa Claude AI: verdict, skor, analisa, pendorong, risiko, hal yang dipantau, & outlook jangka pendek/menengah." right={news.data ? <button onClick={news.analyze} disabled={news.loading} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/70 disabled:opacity-40"><RefreshCw size={10} className={news.loading ? 'animate-spin' : ''} /> Perbarui</button> : <span className="text-[9px] text-white/30">on-demand</span>}>
-          {!news.data && !news.loading && !news.error && (
-            <div className="flex flex-col items-center justify-center flex-1 py-6 text-center gap-2"><p className="text-[11px] text-white/45 leading-snug max-w-[85%]">Analisa sentimen berita real emas/dolar/Fed dengan Claude AI.</p><button onClick={news.analyze} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3.5 py-2 hover:opacity-90"><Sparkles size={13} /> Analisa AI</button></div>
-          )}
-          {news.loading && <div className="flex flex-col items-center justify-center flex-1 py-8 gap-2 text-white/50"><Loader2 size={20} className="animate-spin text-primary" /><p className="text-[10px]">Membaca berita & menganalisa…</p></div>}
-          {news.error && !news.loading && <div className="flex flex-col items-center justify-center flex-1 py-6 gap-2 text-center"><p className="text-[10px] text-red-400">Gagal: {news.error}</p><button onClick={news.analyze} className="text-[10px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
-          {news.data && !news.loading && (() => {
-            const nd = news.data, pct = Math.round((nd.score + 100) / 2)
-            const vc = nd.verdict === 'Bullish' ? 'text-emerald-400' : nd.verdict === 'Bearish' ? 'text-red-400' : 'text-white/60'
-            return (
-              <div className="flex flex-col gap-2 overflow-hidden text-[10px]">
-                <div className="flex items-center justify-between"><span className={`text-sm font-black ${vc}`}>{nd.verdict}</span><span className="text-white/40 tabular-nums">skor {nd.score > 0 ? '+' : ''}{nd.score} ({pct}% bullish)</span></div>
-                <div className="h-1.5 rounded-full overflow-hidden bg-red-500/25"><div className="h-full bg-emerald-400" style={{ width: `${pct}%` }} /></div>
-                <p className="text-white/75 leading-snug font-medium">{nd.summary}</p>
-                {nd.analysis && <p className="text-white/55 leading-snug">{nd.analysis}</p>}
-                <div className="grid grid-cols-2 gap-2">
-                  {nd.timeframe.short && <div className="rounded-lg bg-white/[0.03] p-1.5"><p className="text-[8px] uppercase tracking-wider text-white/35">Jangka Pendek</p><p className="text-white/70 leading-snug">{nd.timeframe.short}</p></div>}
-                  {nd.timeframe.medium && <div className="rounded-lg bg-white/[0.03] p-1.5"><p className="text-[8px] uppercase tracking-wider text-white/35">Jangka Menengah</p><p className="text-white/70 leading-snug">{nd.timeframe.medium}</p></div>}
-                </div>
-                {nd.drivers.length > 0 && <div><p className="text-[8px] uppercase tracking-wider text-white/35 mb-1">Pendorong</p><div className="flex flex-wrap gap-1">{nd.drivers.map((d, i) => <span key={i} className={`rounded px-1.5 py-0.5 ${d.impact === 'bull' ? 'bg-emerald-500/10 text-emerald-400' : d.impact === 'bear' ? 'bg-red-500/10 text-red-400' : 'bg-white/5 text-white/55'}`}>{d.text}</span>)}</div></div>}
-                {nd.risks.length > 0 && <div><p className="text-[8px] uppercase tracking-wider text-white/35 mb-0.5">Risiko</p><ul className="space-y-0.5">{nd.risks.map((r, i) => <li key={i} className="text-white/55 leading-snug flex gap-1"><span className="text-amber-400/70">⚠</span>{r}</li>)}</ul></div>}
-                {nd.watch.length > 0 && <div><p className="text-[8px] uppercase tracking-wider text-white/35 mb-0.5">Dipantau</p><ul className="space-y-0.5">{nd.watch.map((w, i) => <li key={i} className="text-white/55 leading-snug flex gap-1"><span className="text-primary">→</span>{w}</li>)}</ul></div>}
-                <div className="space-y-1 pt-1 border-t border-white/5">{nd.headlines.slice(0, 4).map((hl, i) => (
-                  <div key={i} className="flex items-start gap-1.5"><span className="text-[8px] font-bold uppercase rounded px-1 py-0.5 mt-0.5 shrink-0 bg-white/8 text-white/50">{hl.source.slice(0, 10)}</span><p className="text-white/55 leading-snug flex-1">{hl.text}</p><span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${hl.sentiment === 'bull' ? 'bg-emerald-400' : hl.sentiment === 'bear' ? 'bg-red-400' : 'bg-white/30'}`} /></div>))}
-                </div>
-                <p className="text-[8px] text-white/25 text-right">Google News · Claude AI</p>
-              </div>
-            )
-          })()}
+        {/* Row 5: Berita headline · Kalender ekonomi */}
+        <Panel title="Berita Emas & Dolar" icon={Newspaper} className="lg:col-span-6 h-[420px]" info="Headline berita terbaru emas/dolar/Fed dari Google News (klik untuk buka). Untuk analisa sentimennya, gunakan panel Analisa AI di atas.">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
+            {!newsItems ? <div className="flex items-center justify-center py-8 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat berita…</div>
+              : newsItems.map((n, i) => (
+                <a key={i} href={n.link} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2 rounded-lg p-2 hover:bg-white/[0.03] transition-colors group">
+                  <span className="text-[8px] font-bold uppercase rounded px-1.5 py-0.5 mt-0.5 shrink-0 bg-white/8 text-white/50">{n.source.slice(0, 12)}</span>
+                  <p className="text-[11px] text-white/70 leading-snug flex-1 group-hover:text-white/90">{n.text}</p>
+                  <span className="text-[9px] text-white/30 shrink-0 flex items-center gap-1 mt-0.5">{n.time}<ExternalLink size={9} className="opacity-0 group-hover:opacity-60" /></span>
+                </a>
+              ))}
+          </div>
         </Panel>
 
-        <Panel title="Kalender Ekonomi AS" icon={CalendarClock} className="lg:col-span-3 h-[420px]" info="Jadwal rilis data ekonomi AS berdampak tinggi (widget TradingView). Hindari entry menjelang rilis high-impact.">
-          <div className="flex-1 min-h-0"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-events.js" config={TV_EVENTS} height="100%" /></div>
-        </Panel>
-
-        <Panel title="Berita Emas Terbaru" icon={Newspaper} className="lg:col-span-3 h-[420px]" info="Feed berita XAUUSD real-time (widget TradingView).">
-          <div className="flex-1 min-h-0"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js" config={TV_TIMELINE} height="100%" /></div>
+        <Panel title="Kalender Ekonomi AS" icon={CalendarClock} className="lg:col-span-6 h-[420px]" info="Jadwal rilis data ekonomi AS berdampak tinggi (widget TradingView). Hindari entry menjelang rilis high-impact.">
+          <div className="flex-1 min-h-0 rounded-lg overflow-hidden"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-events.js" config={TV_EVENTS} height="100%" /></div>
         </Panel>
       </div>
 

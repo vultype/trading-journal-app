@@ -1,0 +1,94 @@
+import { NextResponse } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
+
+// Analisa AI MENYELURUH: gabungkan seluruh data terminal (teknikal, makro, COT, BTC)
+// + headline berita real → Claude susun analisa lengkap & mudah dibaca. On-demand (POST).
+
+const RSS = 'https://news.google.com/rss/search?q=gold%20price%20OR%20XAUUSD%20OR%20%22federal%20reserve%22%20OR%20%22US%20dollar%22%20OR%20inflation%20when:2d&hl=en-US&gl=US&ceid=US:en'
+
+function extractJson(raw: string): string {
+  const start = raw.indexOf('{'); if (start < 0) throw new Error('tidak ada JSON')
+  let depth = 0, inStr = false, esc = false
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i]
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false }
+    else { if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}') { depth--; if (depth === 0) return raw.slice(start, i + 1) } }
+  }
+  throw new Error('JSON tidak lengkap')
+}
+
+async function headlines(): Promise<string[]> {
+  try {
+    const xml = await (await fetch(RSS, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' })).text()
+    const items = xml.split('<item>').slice(1, 11)
+    return items.map(it => { const m = it.match(/<title>([\s\S]*?)<\/title>/); if (!m) return ''; return m[1].replace('<![CDATA[', '').replace(']]>', '').trim() }).filter(Boolean)
+  } catch { return [] }
+}
+
+const arr = (v: unknown, n = 4): string[] => Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, n) : []
+
+export async function POST(req: Request) {
+  if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Fitur AI belum aktif — API key Anthropic belum diset' }, { status: 503 })
+  try {
+    const snap = await req.json()
+    const news = await headlines()
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    const dataBlock = `DATA TERMINAL XAU/USD (real-time):
+- Harga: ${snap.price} (${snap.changePct >= 0 ? '+' : ''}${snap.changePct}%), sesi ${snap.session}, volatilitas ${snap.volatility}
+- Signal gabungan: ${snap.signal?.label} (skor ${snap.signal?.overall}, confidence ${snap.signal?.confidence}%) | pilar Makro ${snap.signal?.macro} Teknikal ${snap.signal?.tech} Sentimen ${snap.signal?.senti}
+- Teknikal per timeframe: M5 ${snap.tf?.M5?.bias}/RSI${snap.tf?.M5?.rsi}, M15 ${snap.tf?.M15?.bias}/RSI${snap.tf?.M15?.rsi}, H1 ${snap.tf?.H1?.bias}/RSI${snap.tf?.H1?.rsi}; ATR M15 ${snap.atrM15}; VWAP M15 ${snap.vwapM15}
+- Pivot: P ${snap.pivots?.P}, R1 ${snap.pivots?.R1}, R2 ${snap.pivots?.R2}, S1 ${snap.pivots?.S1}, S2 ${snap.pivots?.S2}
+- Makro (FRED): Indeks Dolar ${snap.macro?.dollar?.value} (prior ${snap.macro?.dollar?.prior}), US10Y ${snap.macro?.us10y?.value}% (prior ${snap.macro?.us10y?.prior}), Real Yield ${snap.macro?.realyield?.value}%, CPI ${snap.macro?.cpi?.value}% (prior ${snap.macro?.cpi?.prior}), Core CPI ${snap.macro?.corecpi?.value}%, Core PCE ${snap.macro?.corepce?.value}%, Fed Funds ${snap.macro?.fedfunds?.value}%
+- COT (${snap.cot?.date}): Funds/institusi net ${snap.cot?.funds?.net} (Δ${snap.cot?.funds?.deltaNet}), Commercials net ${snap.cot?.commercials?.net}, Retail net ${snap.cot?.retail?.net} (Δ${snap.cot?.retail?.deltaNet})
+- Bitcoin: ${snap.btc?.price} (${snap.btc?.changePct}%)
+HEADLINE BERITA (2 hari):
+${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 2600,
+      system: `Kamu kepala analis (Head of Research) XAU/USD di sebuah trading desk. Susun ANALISA MENYELURUH yang menggabungkan TEKNIKAL, MAKRO, dan SENTIMEN dari data terminal yang diberikan.
+
+Prinsip: dolar/yield naik = bearish emas; inflasi mereda / ekspektasi pemangkasan Fed / risk-off / geopolitik / dolar melemah = bullish emas. COT: institusi (funds) & commercials adalah smart money, retail sering kontrarian.
+
+Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
+{
+ "verdict":"Bullish|Bearish|Netral",
+ "confidence":<0..100>,
+ "headline":"<1 kalimat kesimpulan utama yang tegas>",
+ "executive":"<ringkasan eksekutif 2-3 kalimat menggabungkan semua faktor>",
+ "technical":"<analisa teknikal: konfluensi TF, RSI, posisi vs VWAP, level pivot penting>",
+ "macro":"<analisa makro: dolar, yield, inflasi, arah kebijakan Fed & implikasinya ke emas>",
+ "sentiment":"<analisa sentimen: berita terkini + posisi COT (retail vs institusi) + BTC>",
+ "plan":{"bias":"Long|Short|Netral","entry":"<zona/kondisi entry>","sl":"<level/logika SL>","tp":"<target TP>","invalidation":"<kondisi yang membatalkan skenario>"},
+ "scenarios":[{"kondisi":"<jika ...>","aksi":"<maka ...>"}],
+ "risks":["<risiko utama>"],
+ "watch":["<data/event/level yang dipantau>"]
+}
+
+scenarios 2 item, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca. Berbasis data yang diberikan — jangan mengarang angka.`,
+      messages: [{ role: 'user', content: dataBlock }],
+    })
+
+    const raw = msg.content.find(b => b.type === 'text')?.text ?? '{}'
+    const p = JSON.parse(extractJson(raw))
+    const result = {
+      verdict: p.verdict === 'Bullish' || p.verdict === 'Bearish' ? p.verdict : 'Netral',
+      confidence: Math.max(0, Math.min(100, Math.round(p.confidence ?? 50))),
+      headline: String(p.headline ?? ''),
+      executive: String(p.executive ?? ''),
+      technical: String(p.technical ?? ''),
+      macro: String(p.macro ?? ''),
+      sentiment: String(p.sentiment ?? ''),
+      plan: { bias: String(p.plan?.bias ?? '—'), entry: String(p.plan?.entry ?? ''), sl: String(p.plan?.sl ?? ''), tp: String(p.plan?.tp ?? ''), invalidation: String(p.plan?.invalidation ?? '') },
+      scenarios: Array.isArray(p.scenarios) ? p.scenarios.slice(0, 3).map((s: { kondisi?: string; aksi?: string }) => ({ kondisi: String(s.kondisi ?? ''), aksi: String(s.aksi ?? '') })) : [],
+      risks: arr(p.risks, 3),
+      watch: arr(p.watch, 3),
+      fetchedAt: new Date().toISOString(),
+    }
+    return NextResponse.json(result)
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal analisa' }, { status: 502 })
+  }
+}
