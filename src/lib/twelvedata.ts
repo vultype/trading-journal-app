@@ -43,7 +43,7 @@ export async function fetchDailyPivots(): Promise<Pivots | null> {
   return { P, R1: 2 * P - L, R2: P + (H - L), S1: 2 * P - H, S2: P - (H - L) }
 }
 
-export async function fetchCandles(tf: 'M5' | 'M15' | 'H1', outputsize = 60): Promise<TDCandle[]> {
+export async function fetchCandles(tf: 'M5' | 'M15' | 'H1', outputsize = 150): Promise<TDCandle[]> {
   const interval = TD_INTERVAL[tf]
   const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=${interval}&outputsize=${outputsize}&apikey=${key()}`, { cache: 'no-store' })
   const j = await res.json()

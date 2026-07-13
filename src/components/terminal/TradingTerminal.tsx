@@ -15,6 +15,7 @@ import {
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
 } from 'lucide-react'
+import { AiChart, type ChartLevels } from './AiChart'
 
 type TF = 'M5' | 'M15' | 'H1'
 const TFS: TF[] = ['M5', 'M15', 'H1']
@@ -149,6 +150,7 @@ type AiAnalysis = {
   verdict: 'Bullish' | 'Bearish' | 'Netral'; confidence: number; keputusan: 'BELI' | 'JUAL' | 'TUNGGU'; keputusanAlasan: string; conviction: 'Tinggi' | 'Sedang' | 'Rendah'
   headline: string; executive: string; confluence: { faktor: string; arah: 'bullish' | 'bearish' | 'netral'; catatan: string }[]
   technical: string; macro: string; sentiment: string; levelKunci: { support: string; resistance: string }
+  chartLevels: { entry: number | null; sl: number | null; tp: number | null; support: number | null; resistance: number | null }
   plan: { bias: string; entry: string; sl: string; tp: string; invalidation: string }
   scenarios: { kondisi: string; aksi: string }[]; risks: string[]; watch: string[]; fetchedAt: string
 }
@@ -303,7 +305,6 @@ function TVWidget({ src, config }: { src: string; config: Record<string, unknown
   }, [src])
   return <div className="tradingview-widget-container" ref={ref} style={{ height: '100%', width: '100%' }} />
 }
-const TV_CHART = { autosize: true, symbol: 'OANDA:XAUUSD', interval: '15', timezone: 'Asia/Jakarta', theme: 'dark', style: '1', locale: 'en', backgroundColor: 'rgba(11,16,14,1)', gridColor: 'rgba(255,255,255,0.04)', hide_side_toolbar: false, allow_symbol_change: false, calendar: false, support_host: 'https://www.tradingview.com' }
 const TV_EVENTS = { colorTheme: 'dark', isTransparent: false, locale: 'en', countryFilter: 'us', importanceFilter: '0,1', width: '100%', height: '100%' }
 
 // Baris COT yang mudah dibaca (bar proporsi long/short)
@@ -319,12 +320,12 @@ function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }
   )
 }
 
-// Chart TradingView (dipakai inline & fullscreen)
-function ChartPanel({ onExpand }: { onExpand: () => void }) {
+// Chart XAU/USD (Lightweight Charts) + garis level dari Analisa AI
+function ChartPanel({ onExpand, tfData, levels }: { onExpand: () => void; tfData: Record<TF, TFData>; levels: ChartLevels }) {
   return (
-    <Panel title="Chart XAU/USD (TradingView)" icon={Activity} className="lg:col-span-8 h-[460px]" info="Chart interaktif TradingView — drag, zoom, ganti timeframe, tambah indikator. Klik ikon perbesar untuk layar penuh."
+    <Panel title="Chart XAU/USD" icon={Activity} className="lg:col-span-8 h-[460px]" info="Candle XAU/USD + EMA9/EMA21/VWAP. Setelah klik Analisa AI, garis Entry/Stop/Target & Support/Resistance dari AI muncul otomatis di chart. Ganti timeframe di M5/M15/H1."
       right={<button onClick={onExpand} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/80"><Maximize2 size={11} /> Perbesar</button>}>
-      <div className="flex-1 min-h-0 rounded-lg overflow-hidden"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" config={TV_CHART} /></div>
+      <div className="flex-1 min-h-0"><AiChart tfData={tfData} levels={levels} height={380} /></div>
     </Panel>
   )
 }
@@ -617,8 +618,8 @@ export function TradingTerminal() {
     <div className="min-h-screen bg-[#060a09] text-white">
       {chartFull && (
         <div className="fixed inset-0 z-50 bg-[#060a09] p-3 flex flex-col">
-          <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD · TradingView</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>
-          <div className="flex-1 min-h-0 rounded-lg overflow-hidden"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" config={TV_CHART} /></div>
+          <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD — {f2(feed.price)} {ai.data && <span className="text-[10px] font-normal text-white/40">· level AI aktif</span>}</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>
+          <div className="flex-1 min-h-0"><AiChart tfData={feed.tf} levels={ai.data?.chartLevels ?? null} height={typeof window !== 'undefined' ? window.innerHeight - 90 : 600} /></div>
         </div>
       )}
 
@@ -650,12 +651,12 @@ export function TradingTerminal() {
           <div className="lg:col-span-4">{SignalMeterPanel}</div>
           <div className="lg:col-span-4">{BiasPanel}</div>
           <div className="lg:col-span-4">{KesimpulanPanel}</div>
-          <ChartPanel onExpand={() => setChartFull(true)} />
+          <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{MomentumPanel}</div>
         </>}
 
         {tab === 'teknikal' && <>
-          <ChartPanel onExpand={() => setChartFull(true)} />
+          <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
           <div className="lg:col-span-6">{MomentumPanel}</div>
           <div className="lg:col-span-6">{PivotPanel}</div>

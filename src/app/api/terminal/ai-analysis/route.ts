@@ -69,13 +69,16 @@ Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
  "macro":"<analisa makro: dolar, yield, inflasi, arah kebijakan Fed & implikasinya ke emas>",
  "sentiment":"<analisa sentimen: berita terkini + posisi COT (retail vs institusi) + VIX/saham + BTC>",
  "levelKunci":{"support":"<level/zona support terdekat>","resistance":"<level/zona resistance terdekat>"},
+ "chartLevels":{"entry":<angka harga entry, atau null>,"sl":<angka harga SL, atau null>,"tp":<angka harga TP, atau null>,"support":<angka harga support terdekat, atau null>,"resistance":<angka harga resistance terdekat, atau null>},
  "plan":{"bias":"Bullish|Bearish|Netral","entry":"<zona/kondisi entry>","sl":"<level/logika SL>","tp":"<target TP>","invalidation":"<kondisi yang membatalkan skenario>"},
  "scenarios":[{"kondisi":"<jika ...>","aksi":"<maka ...>"}],
  "risks":["<risiko utama>"],
  "watch":["<data/event/level yang dipantau>"]
 }
 
-confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca & membantu keputusan. Berbasis data yang diberikan — jangan mengarang angka.`,
+confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca & membantu keputusan. Berbasis data yang diberikan — jangan mengarang angka.
+
+PENTING untuk chartLevels: isi dengan ANGKA harga bersih (bukan teks/range), konsisten dengan harga saat ini & pivot yang diberikan, agar bisa digambar sebagai garis di chart. Jika keputusan TUNGGU dan belum ada rencana entry, set entry/sl/tp ke null tapi tetap isi support & resistance dari level terdekat.`,
       messages: [{ role: 'user', content: dataBlock }],
     })
 
@@ -94,6 +97,7 @@ confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3
       macro: String(p.macro ?? ''),
       sentiment: String(p.sentiment ?? ''),
       levelKunci: { support: String(p.levelKunci?.support ?? ''), resistance: String(p.levelKunci?.resistance ?? '') },
+      chartLevels: (() => { const num = (x: unknown) => { const n = typeof x === 'number' ? x : parseFloat(String(x)); return Number.isFinite(n) && n > 0 ? n : null }; const cl = p.chartLevels ?? {}; return { entry: num(cl.entry), sl: num(cl.sl), tp: num(cl.tp), support: num(cl.support), resistance: num(cl.resistance) } })(),
       plan: { bias: String(p.plan?.bias ?? '—'), entry: String(p.plan?.entry ?? ''), sl: String(p.plan?.sl ?? ''), tp: String(p.plan?.tp ?? ''), invalidation: String(p.plan?.invalidation ?? '') },
       scenarios: Array.isArray(p.scenarios) ? p.scenarios.slice(0, 3).map((s: { kondisi?: string; aksi?: string }) => ({ kondisi: String(s.kondisi ?? ''), aksi: String(s.aksi ?? '') })) : [],
       risks: arr(p.risks, 3),
