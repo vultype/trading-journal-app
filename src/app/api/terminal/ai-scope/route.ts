@@ -19,7 +19,11 @@ const FOCUS: Record<string, string> = {
   teknikal: `FOKUS: ANALISA TEKNIKAL murni. Bahas price action, EMA9/EMA21 & VWAP, RSI/MACD/Stochastic/Bollinger (%B & squeeze), ADX & arah tren (+DI/-DI), struktur pasar (HH/HL), konfluensi antar timeframe (M5/M15/H1), serta pivot & level kunci. Simpulkan bias arah + zona entry, stop, dan target yang logis dari level yang ada. Abaikan makro kecuali relevan.`,
   makro: `FOKUS: ANALISA MAKRO/FUNDAMENTAL. Bahas dolar (DXY), yield 2Y/10Y & kurva 2s10s (inversi/normal), real yield, inflasi (CPI, Core CPI, Core PCE, ekspektasi/breakeven), Fed Funds & arah kebijakan Fed, pengangguran. Jelaskan implikasi masing-masing ke EMAS (dolar/yield naik = tekan emas; inflasi naik/ekspektasi pangkas bunga = dukung emas). Simpulkan bias makro.`,
   sentimen: `FOKUS: ANALISA SENTIMEN & POSITIONING. Bahas risk-on/off (VIX, S&P500, Nasdaq, BTC), COT (institusi/funds vs retail — retail sering kontrarian), rasio emas/perak, dan headline berita terkini. Nilai apakah aliran sentimen sedang mendukung atau menekan emas, dan waspadai titik ekstrem.`,
-  news: `FOKUS: ANALISA DAMPAK BERITA/RILIS DATA ke XAU/USD. Untuk event yang diberikan, jelaskan: (1) bias arah kemungkinan (Bullish/Bearish/Tergantung) beserta alasannya, (2) SKENARIO reaksi emas jika data DI ATAS ekspektasi vs DI BAWAH ekspektasi (mis. CPI panas = dolar/yield naik = bearish emas; CPI dingin = bullish emas), (3) level kunci yang diwaspadai saat rilis, (4) rekomendasi: sebaiknya entry sebelum/sesudah rilis atau tunggu. GABUNGKAN dengan kondisi makro/teknikal/sentimen terkini dari snapshot & headline berita.`,
+  news: `FOKUS: ANALISA DAMPAK BERITA/RILIS DATA ke XAU/USD. Sebuah rilis (mis. CPI) bisa punya BEBERAPA KOMPONEN sekaligus (mis. CPI YoY, Core CPI YoY, CPI MoM, Core CPI MoM) — masing-masing dengan forecast & previous. Tugasmu:
+(1) PRIORITAS KOMPONEN: jelaskan komponen mana yang PALING dipantau pasar/Fed untuk emas dan kenapa (kaidah umum: Core (inti, ex food & energy) > headline; YoY = tren struktural yang jadi acuan kebijakan Fed; MoM = momentum/kejutan terbaru yang sering menggerakkan harga saat rilis. Untuk NFP: angka NFP & Average Hourly Earnings paling berdampak). Beri urutan bobotnya.
+(2) BIAS ARAH kemungkinan (Bullish/Bearish/Tergantung) + alasan, mempertimbangkan SEMUA komponen. Kalau antar komponen bertentangan (mis. MoM panas tapi YoY dingin), jelaskan mana yang menang & kenapa.
+(3) SKENARIO reaksi emas: data DI ATAS ekspektasi vs DI BAWAH ekspektasi (inflasi panas = dolar/yield naik = bearish emas; inflasi dingin = bullish emas). Kalau ada kolom Aktual terisi, analisa reaksi berdasarkan aktual vs forecast.
+(4) LEVEL kunci saat rilis. (5) REKOMENDASI: entry sebelum/sesudah rilis atau tunggu. GABUNGKAN dengan kondisi makro/teknikal/sentimen terkini dari snapshot & headline berita.`,
 }
 
 const SYSTEM = `Kamu kepala analis (Head of Research) XAU/USD di sebuah trading desk. Kamu diberi SNAPSHOT DATA TERMINAL real-time (harga, teknikal multi-timeframe, makro FRED, sentimen/lintas-aset, COT). Jawaban harus tajam, berbasis angka dari snapshot, jujur soal ketidakpastian, dan actionable.
@@ -44,7 +48,12 @@ export async function POST(req: Request) {
     let dataBlock = `SNAPSHOT TERMINAL XAU/USD (real-time):\n${JSON.stringify(snapshot, null, 1)}`
     if (scope === 'news') {
       const ev = extra ?? {}
-      dataBlock += `\n\nEVENT/RILIS YANG DIANALISA:\n- Nama: ${ev.event || '(tidak disebut)'}\n- Ekspektasi/Forecast: ${ev.forecast || '-'}\n- Sebelumnya/Previous: ${ev.previous || '-'}\n- Aktual (jika sudah rilis): ${ev.actual || '-'}\n- Catatan: ${ev.notes || '-'}`
+      type Row = { label?: string; forecast?: string; previous?: string; actual?: string }
+      const rows: Row[] = Array.isArray(ev.rows) ? ev.rows.filter((r: Row) => r && (r.label || r.forecast || r.previous || r.actual)) : []
+      const rowsText = rows.length
+        ? rows.map((r: Row) => `  • ${r.label || '(komponen)'}: forecast ${r.forecast || '-'}, previous ${r.previous || '-'}, aktual ${r.actual || '-'}`).join('\n')
+        : '  • (tidak ada rincian komponen)'
+      dataBlock += `\n\nEVENT/RILIS YANG DIANALISA:\n- Nama: ${ev.event || '(tidak disebut)'}\n- Komponen data:\n${rowsText}\n- Catatan: ${ev.notes || '-'}`
       if (news.length) dataBlock += `\n\nHEADLINE BERITA (2 hari):\n${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
     }
 
