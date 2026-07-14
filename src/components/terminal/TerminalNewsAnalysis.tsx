@@ -23,8 +23,9 @@ const PRESETS: Record<string, string[]> = {
 }
 const EVENTS = Object.keys(PRESETS)
 
-type Row = { label: string; forecast: string; previous: string; actual: string }
-const emptyRow = (label = ''): Row => ({ label, forecast: '', previous: '', actual: '' })
+// Urutan field mengikuti tampilan forexfactory: Actual · Forecast · Previous
+type Row = { label: string; actual: string; forecast: string; previous: string }
+const emptyRow = (label = ''): Row => ({ label, actual: '', forecast: '', previous: '' })
 type Analysis = {
   event: string; biasArah: 'Bullish' | 'Bearish' | 'Netral'; biasBullishPersen: number; confidence: number
   headline: string; ringkasan: string
@@ -89,28 +90,28 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
 
         <div className="mt-3">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[10px] uppercase tracking-widest font-semibold text-white/40">2 · Isi angka (salin dari investing / forexfactory)</label>
+            <label className="text-[10px] uppercase tracking-widest font-semibold text-white/40">2 · Isi angka — urutan sama seperti forexfactory</label>
             <button onClick={addRow} disabled={loading} className="flex items-center gap-1 text-[10px] font-semibold text-primary hover:underline disabled:opacity-50"><Plus size={11} /> Tambah baris</button>
           </div>
           <div className="hidden sm:grid grid-cols-[1fr_5rem_5rem_5rem_1.25rem] gap-1.5 px-1 mb-1 text-[9px] uppercase tracking-wider text-white/35">
-            <span>Komponen</span><span>Forecast</span><span>Previous</span><span>Aktual</span><span />
+            <span>Komponen (News)</span><span className="text-primary/70">Actual</span><span>Forecast</span><span>Previous</span><span />
           </div>
           <div className="space-y-1.5">
             {rows.map((r, i) => (
               <div key={i} className="grid grid-cols-2 sm:grid-cols-[1fr_5rem_5rem_5rem_1.25rem] gap-1.5">
                 <input value={r.label} onChange={e => setRow(i, 'label', e.target.value)} placeholder="mis. Core CPI (YoY)"
                   className="col-span-2 sm:col-span-1 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white outline-none focus:border-primary/40 placeholder:text-white/25" />
-                <input value={r.forecast} onChange={e => setRow(i, 'forecast', e.target.value)} placeholder="fcast"
+                <input value={r.actual} onChange={e => setRow(i, 'actual', e.target.value)} placeholder="actual"
+                  className="rounded-lg border border-primary/25 bg-primary/[0.06] px-2 py-1.5 text-xs text-white outline-none focus:border-primary/50 placeholder:text-white/25 tabular-nums font-semibold" />
+                <input value={r.forecast} onChange={e => setRow(i, 'forecast', e.target.value)} placeholder="forecast"
                   className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white outline-none focus:border-primary/40 placeholder:text-white/25 tabular-nums" />
-                <input value={r.previous} onChange={e => setRow(i, 'previous', e.target.value)} placeholder="prev"
-                  className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white outline-none focus:border-primary/40 placeholder:text-white/25 tabular-nums" />
-                <input value={r.actual} onChange={e => setRow(i, 'actual', e.target.value)} placeholder="aktual"
+                <input value={r.previous} onChange={e => setRow(i, 'previous', e.target.value)} placeholder="previous"
                   className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs text-white outline-none focus:border-primary/40 placeholder:text-white/25 tabular-nums" />
                 <button onClick={() => removeRow(i)} disabled={loading || rows.length <= 1} className="flex items-center justify-center text-white/30 hover:text-red-400 disabled:opacity-30" title="Hapus baris"><X size={13} /></button>
               </div>
             ))}
           </div>
-          <p className="text-[9px] text-white/30 mt-1.5"><b className="text-white/50">Forecast</b> & <b className="text-white/50">Previous</b> = salin apa adanya dari kalender (sebelum rilis). <b className="text-white/50">Aktual</b> = isi setelah rilis untuk analisa reaksi.</p>
+          <p className="text-[9px] text-white/30 mt-1.5">Urutan kolom persis forexfactory: <b className="text-primary/70">Actual</b> · Forecast · Previous — tinggal salin lurus dari tabel kalender. Kosongkan <b className="text-primary/70">Actual</b> kalau belum rilis.</p>
         </div>
 
         <div className="mt-2.5">
