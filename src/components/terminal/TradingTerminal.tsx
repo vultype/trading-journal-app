@@ -177,15 +177,22 @@ function useNews() {
 }
 
 // ─────────────────────────── scoring ───────────────────────────
-function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, cross: { btc: number | null; vixy: number | null; spy: number | null }) {
+// Sentimen risiko pasar (risk-on/off), dari SPY/QQQ/VIXY/BTC — SATU rumus dipakai
+// bersama oleh pilar Sentimen (scores) & panel "Sentimen Risiko Pasar", supaya
+// keduanya selalu sinkron (sebelumnya dua rumus terpisah bisa saling divergence).
+function riskOnScore(cross: { spy: CrossQuote; qqq: CrossQuote; vixy: CrossQuote; btc: CrossQuote }): number {
+  let s = 0, n = 0
+  if (cross.spy) { s += clamp(cross.spy.changePct / 1.5, -1, 1); n++ }
+  if (cross.qqq) { s += clamp(cross.qqq.changePct / 1.8, -1, 1); n++ }
+  if (cross.vixy) { s += clamp(-cross.vixy.changePct / 4, -1, 1); n++ }
+  if (cross.btc) { s += clamp(cross.btc.changePct / 4, -1, 1) * 0.5; n += 0.5 }
+  return n ? s / n : 0
+}
+function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, riskOn: number) {
   const tech = clamp((tf.M5.bias.score + tf.M15.bias.score + tf.H1.bias.score) / 9, -1, 1) * 100
   const dir = (k: string) => { const p = macro?.[k]; return p ? Math.sign(p.value - p.prior) : 0 }
   const macroScore = clamp(-(dir('dollar') * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
-  const btcN = cross.btc != null ? clamp(cross.btc / 3, -1, 1) : 0
-  const vixN = cross.vixy != null ? clamp(cross.vixy / 4, -1, 1) : 0
-  const spyN = cross.spy != null ? clamp(-cross.spy / 1.5, -1, 1) : 0
-  const riskN = clamp(btcN * 0.35 + vixN * 0.4 + spyN * 0.25, -1, 1)
-  const senti = newsScore != null ? clamp(newsScore / 100 * 0.7 + riskN * 0.3, -1, 1) * 100 : riskN * 100
+  const senti = newsScore != null ? clamp(newsScore / 100 * 0.7 + riskOn * 0.3, -1, 1) * 100 : riskOn * 100
   const overall = macroScore * 0.3 + tech * 0.45 + senti * 0.25
   const label: Dir = overall > 20 ? 'BULLISH' : overall < -20 ? 'BEARISH' : 'NETRAL'
   const sgn = (x: number) => Math.sign(Math.round(x))
@@ -417,7 +424,9 @@ export function TradingTerminal() {
 
   const feed = live.data, up = feed.changePct >= 0
   const aiScore = ai.data ? (ai.data.verdict === 'Bullish' ? ai.data.confidence : ai.data.verdict === 'Bearish' ? -ai.data.confidence : 0) : null
-  const sc = scores(feed.tf, macro, aiScore, { btc: cross.btc?.changePct ?? null, vixy: cross.vixy?.changePct ?? null, spy: cross.spy?.changePct ?? null })
+  // risk-on/off: >0 risk-on (cenderung bearish emas), <0 risk-off (cenderung bullish emas)
+  const riskOn = riskOnScore(cross)
+  const sc = scores(feed.tf, macro, aiScore, riskOn)
   const conf = confluence(feed.tf)
   const dir = sc.label
   const m5 = feed.tf.M5.candles
@@ -437,8 +446,6 @@ export function TradingTerminal() {
   const bbSqueeze = feed.tf.M15.boll.squeeze
   const regime = adx >= 25 ? { label: 'Trending', c: 'text-emerald-400', desc: trendUp ? 'tren naik kuat' : 'tren turun kuat' } : (adx < 18 || bbSqueeze) ? { label: 'Ranging', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit' : 'sideways / lemah' } : { label: 'Transisi', c: 'text-sky-400', desc: 'tren mulai terbentuk' }
   const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
-  // risk-on/off: >0 risk-on (cenderung bearish emas), <0 risk-off (cenderung bullish emas)
-  const riskOn = (() => { let s = 0, n = 0; if (cross.spy) { s += clamp(cross.spy.changePct / 1.5, -1, 1); n++ } if (cross.qqq) { s += clamp(cross.qqq.changePct / 1.8, -1, 1); n++ } if (cross.vixy) { s += clamp(-cross.vixy.changePct / 4, -1, 1); n++ } if (cross.btc) { s += clamp(cross.btc.changePct / 4, -1, 1) * 0.5; n += 0.5 } return n ? s / n : 0 })()
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
   const curve2s10 = macro?.us10y && macro?.us02y ? macro.us10y.value - macro.us02y.value : null
