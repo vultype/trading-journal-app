@@ -21,7 +21,7 @@ const strArr = (v: unknown, n = 5): string[] => Array.isArray(v) ? v.filter(x =>
 const clampPct = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)))
 
 const FOCUS: Record<string, string> = {
-  makro: `FOKUS: DAMPAK MAKRO ke XAU/USD. Untuk tiap faktor makro (Dolar/DXY, yield 10Y & 2Y, kurva 2s10s, real yield, inflasi CPI/Core CPI/Core PCE/breakeven, Fed Funds & arah kebijakan, pengangguran) — tentukan arah dampaknya KE EMAS. Kaidah: dolar/yield naik = bearish emas; inflasi naik / ekspektasi Fed pangkas bunga / real yield turun = bullish emas.`,
+  makro: `FOKUS: DAMPAK MAKRO ke XAU/USD. Untuk tiap faktor makro (Dolar/DXY, yield 10Y & 2Y, kurva 2s10s, real yield, inflasi CPI/Core CPI/Core PCE/breakeven, Fed Funds & arah kebijakan, pengangguran, NFP, upah) — tentukan arah dampaknya KE EMAS. Kaidah: dolar/yield naik = bearish emas; inflasi naik / ekspektasi Fed pangkas bunga / real yield turun = bullish emas. WAJIB isi nadaFed: baca NADA kebijakan Fed dari data + headline resmi Fed/Powell (dovish = cenderung longgar/pangkas bunga = BULLISH emas; hawkish = ketat/tahan bunga tinggi = BEARISH emas).`,
   sentimen: `FOKUS: DAMPAK SENTIMEN & POSISI ke XAU/USD. Untuk tiap faktor (risk-on/off dari VIX, S&P500, Nasdaq, BTC; COT institusi/funds vs retail; rasio emas/perak; headline berita) — tentukan arah dampaknya KE EMAS. Kaidah: risk-off/takut (VIX naik, saham turun) = bullish emas; risk-on = bearish emas. Retail sering kontrarian. WAJIB isi sentimenBerita: klasifikasikan headline mana yang MENDUKUNG emas naik vs MENEKAN emas.`,
 }
 
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const { scope, snapshot } = await req.json()
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
     const focus = FOCUS[scope] ?? FOCUS.makro
-    const news = scope === 'sentimen' ? await fetchHeadlineLines() : []
+    const news = (scope === 'sentimen' || scope === 'makro') ? await fetchHeadlineLines() : []
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     let dataBlock = `SNAPSHOT TERMINAL XAU/USD (real-time):\n${JSON.stringify(snapshot, null, 1)}`
@@ -54,12 +54,13 @@ Balas HANYA JSON valid (tanpa teks/fence), bentuk persis:
  "faktor":[{"nama":"<parameter>","nilai":"<angka/kondisi dari snapshot>","arah":"bullish|bearish|netral","bobot":"Tinggi|Sedang|Rendah","catatan":"<dampak ringkas ke emas>"}],
  "sentimenBerita":{"skor":<-100..100>,"ringkasan":"<1-2 kalimat>","mendukung":["<headline/faktor yang MENDUKUNG emas naik>"],"menentang":["<headline/faktor yang MENEKAN emas>"]},
  "narasiPasar":{"tema":"<judul singkat NARASI/TEMA dominan yang sedang dimainkan pasar untuk emas, mis. 'Disinflasi & Taruhan Pemangkasan Fed' atau 'Safe-Haven Geopolitik'>","penjelasan":"<2-3 kalimat: cerita apa yang sedang di-price pasar sekarang dari berita & data, dan bagaimana itu menggerakkan emas>","arah":"bullish|bearish|netral","temaLain":["<tema sekunder yang juga sedang bergerak, 1-3 item>"]},
+ "nadaFed":{"nada":"Dovish|Hawkish|Netral","skala":<0-100, 0=sangat dovish (longgar), 100=sangat hawkish (ketat)>,"dampakEmas":"bullish|bearish|netral","penjelasan":"<2-3 kalimat: apa yang membuat nada Fed condong dovish/hawkish sekarang (dari data: inflasi, tenaga kerja, Fed Funds, kurva + pernyataan Powell/Fed di headline), dan dampaknya ke emas>","pendorong":["<faktor yang mendorong nada itu, 2-3 item>"]},
  "kesimpulan":"<kesimpulan + 1 aksi konkret>",
  "watch":["<yang perlu dipantau>"],
  "risiko":["<risiko utama>"]
 }
 
-faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerita WAJIB diisi (mendukung & menentang 1-4 item). narasiPasar WAJIB diisi: identifikasi TEMA/NARASI dominan yang sedang di-price pasar dari headline berita + data (apa "cerita" utama yang menggerakkan emas saat ini) + tema sekunder.' : 'sentimenBerita & narasiPasar boleh dikosongkan (array/string kosong) untuk scope makro.'} watch 2-3, risiko 2-3. Semua berbasis data yang diberikan, jangan mengarang angka.`,
+faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerita WAJIB diisi (mendukung & menentang 1-4 item). narasiPasar WAJIB diisi (tema dominan + tema lain). nadaFed boleh dikosongkan.' : 'nadaFed WAJIB diisi (nada dovish/hawkish/netral + skala + dampak ke emas + pendorong). sentimenBerita & narasiPasar boleh dikosongkan (array/string kosong).'} watch 2-3, risiko 2-3. Semua berbasis data yang diberikan, jangan mengarang angka.`,
       messages: [{ role: 'user', content: dataBlock }],
     })
 
@@ -84,6 +85,13 @@ faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerit
         penjelasan: String(p.narasiPasar?.penjelasan ?? ''),
         arah: dir3(p.narasiPasar?.arah),
         temaLain: strArr(p.narasiPasar?.temaLain, 3),
+      },
+      nadaFed: {
+        nada: ['Dovish', 'Hawkish'].includes(p.nadaFed?.nada) ? p.nadaFed.nada : 'Netral',
+        skala: clampPct(p.nadaFed?.skala),
+        dampakEmas: dir3(p.nadaFed?.dampakEmas),
+        penjelasan: String(p.nadaFed?.penjelasan ?? ''),
+        pendorong: strArr(p.nadaFed?.pendorong, 3),
       },
       kesimpulan: String(p.kesimpulan ?? ''),
       watch: strArr(p.watch, 3),

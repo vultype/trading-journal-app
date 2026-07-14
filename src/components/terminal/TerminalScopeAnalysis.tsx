@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Brain, Loader2, RefreshCw, Send, Wand2, Gauge, Target, Eye, ShieldAlert, ListChecks, Newspaper, Coins, Sparkles, Clapperboard } from 'lucide-react'
+import { Brain, Loader2, RefreshCw, Send, Wand2, Gauge, Target, Eye, ShieldAlert, ListChecks, Newspaper, Coins, Sparkles, Clapperboard, Landmark } from 'lucide-react'
 import { Markdown } from '@/components/ui/markdown'
 import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, dirBg, FaktorRow, type Dir } from './aiViz'
 
@@ -12,6 +12,7 @@ type Analysis = {
   faktor: { nama: string; nilai: string; arah: Dir; bobot: string; catatan: string }[]
   sentimenBerita: { skor: number; ringkasan: string; mendukung: string[]; menentang: string[] }
   narasiPasar: { tema: string; penjelasan: string; arah: Dir; temaLain: string[] }
+  nadaFed: { nada: 'Dovish' | 'Hawkish' | 'Netral'; skala: number; dampakEmas: Dir; penjelasan: string; pendorong: string[] }
   kesimpulan: string; watch: string[]; risiko: string[]; fetchedAt: string
 }
 
@@ -114,6 +115,33 @@ function StructResult({ a, scope }: { a: Analysis; scope: ScopeKind }) {
         {a.headline && <p className="text-[13px] font-bold text-white/90 leading-snug">{a.headline}</p>}
         {a.dampakXauusd && <p className="text-[11px] text-white/60 leading-snug mt-1">{a.dampakXauusd}</p>}
       </div>
+
+      {/* Nada Kebijakan Fed (khusus makro) — dovish ↔ hawkish + dampak ke emas */}
+      {scope === 'makro' && a.nadaFed.penjelasan && (() => {
+        const nf = a.nadaFed
+        const nadaColor = nf.nada === 'Dovish' ? 'text-emerald-400' : nf.nada === 'Hawkish' ? 'text-red-400' : 'text-white/70'
+        return (
+          <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50 mb-2"><Landmark size={12} /> Nada Kebijakan The Fed</p>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className={`text-base font-black ${nadaColor}`}>{nf.nada === 'Dovish' ? '🕊️ Dovish' : nf.nada === 'Hawkish' ? '🦅 Hawkish' : '⚖️ Netral'}</span>
+              <span className={`flex items-center gap-1 text-[10px] font-bold ${dirColor(nf.dampakEmas)}`}><DirIcon a={nf.dampakEmas} size={11} /> {nf.dampakEmas} emas</span>
+            </div>
+            {/* Gauge dovish (kiri, bullish emas) ↔ hawkish (kanan, bearish emas) */}
+            <div className="relative h-2.5 rounded-full bg-gradient-to-r from-emerald-500/50 via-white/10 to-red-500/50 mb-1">
+              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white ring-2 ring-[#0b100e]" style={{ left: `${nf.skala}%` }} />
+            </div>
+            <div className="flex justify-between text-[9px] font-semibold mb-2"><span className="text-emerald-400">◀ Dovish · emas naik</span><span className="text-red-400">Hawkish · emas turun ▶</span></div>
+            <p className="text-[11px] text-white/65 leading-snug">{nf.penjelasan}</p>
+            {nf.pendorong.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                <span className="text-[9px] text-white/35 uppercase tracking-wider">Pendorong:</span>
+                {nf.pendorong.map((t, i) => <span key={i} className="text-[9px] rounded-full border border-white/15 px-2 py-0.5 text-white/55">{t}</span>)}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Tema / Narasi Pasar (khusus sentimen) — cerita yang sedang dimainkan pasar */}
       {scope === 'sentimen' && a.narasiPasar.tema && (
