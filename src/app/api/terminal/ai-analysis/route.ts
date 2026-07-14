@@ -31,6 +31,7 @@ export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Fitur AI belum aktif — API key Anthropic belum diset' }, { status: 503 })
   try {
     const snap = await req.json()
+    const userPrompt = typeof snap.userPrompt === 'string' ? snap.userPrompt.trim() : ''
     const news = await headlines()
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
 - Bitcoin: ${snap.btc?.price} (${snap.btc?.changePct}%)
 - Aset risiko real-time (Twelve Data): S&P 500 ${snap.riskAssets?.spy}%, Nasdaq 100 ${snap.riskAssets?.qqq}%, VIX (proxy ETF) ${snap.riskAssets?.vix}%, Dolar real-time (proxy UUP) ${snap.riskAssets?.dollarRealtime}%
 HEADLINE BERITA (2 hari):
-${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
+${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}${userPrompt ? `\n\nKONTEKS/PERMINTAAN DARI TRADER (WAJIB dipertimbangkan & disesuaikan dalam analisa & keputusan): "${userPrompt}"` : ''}`
 
     const msg = await anthropic.messages.create({
       model: 'claude-opus-4-8',
@@ -78,7 +79,7 @@ Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
  "watch":["<data/event/level yang dipantau>"]
 }
 
-confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca & membantu keputusan. Berbasis data yang diberikan — jangan mengarang angka.
+confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca & membantu keputusan. Berbasis data yang diberikan — jangan mengarang angka. Jika ada KONTEKS/PERMINTAAN DARI TRADER, sesuaikan fokus, gaya (mis. scalping), timeframe, dan rekomendasi dengan permintaan itu tanpa mengabaikan data lain.
 
 PENTING untuk chartLevels: isi dengan ANGKA harga bersih (bukan teks/range), konsisten dengan harga saat ini & pivot yang diberikan, agar bisa digambar sebagai garis di chart. Jika keputusan TUNGGU dan belum ada rencana entry, set entry/sl/tp ke null tapi tetap isi support & resistance dari level terdekat.`,
       messages: [{ role: 'user', content: dataBlock }],

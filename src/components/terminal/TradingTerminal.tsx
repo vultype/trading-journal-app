@@ -165,9 +165,9 @@ function useAiAnalysis() {
   const [data, setData] = useState<AiAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const run = async (snapshot: unknown) => {
+  const run = async (snapshot: Record<string, unknown>, userPrompt = '') => {
     setLoading(true); setError(null)
-    try { const j = await (await fetch('/api/terminal/ai-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapshot) })).json(); if (j.error) throw new Error(j.error); setData(j) }
+    try { const j = await (await fetch('/api/terminal/ai-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...snapshot, userPrompt }) })).json(); if (j.error) throw new Error(j.error); setData(j) }
     catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') } finally { setLoading(false) }
   }
   return { data, loading, error, run }
@@ -414,6 +414,7 @@ export function TradingTerminal() {
   const newsItems = useNews()
   const [tab, setTab] = useState<Tab>('ringkasan')
   const [chartFull, setChartFull] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -741,16 +742,28 @@ export function TradingTerminal() {
   )
   const AiPanel = (
     <div className="lg:col-span-12 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-[#0b100e] to-[#0b100e] p-4">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Brain size={17} className="text-primary" /></span>
-          <div><h2 className="text-sm font-black flex items-center gap-1.5">Analisa AI — Ambil Keputusan <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h2><p className="text-[10px] text-white/40">Menggabungkan teknikal, makro, COT & sentimen → keputusan + alasan</p></div>
-        </div>
-        <button onClick={() => ai.run(snapshot)} disabled={ai.loading} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity">{ai.loading ? <><Loader2 size={14} className="animate-spin" /> Menganalisa…</> : ai.data ? <><RefreshCw size={13} /> Analisa Ulang</> : <><Sparkles size={14} /> Jalankan Analisa AI</>}</button>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Brain size={17} className="text-primary" /></span>
+        <div><h2 className="text-sm font-black flex items-center gap-1.5">Analisa AI — Ambil Keputusan <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h2><p className="text-[10px] text-white/40">Semi-otomatis: gabungkan SEMUA data terminal + konteks/pertanyaan darimu → keputusan.</p></div>
       </div>
-      {!ai.data && !ai.loading && !ai.error && <div className="py-6 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> — Claude membaca seluruh data terminal + berita terkini, lalu memberi <b>keputusan (Beli/Jual/Tunggu)</b> beserta alasan, confluence, rencana, & risiko.</p></div>}
+      {/* Input prompt semi-otomatis */}
+      <div className="rounded-xl border border-white/10 bg-black/20 p-3 mb-3">
+        <label className="text-[10px] uppercase tracking-widest font-semibold text-white/40">Tambahkan konteks / pertanyaan (opsional)</label>
+        <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} rows={2}
+          placeholder="mis. saya mau scalping sesi Asia, fokus level entry. Atau: pertimbangkan CPI malam ini yang diperkirakan turun."
+          className="w-full mt-1.5 bg-transparent text-sm text-white resize-none outline-none placeholder:text-white/30" />
+        <div className="flex items-center justify-between gap-2 mt-1.5 pt-2 border-t border-white/10">
+          <div className="flex flex-wrap gap-1">
+            {['Fokus scalping sesi Asia', 'Layak entry sekarang?', 'Pertimbangkan rilis berita hari ini', 'Cari level entry/stop/target'].map(s => (
+              <button key={s} onClick={() => setAiPrompt(s)} disabled={ai.loading} className="text-[10px] rounded-full border border-white/15 px-2 py-1 text-white/50 hover:border-primary/40 hover:text-white transition-colors disabled:opacity-50">{s}</button>
+            ))}
+          </div>
+          <button onClick={() => ai.run(snapshot, aiPrompt)} disabled={ai.loading} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0">{ai.loading ? <><Loader2 size={14} className="animate-spin" /> Menganalisa…</> : ai.data ? <><RefreshCw size={13} /> Analisa Ulang</> : <><Sparkles size={14} /> Jalankan Analisa AI</>}</button>
+        </div>
+      </div>
+      {!ai.data && !ai.loading && !ai.error && <div className="py-4 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> — Claude membaca seluruh data terminal + berita terkini {aiPrompt.trim() ? '+ konteks darimu ' : ''}lalu memberi <b>keputusan (Beli/Jual/Tunggu)</b> beserta alasan, confluence, rencana, & risiko.</p></div>}
       {ai.loading && <div className="py-8 flex flex-col items-center gap-2 text-white/50"><Loader2 size={22} className="animate-spin text-primary" /><p className="text-[11px]">Membaca semua parameter & berita, menyusun keputusan…</p></div>}
-      {ai.error && !ai.loading && <div className="py-6 text-center"><p className="text-[11px] text-red-400 mb-1">Gagal: {ai.error}</p><button onClick={() => ai.run(snapshot)} className="text-[11px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
+      {ai.error && !ai.loading && <div className="py-6 text-center"><p className="text-[11px] text-red-400 mb-1">Gagal: {ai.error}</p><button onClick={() => ai.run(snapshot, aiPrompt)} className="text-[11px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
       {ai.data && !ai.loading && (() => {
         const a = ai.data
         const decColor = a.keputusan === 'BELI' ? 'bg-emerald-500 text-black' : a.keputusan === 'JUAL' ? 'bg-red-500 text-white' : 'bg-white/15 text-white'
