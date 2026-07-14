@@ -359,7 +359,10 @@ function Inner({ t, onClose, onDelete, fmt }: {
   }
 
   const { catatan, analisa } = parseNote(t.note)
-  const resultColor = t.result === 'win' ? 'text-emerald-400' : t.result === 'loss' ? 'text-red-400' : 'text-yellow-400'
+  // Warna & background angka P&L ikut TANDA pnl asli (bukan label result) — supaya
+  // kalau ada data yang result & pnl-nya tidak sinkron, itu langsung kelihatan jelas,
+  // bukan malah ketutup warna hijau.
+  const resultColor = t.pnl > 0 ? 'text-emerald-400' : t.pnl < 0 ? 'text-red-400' : 'text-yellow-400'
   const heroBg      = t.pnl >= 0
     ? 'bg-gradient-to-b from-emerald-500/10 to-emerald-500/3 border-emerald-500/15'
     : 'bg-gradient-to-b from-red-500/10 to-red-500/3 border-red-500/15'
