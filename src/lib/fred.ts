@@ -19,6 +19,8 @@ export const FRED_SERIES: FredSeries[] = [
   { key: 'corepce', id: 'PCEPILFE', units: 'pc1', name: 'Core PCE (YoY)', sub: 'Gauge favorit The Fed', dec: 1, unit: '%', corr: -1 },
   { key: 'fedfunds', id: 'FEDFUNDS', name: 'Fed Funds Rate', sub: 'Suku bunga acuan', dec: 2, unit: '%', corr: -1 },
   { key: 'unrate', id: 'UNRATE', name: 'Pengangguran', sub: 'Unemployment — naik = dovish Fed', dec: 1, unit: '%', corr: 1 },
+  { key: 'nfp', id: 'PAYEMS', units: 'chg', name: 'NFP (perubahan bulanan)', sub: 'Nonfarm Payrolls — lemah = dovish (bullish emas)', dec: 0, unit: 'K', corr: 1 },
+  { key: 'wagegrowth', id: 'CES0500000003', units: 'pc1', name: 'Pertumbuhan Upah (YoY)', sub: 'Average Hourly Earnings — naik = tekanan inflasi', dec: 1, unit: '%', corr: -1 },
 ]
 
 export type MacroPoint = { key: string; value: number; prior: number; date: string }

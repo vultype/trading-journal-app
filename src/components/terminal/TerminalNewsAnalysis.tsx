@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import {
   Newspaper, Loader2, RefreshCw, Wand2, Plus, X,
-  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks,
+  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks, Link2,
 } from 'lucide-react'
-import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, dirBg, type Dir } from './aiViz'
+import { BiasBar, DirIcon, Section, NewsSentimentColumns, FaktorRow, dirColor, dirBg, type Dir } from './aiViz'
 
 // Preset komponen umum tiap rilis (auto-isi label saat pilih event).
 const PRESETS: Record<string, string[]> = {
@@ -31,6 +31,7 @@ type Analysis = {
   headline: string; ringkasan: string
   rekomendasiPreNews: { aksi: 'LONG' | 'SHORT' | 'TUNGGU'; alasan: string; entry: string; sl: string; tp: string; peringatan: string }
   prioritasKomponen: { komponen: string; bobot: string; arah: Dir; catatan: string }[]
+  dataPendukung: { nama: string; nilai: string; arah: Dir; relevansi: string }[]
   skenario: { nama: string; kondisi: string; arahEmas: Dir; probabilitas: number; reaksi: string; level: string }[]
   sentimenBerita: { skor: number; ringkasan: string; mendukung: string[]; menentang: string[] }
   makro: { nama: string; nilai: string; arah: Dir; catatan: string }[]
@@ -197,6 +198,14 @@ function Result({ a }: { a: Analysis }) {
               </div>
             ))}
           </div>
+        </Section>
+      )}
+
+      {/* Data pendukung / berkorelasi — indikator lain yang menguatkan/melemahkan skenario */}
+      {a.dataPendukung.length > 0 && (
+        <Section icon={Link2} title="Data Pendukung & Berkorelasi">
+          <p className="text-[10px] text-white/40 mb-1.5 leading-snug">Indikator lain (bukan komponen rilis ini) yang membantu menilai seberapa besar & tahan lama reaksi pasar.</p>
+          <div className="space-y-1.5">{a.dataPendukung.map((d, i) => <FaktorRow key={i} nama={d.nama} nilai={d.nilai} arah={d.arah} catatan={d.relevansi} />)}</div>
         </Section>
       )}
 

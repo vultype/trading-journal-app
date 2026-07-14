@@ -60,7 +60,7 @@ ${news.length ? news.map((h, i) => `${i + 1}. ${h}`).join('\n') : '(tidak ada he
 
     const msg = await anthropic.messages.create({
       model: 'claude-opus-4-8',
-      max_tokens: 3000,
+      max_tokens: 3800,
       system: `Kamu kepala analis (Head of Research) XAU/USD di trading desk. Tugasmu: analisa DAMPAK sebuah rilis data ekonomi ke harga emas, dengan MENGGABUNGKAN semua parameter: snapshot teknikal & makro real-time, komponen rilis (bisa banyak: MoM/YoY/Core), dan headline berita.
 
 Prinsip:
@@ -71,6 +71,14 @@ Prinsip:
 - Rujuk angka nyata dari snapshot (harga, VWAP, pivot, RSI, ADX, yield, dolar, real yield, dsb). Jangan mengarang angka.
 - Bahasa Indonesia, ringkas, mudah dipahami pemula.
 
+DATA PENDUKUNG / BERKORELASI (WAJIB, berlaku untuk SEMUA jenis event, bukan hanya yang di atas contoh):
+Event tunggal jarang cukup untuk menyimpulkan arah Fed — selalu cek data LAIN yang mengkonfirmasi atau justru melemahkan reaksi pasar terhadap event yang sedang dianalisa. Pilih 3-5 indikator paling relevan dari snapshot.macro (SEMUA sudah tersedia: dollar, us10y, us02y, realyield, breakeven, cpi, corecpi, corepce, fedfunds, unrate, nfp, wagegrowth) sesuai KATEGORI event:
+- Event INFLASI (CPI/Core CPI/PPI/Core PCE): cek NFP terbaru & wage growth (kalau tenaga kerja juga lemah → sinyal dovish lebih kuat & tahan lama; kalau tenaga kerja masih kuat → Fed lebih hati-hati, reaksi bisa lebih pendek), unemployment rate, real yield saat ini, Fed Funds Rate saat ini (seberapa besar ruang Fed untuk bereaksi).
+- Event TENAGA KERJA (NFP/Unemployment/Jobless Claims/ADP): cek CPI & Core PCE terbaru (kombinasi jobs kuat + inflasi panas = hawkish; jobs lemah + inflasi dingin = dovish kuat), wage growth.
+- Event KEBIJAKAN (FOMC/Rate Decision/Fed Speech): cek CPI/Core PCE terbaru, unemployment, wage growth, yield curve 2s10s (kurva).
+- Event lain (GDP/Retail Sales/ISM PMI): cek CPI, unemployment, dolar sebagai konteks makro umum.
+Untuk tiap item WAJIB sebutkan ANGKA NYATA dari snapshot (jangan mengarang) + jelaskan RELEVANSI-nya ke event yang sedang dianalisa (kenapa data ini menguatkan atau melemahkan skenario). Kalau sebuah data tidak tersedia di snapshot, jangan dimasukkan.
+
 Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
 {
  "biasArah":"Bullish|Bearish|Netral",
@@ -80,6 +88,7 @@ Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
  "ringkasan":"<2-3 kalimat eksekutif gabungan semua faktor>",
  "rekomendasiPreNews":{"aksi":"LONG|SHORT|TUNGGU","alasan":"<kenapa, tegas>","entry":"<zona/kondisi entry sebelum rilis>","sl":"<level/logika stop>","tp":"<target>","peringatan":"<risiko masuk sebelum berita>"},
  "prioritasKomponen":[{"komponen":"<nama komponen rilis>","bobot":"Tinggi|Sedang|Rendah","arah":"bullish|bearish|netral","catatan":"<1 frasa>"}],
+ "dataPendukung":[{"nama":"<indikator berkorelasi, mis. NFP Terbaru>","nilai":"<angka nyata dari snapshot>","arah":"bullish|bearish|netral","relevansi":"<kenapa relevan untuk event ini, 1 frasa>"}],
  "skenario":[{"nama":"<mis. Data Panas / Dingin / Sesuai>","kondisi":"<syarat>","arahEmas":"bullish|bearish|netral","probabilitas":<0-100>,"reaksi":"<reaksi emas>","level":"<level target/kunci>"}],
  "sentimenBerita":{"skor":<-100..100>,"ringkasan":"<1-2 kalimat>","mendukung":["<headline/faktor yang MENDUKUNG emas naik>"],"menentang":["<headline/faktor yang MENEKAN emas>"]},
  "makro":[{"nama":"<mis. Dolar (DXY)>","nilai":"<angka/kondisi>","arah":"bullish|bearish|netral","catatan":"<dampak ke emas>"}],
@@ -88,7 +97,7 @@ Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
  "risiko":["<risiko utama>"]
 }
 
-prioritasKomponen 2-4 item. skenario TEPAT 3 (panas/dingin/sesuai), probabilitas total ~100. sentimenBerita.mendukung & menentang masing-masing 1-4. makro 3-5 item, teknikal 3-5 item. risiko 2-3. arah untuk emas dari sudut pandang: bullish=emas naik. Semua berbasis data yang diberikan.`,
+prioritasKomponen 2-4 item. dataPendukung 3-5 item (WAJIB, lihat aturan di atas). skenario TEPAT 3 (panas/dingin/sesuai), probabilitas total ~100. sentimenBerita.mendukung & menentang masing-masing 1-4. makro 3-5 item, teknikal 3-5 item. risiko 2-3. arah untuk emas dari sudut pandang: bullish=emas naik. Semua berbasis data yang diberikan.`,
       messages: [{ role: 'user', content: dataBlock }],
     })
 
@@ -112,6 +121,7 @@ prioritasKomponen 2-4 item. skenario TEPAT 3 (panas/dingin/sesuai), probabilitas
         peringatan: String(p.rekomendasiPreNews?.peringatan ?? ''),
       },
       prioritasKomponen: Array.isArray(p.prioritasKomponen) ? p.prioritasKomponen.slice(0, 4).map((c: { komponen?: string; bobot?: string; arah?: string; catatan?: string }) => ({ komponen: String(c.komponen ?? ''), bobot: ['Tinggi', 'Sedang', 'Rendah'].includes(c.bobot ?? '') ? c.bobot : 'Sedang', arah: dir3(c.arah), catatan: String(c.catatan ?? '') })) : [],
+      dataPendukung: Array.isArray(p.dataPendukung) ? p.dataPendukung.slice(0, 5).map((d: { nama?: string; nilai?: string; arah?: string; relevansi?: string }) => ({ nama: String(d.nama ?? ''), nilai: String(d.nilai ?? ''), arah: dir3(d.arah), relevansi: String(d.relevansi ?? '') })) : [],
       skenario: Array.isArray(p.skenario) ? p.skenario.slice(0, 3).map((s: { nama?: string; kondisi?: string; arahEmas?: string; probabilitas?: number; reaksi?: string; level?: string }) => ({ nama: String(s.nama ?? ''), kondisi: String(s.kondisi ?? ''), arahEmas: dir3(s.arahEmas), probabilitas: clampPct(s.probabilitas), reaksi: String(s.reaksi ?? ''), level: String(s.level ?? '') })) : [],
       sentimenBerita: {
         skor: Math.max(-100, Math.min(100, Math.round(Number(p.sentimenBerita?.skor) || 0))),
