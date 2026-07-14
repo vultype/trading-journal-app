@@ -24,6 +24,8 @@ import { macdCalc, bollinger, stochastic, marketStructure, momentumScore, type M
 
 type TF = 'M5' | 'M15' | 'H1'
 const TFS: TF[] = ['M5', 'M15', 'H1']
+type HTF = 'H4' | 'D1'            // timeframe besar (bias harian/swing)
+const HTFS: HTF[] = ['H4', 'D1']
 type Dir = 'BULLISH' | 'BEARISH' | 'NETRAL'
 type Candle = { o: number; h: number; l: number; c: number; t: number; v: number }
 type Bias = { label: Dir; score: number }
@@ -95,11 +97,11 @@ function useClock() {
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
   return now
 }
-type LiveXau = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData> }
+type LiveXau = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData>; htf: Partial<Record<HTF, TFData>> }
 function useLiveXauFeed() {
   const [data, setData] = useState<LiveXau | null>(null)
   const [status, setStatus] = useState<'loading' | 'live' | 'error'>('loading')
-  const candlesRef = useRef<Partial<Record<TF, Candle[]>>>({})
+  const candlesRef = useRef<Partial<Record<TF | HTF, Candle[]>>>({})
   useEffect(() => {
     let stopped = false
     async function pollQuote() {
@@ -107,23 +109,36 @@ function useLiveXauFeed() {
         setData(prev => prev ? { ...prev, price: j.price, changePct: j.changePct, dayHigh: Math.max(j.dayHigh, j.price), dayLow: Math.min(j.dayLow, j.price) } : prev); setStatus('live')
       } catch { if (!stopped) setStatus(candlesRef.current.M5 ? 'live' : 'error') }
     }
-    async function pollCandles(tf: TF) {
+    function rebuild() {
+      const c = candlesRef.current
+      if (!(c.M5 && c.M15 && c.H1)) return
+      const M5 = c.M5
+      const htf: Partial<Record<HTF, TFData>> = {}
+      for (const t of HTFS) if (c[t]) htf[t] = computeTF(c[t]!)
+      setData(prev => ({
+        price: prev?.price ?? M5[M5.length - 1].c, changePct: prev?.changePct ?? 0,
+        dayHigh: prev?.dayHigh ?? M5[M5.length - 1].c, dayLow: prev?.dayLow ?? M5[M5.length - 1].c,
+        tf: { M5: computeTF(M5), M15: computeTF(c.M15!), H1: computeTF(c.H1!) }, htf,
+      }))
+      setStatus('live')
+    }
+    async function pollCandles(tf: TF | HTF) {
       try { const arr = await (await fetch(`/api/terminal/candles?tf=${tf}`)).json(); if (stopped || !Array.isArray(arr) || !arr.length) return
         candlesRef.current[tf] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
-        const { M5, M15, H1 } = candlesRef.current
-        if (M5 && M15 && H1) { setData(prev => ({ price: prev?.price ?? M5[M5.length - 1].c, changePct: prev?.changePct ?? 0, dayHigh: prev?.dayHigh ?? M5[M5.length - 1].c, dayLow: prev?.dayLow ?? M5[M5.length - 1].c, tf: { M5: computeTF(M5), M15: computeTF(M15), H1: computeTF(H1) } })); setStatus('live') }
+        rebuild()
       } catch { }
     }
     const hidden = () => typeof document !== 'undefined' && document.hidden
-    const missing = () => { for (const tf of TFS) if (!candlesRef.current[tf]) pollCandles(tf) }
+    const missing = () => { for (const tf of [...TFS, ...HTFS]) if (!candlesRef.current[tf]) pollCandles(tf) }
     const complete = () => TFS.every(tf => candlesRef.current[tf])
-    pollCandles('M5'); pollCandles('M15'); pollCandles('H1'); pollQuote()
+    TFS.forEach(pollCandles); HTFS.forEach(pollCandles); pollQuote()
     const qId = setInterval(() => { if (!hidden()) pollQuote() }, 8_000)
     const eId = setInterval(() => { if (!complete()) missing() }, 10_000)
-    const cId = setInterval(() => { if (complete() && !hidden()) { pollCandles('M5'); pollCandles('M15'); pollCandles('H1') } }, 60_000)
+    const cId = setInterval(() => { if (complete() && !hidden()) TFS.forEach(pollCandles) }, 60_000)
+    const hId = setInterval(() => { if (!hidden()) HTFS.forEach(pollCandles) }, 300_000)
     const onVis = () => { if (!hidden()) pollQuote() }
     document.addEventListener('visibilitychange', onVis)
-    return () => { stopped = true; clearInterval(qId); clearInterval(eId); clearInterval(cId); document.removeEventListener('visibilitychange', onVis) }
+    return () => { stopped = true; clearInterval(qId); clearInterval(eId); clearInterval(cId); clearInterval(hId); document.removeEventListener('visibilitychange', onVis) }
   }, [])
   return { data, status }
 }
@@ -379,16 +394,25 @@ function HeatCell({ state, text }: { state: 'bullish' | 'bearish' | 'netral'; te
   return <div className={`rounded-md py-1 text-center text-[10px] font-bold ${cellState(state)}`}>{text}</div>
 }
 // meter horizontal -100..100 (dipakai untuk momentum, risk-on/off, curve)
-function MiniMeter({ value, leftLabel, rightLabel, invert }: { value: number; leftLabel: string; rightLabel: string; invert?: boolean }) {
-  const v = clamp(value, -100, 100)
-  const pos = (v + 100) / 2
-  const good = invert ? v < 0 : v > 0
+// Meter risk-on/off yang mudah dibaca: bar terisi = proporsi ke sisi risk-off (dukung emas)
+// vs risk-on (tekan emas), dengan label & % besar. riskOn: -1 (risk-off) .. +1 (risk-on).
+function RiskMeter({ riskOn }: { riskOn: number }) {
+  const offPct = clamp(Math.round(50 - riskOn * 50), 0, 100)  // % ke arah risk-off (bullish emas)
+  const onPct = 100 - offPct
   return (
     <div>
-      <div className="relative h-2 rounded-full bg-gradient-to-r from-red-500/40 via-white/10 to-emerald-500/40">
-        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full ring-2 ring-[#0b100e]" style={{ left: `${pos}%`, background: good ? '#34d399' : v === 0 ? '#9ca3af' : '#f87171' }} />
+      <div className="relative h-9 rounded-lg overflow-hidden flex bg-red-500/15 ring-1 ring-white/5">
+        <div className="h-full bg-gradient-to-r from-emerald-500/70 to-emerald-400/70 flex items-center pl-2.5 transition-all" style={{ width: `${offPct}%` }}>
+          {offPct >= 26 && <span className="text-xs font-black text-white leading-none">🛡️ {offPct}%</span>}
+        </div>
+        <div className="flex-1 flex items-center justify-end pr-2.5">
+          {onPct >= 26 && <span className="text-xs font-black text-red-200 leading-none">{onPct}% 📈</span>}
+        </div>
       </div>
-      <div className="flex justify-between text-[8px] text-white/35 mt-1"><span>{leftLabel}</span><span>{rightLabel}</span></div>
+      <div className="flex justify-between text-[9px] font-semibold mt-1.5">
+        <span className="text-emerald-400">◀ RISK-OFF · emas naik</span>
+        <span className="text-red-400">RISK-ON · emas turun ▶</span>
+      </div>
     </div>
   )
 }
@@ -443,9 +467,18 @@ export function TradingTerminal() {
   const confPct = Math.round((sc.overall + 100) / 2)
   const strongestPillar = Math.abs(sc.macro) >= Math.abs(sc.tech) && Math.abs(sc.macro) >= Math.abs(sc.senti) ? 'Makro' : Math.abs(sc.tech) >= Math.abs(sc.senti) ? 'Teknikal' : 'Sentimen'
 
-  const pivots = pivotsLive
-  const levels = pivots ? [{ label: 'R2', v: pivots.R2, k: 'res' }, { label: 'R1', v: pivots.R1, k: 'res' }, { label: 'Pivot', v: pivots.P, k: 'piv' }, { label: 'S1', v: pivots.S1, k: 'sup' }, { label: 'S2', v: pivots.S2, k: 'sup' }].map(l => ({ ...l, dist: feed.price - l.v })).sort((a, b) => b.v - a.v) : []
-  const nearest = levels.length ? levels.reduce((a, b) => Math.abs(a.dist) < Math.abs(b.dist) ? a : b) : null
+  // Zona Support/Resistance untuk SCALPING — band di sekitar level pivot, hanya yang DEKAT harga.
+  type Zone = { kind: 'res' | 'sup'; label: string; mid: number; low: number; high: number; dist: number; inside: boolean }
+  const zoneW = clamp((feed.tf.M15.atr || 3) * 0.35, 1.5, 6)  // setengah lebar band (skala volatilitas)
+  const allLv = pivotsLive ? [pivotsLive.R2, pivotsLive.R1, pivotsLive.P, pivotsLive.S1, pivotsLive.S2] : []
+  const mkZone = (mid: number, kind: 'res' | 'sup', idx: number): Zone => ({
+    kind, mid, low: mid - zoneW, high: mid + zoneW, dist: mid - feed.price, inside: feed.price >= mid - zoneW && feed.price <= mid + zoneW,
+    label: (kind === 'res' ? 'Resistance' : 'Support') + (idx === 0 ? ' terdekat' : ' kedua'),
+  })
+  const resZones = allLv.filter(v => v > feed.price).sort((a, b) => a - b).slice(0, 2).map((v, i) => mkZone(v, 'res', i))
+  const supZones = allLv.filter(v => v < feed.price).sort((a, b) => b - a).slice(0, 2).map((v, i) => mkZone(v, 'sup', i))
+  const allZones = [...resZones, ...supZones]
+  const nearest = allZones.length ? allZones.reduce((a, b) => Math.abs(a.dist) < Math.abs(b.dist) ? a : b) : null
 
   // ── insight turunan (100% real) ──
   const dayRange = feed.dayHigh - feed.dayLow
@@ -471,6 +504,7 @@ export function TradingTerminal() {
     signal: { overall: Math.round(sc.overall), label: sc.label, confidence: sc.confidence, macro: Math.round(sc.macro), tech: Math.round(sc.tech), senti: Math.round(sc.senti) },
     tf: Object.fromEntries(TFS.map(t => { const d = feed.tf[t]; return [t, { bias: d.bias.label, rsi: Math.round(d.rsi), macd: d.macd.state, stoch: Math.round(d.stoch.k), struktur: d.structure.label }] })),
     adx: +adx.toFixed(0), trendDir: trendUp ? 'naik' : 'turun', atrM15: +feed.tf.M15.atr.toFixed(2), vwapM15: +feed.tf.M15.vwap.toFixed(2),
+    biasTFbesar: { H4: feed.htf.H4 ? { bias: feed.htf.H4.bias.label, rsi: Math.round(feed.htf.H4.rsi), struktur: feed.htf.H4.structure.label } : null, D1: feed.htf.D1 ? { bias: feed.htf.D1.bias.label, rsi: Math.round(feed.htf.D1.rsi), struktur: feed.htf.D1.structure.label } : null },
     regime: regime.label, momentum: Math.round(avgMomentum), bbSqueeze, riskSentiment: riskOn < -0.1 ? 'risk-off' : riskOn > 0.1 ? 'risk-on' : 'netral',
     goldSilverRatio: goldSilver ? +goldSilver.toFixed(1) : null, yieldCurve2s10: curve2s10 != null ? +curve2s10.toFixed(2) : null,
     pivots: pivotsLive ? { P: +pivotsLive.P.toFixed(2), R1: +pivotsLive.R1.toFixed(2), R2: +pivotsLive.R2.toFixed(2), S1: +pivotsLive.S1.toFixed(2), S2: +pivotsLive.S2.toFixed(2) } : null,
@@ -491,7 +525,7 @@ export function TradingTerminal() {
       <div className="mt-2.5 space-y-1.5 text-[11px]">
         <div className="flex justify-between"><span className="text-white/45">Pendorong utama</span><span className="font-semibold text-white/85">{strongestPillar}</span></div>
         <div className="flex justify-between"><span className="text-white/45">Kekuatan tren (ADX)</span><span className={`font-semibold ${adx >= 25 ? 'text-emerald-400' : adx < 20 ? 'text-amber-400' : 'text-white/70'}`}>{adxL} ({adx.toFixed(0)})</span></div>
-        {nearest && <div className="flex justify-between"><span className="text-white/45">Level terdekat</span><span className="font-semibold text-white/85">{nearest.label} @ {f2(nearest.v)} ({nearest.dist >= 0 ? '+' : ''}{nearest.dist.toFixed(1)})</span></div>}
+        {nearest && <div className="flex justify-between"><span className="text-white/45">Zona terdekat</span><span className="font-semibold text-white/85">{nearest.label} @ {f2(nearest.mid)} ({nearest.dist >= 0 ? '+' : ''}{nearest.dist.toFixed(1)})</span></div>}
         <div className="flex justify-between"><span className="text-white/45">Volatilitas</span><span className={`font-semibold ${volLabel === 'Rendah' ? 'text-amber-400' : 'text-emerald-400'}`}>{volLabel}</span></div>
       </div>
     </Panel>
@@ -551,33 +585,53 @@ export function TradingTerminal() {
       <div className="flex justify-between text-[10px] mt-2 pt-2 border-t border-white/5"><span className="text-white/45">Harga vs VWAP M15</span><span className={`font-bold ${feed.price > feed.tf.M15.vwap ? 'text-emerald-400' : 'text-red-400'}`}>{feed.price > feed.tf.M15.vwap ? 'di atas (+' : 'di bawah ('}{(feed.price - feed.tf.M15.vwap).toFixed(1)})</span></div>
     </Panel>
   )
-  const PivotPanel = (
-    <Panel title="Pivot & Level Kunci" icon={Layers} info="Level pivot harian dari OHLC kemarin. R = resistance (rem naik), S = support (rem turun). Baris berpendar = posisi harga sekarang.">
-      {levels.length ? (
-        <div className="space-y-0.5">
-          {(() => {
-            const rows: React.ReactNode[] = []
-            const priceAbove = (v: number) => feed.price >= v
-            levels.forEach((l, i) => {
-              // sisipkan penanda harga saat harga berada di antara level ini & sebelumnya
-              if (i > 0 && priceAbove(l.v) && !priceAbove(levels[i - 1].v)) {
-                rows.push(<div key="price" className="flex items-center gap-2 my-0.5"><span className="text-[10px] font-black text-primary w-12">HARGA</span><div className="flex-1 h-px bg-primary/40" /><span className="text-[11px] font-black text-primary tabular-nums">{f2(feed.price)}</span></div>)
-              }
-              const near = Math.abs(l.dist) < 2
-              rows.push(
-                <div key={l.label} className={`flex items-center justify-between rounded-lg px-2 py-1 ${near ? 'bg-amber-500/10' : ''}`}>
-                  <span className={`font-bold text-[11px] w-10 ${l.k === 'res' ? 'text-red-400/90' : l.k === 'sup' ? 'text-emerald-400/90' : 'text-white/80'}`}>{l.label}</span>
-                  <span className="tabular-nums text-white/80 text-[11px] flex-1 text-center">{f2(l.v)}</span>
-                  <span className={`tabular-nums text-[10px] w-16 text-right ${near ? 'text-amber-400 font-bold' : 'text-white/35'}`}>{l.dist >= 0 ? '+' : ''}{l.dist.toFixed(1)}</span>
-                </div>
-              )
-            })
-            if (!priceAbove(levels[levels.length - 1].v)) rows.push(<div key="price" className="flex items-center gap-2 my-0.5"><span className="text-[10px] font-black text-primary w-12">HARGA</span><div className="flex-1 h-px bg-primary/40" /><span className="text-[11px] font-black text-primary tabular-nums">{f2(feed.price)}</span></div>)
-            return rows
-          })()}
-          {nearest && <p className="text-[9px] text-white/40 mt-2 pt-2 border-t border-white/5">Harga sedang mendekati <b className="text-amber-400">{nearest.label}</b> ({nearest.dist >= 0 ? 'di atas' : 'di bawah'} {Math.abs(nearest.dist).toFixed(1)} poin). Level kunci = tempat harga sering memantul/tembus.</p>}
+  const ZonaRow = ({ z }: { z: typeof allZones[number] }) => (
+    <div className={`rounded-lg border px-2.5 py-1.5 ${z.inside ? 'border-amber-500/40 bg-amber-500/10' : z.kind === 'res' ? 'border-red-500/20 bg-red-500/[0.05]' : 'border-emerald-500/20 bg-emerald-500/[0.05]'}`}>
+      <div className="flex items-center justify-between">
+        <span className={`text-[11px] font-bold ${z.kind === 'res' ? 'text-red-400' : 'text-emerald-400'}`}>{z.kind === 'res' ? '🔴' : '🟢'} {z.label}</span>
+        <span className={`text-[10px] font-bold tabular-nums ${z.inside ? 'text-amber-400' : 'text-white/40'}`}>{z.inside ? 'DI DALAM ZONA' : `${z.dist >= 0 ? '+' : ''}${z.dist.toFixed(1)} poin`}</span>
+      </div>
+      <p className="text-[11px] font-bold tabular-nums text-white/85 mt-0.5">{f2(z.low)} – {f2(z.high)}</p>
+    </div>
+  )
+  const ZonaPanel = (
+    <Panel title="Zona Support & Resistance (Scalping)" icon={Layers} info="Zona (bukan garis) di sekitar level pivot, lebar mengikuti volatilitas (ATR). Hanya zona TERDEKAT yang ditampilkan untuk scalping — resistance di atas (rem naik), support di bawah (rem turun). Amber = harga sedang di dalam zona.">
+      {allZones.length ? (
+        <div className="space-y-2">
+          <div className="space-y-1.5">{resZones.slice().reverse().map((z, i) => <ZonaRow key={`r${i}`} z={z} />)}</div>
+          <div className="flex items-center gap-2 py-0.5"><span className="text-[10px] font-black text-primary shrink-0">HARGA</span><div className="flex-1 h-px bg-primary/40" /><span className="text-sm font-black text-primary tabular-nums">{f2(feed.price)}</span></div>
+          <div className="space-y-1.5">{supZones.map((z, i) => <ZonaRow key={`s${i}`} z={z} />)}</div>
+          {nearest && <p className="text-[9px] text-white/40 mt-1 pt-2 border-t border-white/5">Zona terdekat: <b className={nearest.kind === 'res' ? 'text-red-400' : 'text-emerald-400'}>{nearest.label}</b> {nearest.inside ? '— harga sedang di dalamnya (rawan pantul/tembus).' : `${Math.abs(nearest.dist).toFixed(1)} poin ${nearest.dist >= 0 ? 'di atas' : 'di bawah'}.`} Scalping: cari pantulan di support / rejeksi di resistance.</p>}
         </div>
-      ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat pivot…</div>}
+      ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat zona…</div>}
+    </Panel>
+  )
+  // Bias dari timeframe besar (H4 & Daily) — filter arah untuk scalping
+  const h4b = feed.htf.H4?.bias.label, d1b = feed.htf.D1?.bias.label
+  const htfVerdict = (() => {
+    if (!h4b || !d1b) return null
+    if (h4b === d1b && h4b !== 'NETRAL') return { label: h4b, text: `Tren besar ${h4b} (H4 & Daily searah). Utamakan entry SEARAH — jangan lawan tren besar.` }
+    const big = d1b !== 'NETRAL' ? d1b : h4b
+    if (big === 'NETRAL') return { label: 'NETRAL', text: 'H4 & Daily netral/ranging — tidak ada tren besar dominan, boleh main dua arah di zona.' }
+    return { label: big, text: `Bias Daily ${d1b}, H4 ${h4b} — belum sepenuhnya searah. Prioritas tetap ke arah Daily (${d1b}), hati-hati saat melawan.` }
+  })()
+  const HtfBiasPanel = (
+    <Panel title="Bias Timeframe Besar (H4 & Daily)" icon={CalendarClock} info="Arah tren dari TF besar: H4 = swing, Daily = harian. Dipakai sebagai FILTER arah — untuk scalping, utamakan entry searah tren besar, hindari melawannya.">
+      <div className="space-y-2">
+        {HTFS.map(t => {
+          const d = feed.htf[t]
+          const name = t === 'H4' ? 'H4 · swing' : 'Daily · harian'
+          if (!d) return <div key={t} className="flex items-center gap-2 rounded-lg bg-white/[0.03] p-2 text-[11px] text-white/30"><Loader2 size={12} className="animate-spin" /> {name} memuat…</div>
+          const emaUp = d.ema9[d.ema9.length - 1] > d.ema21[d.ema21.length - 1]
+          return (
+            <div key={t} className="rounded-lg bg-white/[0.03] p-2">
+              <div className="flex items-center justify-between mb-1"><span className="text-[11px] font-bold text-white/70">{name}</span><span className={`text-[10px] font-black rounded-full px-2 py-0.5 ${dirBg(d.bias.label)}`}>{d.bias.label}</span></div>
+              <p className="text-[9px] text-white/45 tabular-nums">EMA {emaUp ? '▲ naik' : '▼ turun'} · RSI {d.rsi.toFixed(0)} · MACD {d.macd.state} · {d.structure.label}</p>
+            </div>
+          )
+        })}
+      </div>
+      {htfVerdict && <div className="mt-2 rounded-lg bg-primary/8 p-2 flex items-start gap-1.5"><Compass size={12} className="text-primary mt-0.5 shrink-0" /><p className="text-[10px] text-white/85 leading-snug">{htfVerdict.text}</p></div>}
     </Panel>
   )
   const CrossPanel = (
@@ -719,7 +773,7 @@ export function TradingTerminal() {
         <p className={`text-lg font-black leading-none ${riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}`}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</p>
         <p className="text-[10px] text-white/45 mt-0.5">{riskOn < -0.1 ? 'Pasar cemas → mendukung emas' : riskOn > 0.1 ? 'Pasar percaya diri → menekan emas' : 'Aliran risiko seimbang'}</p>
       </div>
-      <MiniMeter value={riskOn * 100} leftLabel="Risk-Off (bullish emas)" rightLabel="Risk-On (bearish emas)" invert />
+      <RiskMeter riskOn={riskOn} />
       <div className="grid grid-cols-3 gap-1.5 mt-3">
         {[{ l: 'VIX', q: cross.vixy, inv: false }, { l: 'S&P', q: cross.spy, inv: true }, { l: 'BTC', q: cross.btc, inv: true }].map(x => (
           <div key={x.l} className="rounded-lg bg-white/[0.03] py-1.5 text-center"><p className="text-[8px] text-white/35">{x.l}</p><p className={`text-[11px] font-bold tabular-nums ${x.q ? (x.q.changePct >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-white/30'}`}>{x.q ? `${x.q.changePct >= 0 ? '+' : ''}${x.q.changePct.toFixed(1)}%` : '—'}</p></div>
@@ -858,8 +912,10 @@ export function TradingTerminal() {
           <div className="lg:col-span-4">{KesimpulanPanel}</div>
           <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{MomentumPanel}</div>
-          <div className="lg:col-span-8">{IndicatorMatrix}</div>
+          <div className="lg:col-span-4">{HtfBiasPanel}</div>
+          <div className="lg:col-span-4">{ZonaPanel}</div>
           <div className="lg:col-span-4">{RiskSentimentPanel}</div>
+          <div className="lg:col-span-12">{IndicatorMatrix}</div>
         </>}
 
         {tab === 'teknikal' && <>
@@ -867,10 +923,11 @@ export function TradingTerminal() {
             suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
           <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
-          <div className="lg:col-span-8">{IndicatorMatrix}</div>
+          <div className="lg:col-span-4">{HtfBiasPanel}</div>
           <div className="lg:col-span-4">{OscillatorPanel}</div>
-          <div className="lg:col-span-6">{MomentumPanel}</div>
-          <div className="lg:col-span-6">{PivotPanel}</div>
+          <div className="lg:col-span-4">{MomentumPanel}</div>
+          <div className="lg:col-span-8">{IndicatorMatrix}</div>
+          <div className="lg:col-span-4">{ZonaPanel}</div>
         </>}
 
         {tab === 'makro' && <>

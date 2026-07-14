@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { fetchCandles } from '@/lib/twelvedata'
+import { fetchCandles, type TF } from '@/lib/twelvedata'
 
-type TF = 'M5' | 'M15' | 'H1'
-const VALID: TF[] = ['M5', 'M15', 'H1']
+const VALID: TF[] = ['M5', 'M15', 'H1', 'H4', 'D1']
 const cache = new Map<TF, { data: Awaited<ReturnType<typeof fetchCandles>>; at: number }>()
-const TTL_MS = 45_000
+// TF besar (H4/D1) berubah lambat → cache lebih lama biar hemat kredit.
+const ttl = (tf: TF) => (tf === 'D1' ? 30 * 60_000 : tf === 'H4' ? 10 * 60_000 : 45_000)
 
 export async function GET(req: Request) {
   const tf = (new URL(req.url).searchParams.get('tf') ?? 'M5') as TF
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
   const now = Date.now()
   const hit = cache.get(tf)
-  if (hit && now - hit.at < TTL_MS) return NextResponse.json(hit.data)
+  if (hit && now - hit.at < ttl(tf)) return NextResponse.json(hit.data)
   try {
     const data = await fetchCandles(tf)
     cache.set(tf, { data, at: now })

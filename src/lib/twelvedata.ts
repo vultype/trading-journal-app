@@ -26,7 +26,8 @@ export async function fetchQuote(): Promise<TDQuote> {
   }
 }
 
-const TD_INTERVAL: Record<'M5' | 'M15' | 'H1', string> = { M5: '5min', M15: '15min', H1: '1h' }
+export type TF = 'M5' | 'M15' | 'H1' | 'H4' | 'D1'
+const TD_INTERVAL: Record<TF, string> = { M5: '5min', M15: '15min', H1: '1h', H4: '4h', D1: '1day' }
 
 export type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
 
@@ -43,7 +44,7 @@ export async function fetchDailyPivots(): Promise<Pivots | null> {
   return { P, R1: 2 * P - L, R2: P + (H - L), S1: 2 * P - H, S2: P - (H - L) }
 }
 
-export async function fetchCandles(tf: 'M5' | 'M15' | 'H1', outputsize = 150): Promise<TDCandle[]> {
+export async function fetchCandles(tf: TF, outputsize = 150): Promise<TDCandle[]> {
   const interval = TD_INTERVAL[tf]
   const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=${interval}&outputsize=${outputsize}&apikey=${key()}`, { cache: 'no-store' })
   const j = await res.json()
