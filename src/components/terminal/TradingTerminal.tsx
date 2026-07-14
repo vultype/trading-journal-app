@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { AiChart, type ChartLevels } from './AiChart'
 import { TerminalAiPanel } from './TerminalAiPanel'
+import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
 import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
 import { macdCalc, bollinger, stochastic, marketStructure, momentumScore, type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 
@@ -858,7 +859,7 @@ export function TradingTerminal() {
         </>}
 
         {tab === 'makro' && <>
-          <TerminalAiPanel scope="makro" title="Analisa Makro AI" subtitle="Claude baca dolar, yield, inflasi & kebijakan Fed → implikasi ke emas." snapshot={snapshot}
+          <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
             suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
           {CrossPanel}
           <div className="lg:col-span-5">{YieldCurvePanel}</div>
@@ -868,7 +869,7 @@ export function TradingTerminal() {
         </>}
 
         {tab === 'sentimen' && <>
-          <TerminalAiPanel scope="sentimen" title="Analisa Sentimen AI" subtitle="Claude baca risk-on/off, COT & berita → aliran sentimen ke emas." snapshot={snapshot}
+          <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
             suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
           <div className="lg:col-span-7">{CotPanel}</div>
           <div className="lg:col-span-5 grid grid-rows-2 gap-2.5">{RiskSentimentPanel}{GoldSilverPanel}</div>

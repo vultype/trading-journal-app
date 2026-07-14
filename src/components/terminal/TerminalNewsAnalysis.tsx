@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import {
-  Newspaper, Loader2, RefreshCw, Wand2, Plus, X, TrendingUp, TrendingDown, MinusCircle,
-  Target, ShieldAlert, Landmark, Activity, Layers, ArrowUpCircle, ArrowDownCircle, Gauge, ListChecks,
+  Newspaper, Loader2, RefreshCw, Wand2, Plus, X,
+  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks,
 } from 'lucide-react'
+import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, dirBg, type Dir } from './aiViz'
 
 // Preset komponen umum tiap rilis (auto-isi label saat pilih event).
 const PRESETS: Record<string, string[]> = {
@@ -24,7 +25,6 @@ const EVENTS = Object.keys(PRESETS)
 
 type Row = { label: string; forecast: string; previous: string; actual: string }
 const emptyRow = (label = ''): Row => ({ label, forecast: '', previous: '', actual: '' })
-type Dir = 'bullish' | 'bearish' | 'netral'
 type Analysis = {
   event: string; biasArah: 'Bullish' | 'Bearish' | 'Netral'; biasBullishPersen: number; confidence: number
   headline: string; ringkasan: string
@@ -36,19 +36,6 @@ type Analysis = {
   teknikal: { nama: string; nilai: string; arah: Dir; catatan: string }[]
   levelKunci: { resistance: string[]; support: string[] }
   risiko: string[]; fetchedAt: string
-}
-
-const dirColor = (a: Dir | string) => a === 'bullish' ? 'text-emerald-400' : a === 'bearish' ? 'text-red-400' : 'text-white/50'
-const dirBg = (a: Dir | string) => a === 'bullish' ? 'bg-emerald-500/12 border-emerald-500/25' : a === 'bearish' ? 'bg-red-500/12 border-red-500/25' : 'bg-white/[0.03] border-white/10'
-const DirIcon = ({ a, size = 12 }: { a: Dir | string; size?: number }) => a === 'bullish' ? <TrendingUp size={size} className="text-emerald-400" /> : a === 'bearish' ? <TrendingDown size={size} className="text-red-400" /> : <MinusCircle size={size} className="text-white/40" />
-
-function Section({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2"><Icon size={12} /> {title}</p>
-      {children}
-    </div>
-  )
 }
 
 export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
@@ -148,22 +135,6 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
   )
 }
 
-function BiasBar({ bullishPct }: { bullishPct: number }) {
-  return (
-    <div>
-      <div className="relative h-7 rounded-lg overflow-hidden bg-red-500/20 flex">
-        <div className="h-full bg-gradient-to-r from-emerald-500/70 to-emerald-400/70 flex items-center justify-start pl-2 transition-all" style={{ width: `${bullishPct}%` }}>
-          {bullishPct >= 22 && <span className="text-[11px] font-black text-white">▲ {bullishPct}%</span>}
-        </div>
-        <div className="flex-1 flex items-center justify-end pr-2">
-          {100 - bullishPct >= 22 && <span className="text-[11px] font-black text-red-300">{100 - bullishPct}% ▼</span>}
-        </div>
-      </div>
-      <div className="flex justify-between text-[9px] font-semibold mt-1"><span className="text-emerald-400/80">BULLISH (emas naik)</span><span className="text-red-400/80">BEARISH (emas turun)</span></div>
-    </div>
-  )
-}
-
 function Result({ a }: { a: Analysis }) {
   const aksiStyle = a.rekomendasiPreNews.aksi === 'LONG' ? 'bg-emerald-500 text-black' : a.rekomendasiPreNews.aksi === 'SHORT' ? 'bg-red-500 text-white' : 'bg-white/15 text-white'
   const senti = a.sentimenBerita.skor
@@ -231,16 +202,7 @@ function Result({ a }: { a: Analysis }) {
       {/* Sentimen berita: mendukung vs menentang */}
       <Section icon={Newspaper} title={`Sentimen Berita (skor ${senti >= 0 ? '+' : ''}${senti})`}>
         {a.sentimenBerita.ringkasan && <p className="text-[11px] text-white/55 leading-snug mb-2">{a.sentimenBerita.ringkasan}</p>}
-        <div className="grid sm:grid-cols-2 gap-2">
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-2.5">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 mb-1.5"><ArrowUpCircle size={12} /> Mendukung Emas Naik</p>
-            {a.sentimenBerita.mendukung.length ? <ul className="space-y-1">{a.sentimenBerita.mendukung.map((h, i) => <li key={i} className="text-[10px] text-white/70 leading-snug flex gap-1.5"><span className="text-emerald-400/70 mt-0.5">+</span>{h}</li>)}</ul> : <p className="text-[10px] text-white/30">—</p>}
-          </div>
-          <div className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-2.5">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold text-red-400 mb-1.5"><ArrowDownCircle size={12} /> Menekan Emas</p>
-            {a.sentimenBerita.menentang.length ? <ul className="space-y-1">{a.sentimenBerita.menentang.map((h, i) => <li key={i} className="text-[10px] text-white/70 leading-snug flex gap-1.5"><span className="text-red-400/70 mt-0.5">−</span>{h}</li>)}</ul> : <p className="text-[10px] text-white/30">—</p>}
-          </div>
-        </div>
+        <NewsSentimentColumns mendukung={a.sentimenBerita.mendukung} menentang={a.sentimenBerita.menentang} />
       </Section>
 
       {/* Makro & Teknikal */}
