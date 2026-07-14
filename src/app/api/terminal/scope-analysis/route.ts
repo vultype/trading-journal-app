@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { fetchHeadlineLines } from '@/lib/news'
 
 // Analisa AI terstruktur per-menu (makro / sentimen) yang FOKUS ke DAMPAK ke XAU/USD.
 // Output JSON untuk ditampilkan interaktif: bias % bullish/bearish emas, tiap faktor +
-// arah dampaknya ke emas, dan (khusus sentimen) sentimen berita mendukung/menentang.
-
-const RSS = 'https://news.google.com/rss/search?q=gold%20price%20OR%20XAUUSD%20OR%20%22federal%20reserve%22%20OR%20%22US%20dollar%22%20OR%20inflation%20when:2d&hl=en-US&gl=US&ceid=US:en'
+// arah dampaknya ke emas, dan (khusus sentimen) sentimen berita + narasi/tema pasar.
 
 function extractJson(raw: string): string {
   const start = raw.indexOf('{'); if (start < 0) throw new Error('tidak ada JSON')
@@ -16,13 +15,6 @@ function extractJson(raw: string): string {
     else { if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}') { depth--; if (depth === 0) return raw.slice(start, i + 1) } }
   }
   throw new Error('JSON tidak lengkap')
-}
-async function headlines(): Promise<string[]> {
-  try {
-    const xml = await (await fetch(RSS, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' })).text()
-    const items = xml.split('<item>').slice(1, 13)
-    return items.map(it => { const m = it.match(/<title>([\s\S]*?)<\/title>/); if (!m) return ''; return m[1].replace('<![CDATA[', '').replace(']]>', '').trim() }).filter(Boolean)
-  } catch { return [] }
 }
 const dir3 = (v: unknown) => (['bullish', 'bearish', 'netral'].includes(String(v)) ? v : 'netral') as 'bullish' | 'bearish' | 'netral'
 const strArr = (v: unknown, n = 5): string[] => Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, n) : []
@@ -39,7 +31,7 @@ export async function POST(req: Request) {
     const { scope, snapshot } = await req.json()
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
     const focus = FOCUS[scope] ?? FOCUS.makro
-    const news = scope === 'sentimen' ? await headlines() : []
+    const news = scope === 'sentimen' ? await fetchHeadlineLines() : []
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     let dataBlock = `SNAPSHOT TERMINAL XAU/USD (real-time):\n${JSON.stringify(snapshot, null, 1)}`
@@ -47,7 +39,7 @@ export async function POST(req: Request) {
 
     const msg = await anthropic.messages.create({
       model: 'claude-opus-4-8',
-      max_tokens: 2400,
+      max_tokens: 3000,
       system: `Kamu kepala analis XAU/USD. ${focus}
 
 Prinsip: rujuk angka nyata dari snapshot; setiap faktor jelaskan arah dampaknya KE EMAS (bullish=emas naik). Bedakan data vs asumsi. Bahasa Indonesia, mudah dipahami pemula. Fokus utama: DAMPAK BERSIH ke XAU/USD.
@@ -61,12 +53,13 @@ Balas HANYA JSON valid (tanpa teks/fence), bentuk persis:
  "dampakXauusd":"<2-3 kalimat: kenapa net-nya bullish/bearish untuk emas, gabungan semua faktor>",
  "faktor":[{"nama":"<parameter>","nilai":"<angka/kondisi dari snapshot>","arah":"bullish|bearish|netral","bobot":"Tinggi|Sedang|Rendah","catatan":"<dampak ringkas ke emas>"}],
  "sentimenBerita":{"skor":<-100..100>,"ringkasan":"<1-2 kalimat>","mendukung":["<headline/faktor yang MENDUKUNG emas naik>"],"menentang":["<headline/faktor yang MENEKAN emas>"]},
+ "narasiPasar":{"tema":"<judul singkat NARASI/TEMA dominan yang sedang dimainkan pasar untuk emas, mis. 'Disinflasi & Taruhan Pemangkasan Fed' atau 'Safe-Haven Geopolitik'>","penjelasan":"<2-3 kalimat: cerita apa yang sedang di-price pasar sekarang dari berita & data, dan bagaimana itu menggerakkan emas>","arah":"bullish|bearish|netral","temaLain":["<tema sekunder yang juga sedang bergerak, 1-3 item>"]},
  "kesimpulan":"<kesimpulan + 1 aksi konkret>",
  "watch":["<yang perlu dipantau>"],
  "risiko":["<risiko utama>"]
 }
 
-faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerita WAJIB diisi (mendukung & menentang 1-4 item).' : 'sentimenBerita boleh dikosongkan (mendukung/menentang array kosong) untuk scope makro.'} watch 2-3, risiko 2-3. Semua berbasis data yang diberikan, jangan mengarang angka.`,
+faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerita WAJIB diisi (mendukung & menentang 1-4 item). narasiPasar WAJIB diisi: identifikasi TEMA/NARASI dominan yang sedang di-price pasar dari headline berita + data (apa "cerita" utama yang menggerakkan emas saat ini) + tema sekunder.' : 'sentimenBerita & narasiPasar boleh dikosongkan (array/string kosong) untuk scope makro.'} watch 2-3, risiko 2-3. Semua berbasis data yang diberikan, jangan mengarang angka.`,
       messages: [{ role: 'user', content: dataBlock }],
     })
 
@@ -85,6 +78,12 @@ faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerit
         ringkasan: String(p.sentimenBerita?.ringkasan ?? ''),
         mendukung: strArr(p.sentimenBerita?.mendukung, 4),
         menentang: strArr(p.sentimenBerita?.menentang, 4),
+      },
+      narasiPasar: {
+        tema: String(p.narasiPasar?.tema ?? ''),
+        penjelasan: String(p.narasiPasar?.penjelasan ?? ''),
+        arah: dir3(p.narasiPasar?.arah),
+        temaLain: strArr(p.narasiPasar?.temaLain, 3),
       },
       kesimpulan: String(p.kesimpulan ?? ''),
       watch: strArr(p.watch, 3),

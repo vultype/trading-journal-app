@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { fetchHeadlineLines } from '@/lib/news'
 
 // Analisa dampak berita/rilis data ke XAU/USD — output TERSTRUKTUR (JSON) untuk
 // ditampilkan interaktif: bias %, rekomendasi pre-news, skenario, sentimen berita
 // (headline mendukung vs menentang), ringkasan makro & teknikal. Menggabungkan
-// snapshot terminal lengkap + komponen rilis + headline berita real.
-
-const RSS = 'https://news.google.com/rss/search?q=gold%20price%20OR%20XAUUSD%20OR%20%22federal%20reserve%22%20OR%20%22US%20dollar%22%20OR%20inflation%20when:2d&hl=en-US&gl=US&ceid=US:en'
+// snapshot terminal + komponen rilis + headline berita multi-sumber.
 
 function extractJson(raw: string): string {
   const start = raw.indexOf('{'); if (start < 0) throw new Error('tidak ada JSON')
@@ -17,14 +16,6 @@ function extractJson(raw: string): string {
     else { if (ch === '"') inStr = true; else if (ch === '{') depth++; else if (ch === '}') { depth--; if (depth === 0) return raw.slice(start, i + 1) } }
   }
   throw new Error('JSON tidak lengkap')
-}
-
-async function headlines(): Promise<string[]> {
-  try {
-    const xml = await (await fetch(RSS, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' })).text()
-    const items = xml.split('<item>').slice(1, 13)
-    return items.map(it => { const m = it.match(/<title>([\s\S]*?)<\/title>/); if (!m) return ''; return m[1].replace('<![CDATA[', '').replace(']]>', '').trim() }).filter(Boolean)
-  } catch { return [] }
 }
 
 const dir3 = (v: unknown) => (['bullish', 'bearish', 'netral'].includes(String(v)) ? v : 'netral') as 'bullish' | 'bearish' | 'netral'
@@ -38,7 +29,7 @@ export async function POST(req: Request) {
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
     if (!event || !String(event).trim()) return NextResponse.json({ error: 'nama event kosong' }, { status: 400 })
 
-    const news = await headlines()
+    const news = await fetchHeadlineLines()
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     type Row = { label?: string; forecast?: string; previous?: string; actual?: string }

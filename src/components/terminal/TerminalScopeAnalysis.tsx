@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Brain, Loader2, RefreshCw, Send, Wand2, Gauge, Target, Eye, ShieldAlert, ListChecks, Newspaper, Coins, Sparkles } from 'lucide-react'
+import { Brain, Loader2, RefreshCw, Send, Wand2, Gauge, Target, Eye, ShieldAlert, ListChecks, Newspaper, Coins, Sparkles, Clapperboard } from 'lucide-react'
 import { Markdown } from '@/components/ui/markdown'
-import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, FaktorRow, type Dir } from './aiViz'
+import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, dirBg, FaktorRow, type Dir } from './aiViz'
 
 export type ScopeKind = 'makro' | 'sentimen'
 type Analysis = {
@@ -11,6 +11,7 @@ type Analysis = {
   headline: string; dampakXauusd: string
   faktor: { nama: string; nilai: string; arah: Dir; bobot: string; catatan: string }[]
   sentimenBerita: { skor: number; ringkasan: string; mendukung: string[]; menentang: string[] }
+  narasiPasar: { tema: string; penjelasan: string; arah: Dir; temaLain: string[] }
   kesimpulan: string; watch: string[]; risiko: string[]; fetchedAt: string
 }
 
@@ -113,6 +114,24 @@ function StructResult({ a, scope }: { a: Analysis; scope: ScopeKind }) {
         {a.headline && <p className="text-[13px] font-bold text-white/90 leading-snug">{a.headline}</p>}
         {a.dampakXauusd && <p className="text-[11px] text-white/60 leading-snug mt-1">{a.dampakXauusd}</p>}
       </div>
+
+      {/* Tema / Narasi Pasar (khusus sentimen) — cerita yang sedang dimainkan pasar */}
+      {scope === 'sentimen' && a.narasiPasar.tema && (
+        <div className={`rounded-xl border p-3 ${dirBg(a.narasiPasar.arah)}`}>
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1.5"><Clapperboard size={12} /> Tema / Narasi yang Sedang Dimainkan</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm font-black text-white/90">🎬 {a.narasiPasar.tema}</span>
+            <span className={`flex items-center gap-1 text-[10px] font-bold ${dirColor(a.narasiPasar.arah)}`}><DirIcon a={a.narasiPasar.arah} size={11} />{a.narasiPasar.arah}</span>
+          </div>
+          {a.narasiPasar.penjelasan && <p className="text-[11px] text-white/65 leading-snug">{a.narasiPasar.penjelasan}</p>}
+          {a.narasiPasar.temaLain.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              <span className="text-[9px] text-white/35 uppercase tracking-wider">Tema lain:</span>
+              {a.narasiPasar.temaLain.map((t, i) => <span key={i} className="text-[9px] rounded-full border border-white/15 px-2 py-0.5 text-white/55">{t}</span>)}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Faktor + dampak per parameter */}
       {a.faktor.length > 0 && (

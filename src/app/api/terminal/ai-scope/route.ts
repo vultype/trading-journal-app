@@ -1,19 +1,10 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { fetchHeadlineLines } from '@/lib/news'
 
 // Analisa AI terminal per-menu (teknikal / makro / sentimen) + analisa dampak berita.
 // Client kirim snapshot terminal lengkap + scope + prompt opsional. Balas Markdown.
-// Untuk scope 'news', server juga menarik headline berita real (Google News RSS).
-
-const RSS = 'https://news.google.com/rss/search?q=gold%20price%20OR%20XAUUSD%20OR%20%22federal%20reserve%22%20OR%20%22US%20dollar%22%20OR%20inflation%20when:2d&hl=en-US&gl=US&ceid=US:en'
-
-async function headlines(): Promise<string[]> {
-  try {
-    const xml = await (await fetch(RSS, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' })).text()
-    const items = xml.split('<item>').slice(1, 11)
-    return items.map(it => { const m = it.match(/<title>([\s\S]*?)<\/title>/); if (!m) return ''; return m[1].replace('<![CDATA[', '').replace(']]>', '').trim() }).filter(Boolean)
-  } catch { return [] }
-}
+// Untuk scope 'news'/'sentimen', server juga menarik headline berita multi-sumber.
 
 const FOCUS: Record<string, string> = {
   teknikal: `FOKUS: ANALISA TEKNIKAL murni. Bahas price action, EMA9/EMA21 & VWAP, RSI/MACD/Stochastic/Bollinger (%B & squeeze), ADX & arah tren (+DI/-DI), struktur pasar (HH/HL), konfluensi antar timeframe (M5/M15/H1), serta pivot & level kunci. Simpulkan bias arah + zona entry, stop, dan target yang logis dari level yang ada. Abaikan makro kecuali relevan.`,
@@ -42,7 +33,7 @@ export async function POST(req: Request) {
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
     const focus = FOCUS[scope] ?? FOCUS.teknikal
 
-    const news = scope === 'news' ? await headlines() : []
+    const news = (scope === 'news' || scope === 'sentimen') ? await fetchHeadlineLines() : []
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     let dataBlock = `SNAPSHOT TERMINAL XAU/USD (real-time):\n${JSON.stringify(snapshot, null, 1)}`

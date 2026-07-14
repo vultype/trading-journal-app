@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { fetchHeadlineLines } from '@/lib/news'
 
 // Analisa AI MENYELURUH: gabungkan seluruh data terminal (teknikal, makro, COT, BTC)
-// + headline berita real → Claude susun analisa lengkap & mudah dibaca. On-demand (POST).
-
-const RSS = 'https://news.google.com/rss/search?q=gold%20price%20OR%20XAUUSD%20OR%20%22federal%20reserve%22%20OR%20%22US%20dollar%22%20OR%20inflation%20when:2d&hl=en-US&gl=US&ceid=US:en'
+// + headline berita multi-sumber → Claude susun analisa lengkap. On-demand (POST).
 
 function extractJson(raw: string): string {
   const start = raw.indexOf('{'); if (start < 0) throw new Error('tidak ada JSON')
@@ -17,14 +16,6 @@ function extractJson(raw: string): string {
   throw new Error('JSON tidak lengkap')
 }
 
-async function headlines(): Promise<string[]> {
-  try {
-    const xml = await (await fetch(RSS, { headers: { 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' })).text()
-    const items = xml.split('<item>').slice(1, 11)
-    return items.map(it => { const m = it.match(/<title>([\s\S]*?)<\/title>/); if (!m) return ''; return m[1].replace('<![CDATA[', '').replace(']]>', '').trim() }).filter(Boolean)
-  } catch { return [] }
-}
-
 const arr = (v: unknown, n = 4): string[] => Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, n) : []
 
 export async function POST(req: Request) {
@@ -32,7 +23,7 @@ export async function POST(req: Request) {
   try {
     const snap = await req.json()
     const userPrompt = typeof snap.userPrompt === 'string' ? snap.userPrompt.trim() : ''
-    const news = await headlines()
+    const news = await fetchHeadlineLines()
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const dataBlock = `DATA TERMINAL XAU/USD (real-time):
