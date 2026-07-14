@@ -9,6 +9,7 @@ import { EquityCurve } from '@/components/charts/EquityCurve'
 import { PnLCalendar } from '@/components/charts/PnLCalendar'
 import { HourAnalysis } from '@/components/charts/HourAnalysis'
 import { TradeTimeScatter, DaySummaryTable, InsightsCard } from '@/components/charts/AnalyticsWidgets'
+import { JournalAiAnalysis } from '@/components/journal/JournalAiAnalysis'
 import { GroupComparison } from '@/components/charts/GroupComparison'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -21,7 +22,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   PieChart, Pie, Cell, Legend, ReferenceLine,
 } from 'recharts'
-import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X, CalendarDays, Clock, LineChart, Coins, LayoutGrid } from 'lucide-react'
+import { TrendingUp, TrendingDown, Flame, AlertTriangle, Target, Brain, Award, XCircle, BookOpen, Pencil, Trash2, Save, X, CalendarDays, Clock, LineChart, Coins, LayoutGrid, Sparkles } from 'lucide-react'
 import type { Trade } from '@/types'
 
 const NOTE_SEP = '--- Analisa by Claude ---'
@@ -181,7 +182,7 @@ function MetricRow({ icon: Icon, label, value, sub, tone }: MetricItem) {
 }
 
 export default function AnalisisPage() {
-  const { trades, transfers, deleteTrade, journalNotes, saveJournal, deleteJournal } = useStore()
+  const { trades, transfers, deleteTrade, journalNotes, saveJournal, deleteJournal, isAdmin, settings } = useStore()
   const fmt   = useCurrency()
   // Overtrades excluded from all analytics — only affect equity curve
   const normalTrades = useMemo(() => trades.filter(t => !t.is_overtrade), [trades])
@@ -285,6 +286,7 @@ export default function AnalisisPage() {
               ['strategi', Target, 'Strategi'],
               ['pair', Coins, 'Pair'],
               ['psikologi', Brain, 'Psikologi'],
+              ...(isAdmin ? [['ai', Sparkles, 'Analisa AI'] as const] : []),
             ] as const).map(([v, Icon, label]) => (
               <TabsTrigger key={v} value={v}
                 className="flex-none md:flex-1 gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-md">
@@ -811,6 +813,13 @@ export default function AnalisisPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── ANALISA AI (admin-only) ── */}
+        {isAdmin && (
+          <TabsContent value="ai" className="mt-4">
+            <JournalAiAnalysis trades={trades} stats={stats} fmt={fmt} currency={settings.currency} />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Calendar day — Jurnal Harian popup */}
