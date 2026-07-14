@@ -346,7 +346,7 @@ function Inner({ t, onClose, onDelete, fmt }: {
       entry_time:       ef.entry_time || undefined,
       direction:        ef.direction,
       result:           ef.result,
-      pnl:              ef.result === 'loss' || ef.is_overtrade ? -Math.abs(pnlVal) : Math.abs(pnlVal),
+      pnl:              ef.result === 'loss' ? -Math.abs(pnlVal) : Math.abs(pnlVal),
       strategy:         ef.strategy || undefined,
       market_structure: ef.market_structure || undefined,
       followed_plan:    ef.followed_plan === 'yes' ? true : ef.followed_plan === 'no' ? false : undefined,

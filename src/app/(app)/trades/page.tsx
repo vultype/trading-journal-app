@@ -197,7 +197,7 @@ export default function TradesPage() {
       pair:             form.pair,
       direction:        form.direction,
       result:           form.result,
-      pnl:              form.result === 'loss' || form.is_overtrade ? -Math.abs(pnlVal) : Math.abs(pnlVal),
+      pnl:              form.result === 'loss' ? -Math.abs(pnlVal) : Math.abs(pnlVal),
       strategy:         form.strategy || undefined,
       market_structure: form.market_structure || undefined,
       followed_plan:    form.followed_plan === 'yes' ? true : form.followed_plan === 'no' ? false : undefined,
