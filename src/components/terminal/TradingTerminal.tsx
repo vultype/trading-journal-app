@@ -17,6 +17,8 @@ import {
   Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins,
 } from 'lucide-react'
 import { AiChart, type ChartLevels } from './AiChart'
+import { TerminalAiPanel } from './TerminalAiPanel'
+import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
 import { macdCalc, bollinger, stochastic, marketStructure, momentumScore, type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 
 type TF = 'M5' | 'M15' | 'H1'
@@ -389,12 +391,13 @@ function MiniMeter({ value, leftLabel, rightLabel, invert }: { value: number; le
 }
 
 // ─────────────────────────── TAB ───────────────────────────
-type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'sentimen' | 'panduan'
+type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'sentimen' | 'berita' | 'panduan'
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard },
   { id: 'teknikal', label: 'Teknikal', icon: Activity },
   { id: 'makro', label: 'Makro', icon: Landmark },
   { id: 'sentimen', label: 'Sentimen', icon: Users },
+  { id: 'berita', label: 'Berita AI', icon: Newspaper },
   { id: 'panduan', label: 'Panduan', icon: BookOpen },
 ]
 
@@ -844,6 +847,8 @@ export function TradingTerminal() {
         </>}
 
         {tab === 'teknikal' && <>
+          <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Claude baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
+            suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
           <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
           <div className="lg:col-span-8">{IndicatorMatrix}</div>
@@ -853,6 +858,8 @@ export function TradingTerminal() {
         </>}
 
         {tab === 'makro' && <>
+          <TerminalAiPanel scope="makro" title="Analisa Makro AI" subtitle="Claude baca dolar, yield, inflasi & kebijakan Fed → implikasi ke emas." snapshot={snapshot}
+            suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
           {CrossPanel}
           <div className="lg:col-span-5">{YieldCurvePanel}</div>
           <div className="lg:col-span-7">{RiskSentimentPanel}</div>
@@ -861,11 +868,15 @@ export function TradingTerminal() {
         </>}
 
         {tab === 'sentimen' && <>
+          <TerminalAiPanel scope="sentimen" title="Analisa Sentimen AI" subtitle="Claude baca risk-on/off, COT & berita → aliran sentimen ke emas." snapshot={snapshot}
+            suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
           <div className="lg:col-span-7">{CotPanel}</div>
           <div className="lg:col-span-5 grid grid-rows-2 gap-2.5">{RiskSentimentPanel}{GoldSilverPanel}</div>
           <div className="lg:col-span-7">{NewsPanel}</div>
           <div className="lg:col-span-5">{BiasPanel}</div>
         </>}
+
+        {tab === 'berita' && <TerminalNewsAnalysis snapshot={snapshot} />}
 
         {tab === 'panduan' && <div className="lg:col-span-12"><PanduanContent /></div>}
       </div>
