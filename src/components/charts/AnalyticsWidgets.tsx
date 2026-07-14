@@ -195,11 +195,16 @@ export function InsightsCard({ trades, stats, fmt, variant = 'default' }: { trad
       if (worst[1] < 0 && stratEntries.length > 1) out.push({ icon: Target, color: 'text-red-400', text: `Strategi "${worst[0]}" masih minus (${fmt(worst[1])}) — perlu dievaluasi.` })
     }
 
-    // Overtrade impact
+    // Overtrade impact — framing ikut tanda P&L asli, jangan asumsikan selalu rugi
     const overtrades = trades.filter(t => t.is_overtrade)
     if (overtrades.length) {
       const otPnl = overtrades.reduce((s, t) => s + t.pnl, 0)
-      out.push({ icon: AlertTriangle, color: 'text-orange-400', text: `${overtrades.length} overtrade menggerus equity sebesar ${fmt(otPnl)}. Kurangi trading emosional.` })
+      const otText = otPnl < 0
+        ? `${overtrades.length} overtrade menggerus equity sebesar ${fmt(otPnl)}. Kurangi trading emosional.`
+        : otPnl > 0
+          ? `${overtrades.length} overtrade kebetulan profit ${fmt(otPnl)} — tapi tetap di luar rencana. Disiplin plan lebih penting daripada hasil sesaat.`
+          : `${overtrades.length} overtrade tercatat (impas). Evaluasi kenapa keluar dari rencana.`
+      out.push({ icon: AlertTriangle, color: 'text-orange-400', text: otText })
     }
 
     // Streaks
