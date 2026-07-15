@@ -10,7 +10,9 @@ export function TradingViewChart({
   interval = '15',
   chartStyle = '1',
   height = 340,
-}: { symbol?: string; interval?: string; chartStyle?: string; height?: number | string }) {
+  minimal = false,
+}: { symbol?: string; interval?: string; chartStyle?: string; height?: number | string; minimal?: boolean }) {
+  // minimal = tampilan clean untuk komparasi: tanpa toolbar & tanpa indikator (studies kosong).
   const params = new URLSearchParams({
     symbol,
     interval,
@@ -19,9 +21,10 @@ export function TradingViewChart({
     timezone: 'Etc/UTC',
     locale: 'id',
     toolbarbg: '060a09',
-    hidesidetoolbar: '0',
-    hidetoptoolbar: '0',
-    withdateranges: '1',
+    hidesidetoolbar: minimal ? '1' : '0',
+    hidetoptoolbar: minimal ? '1' : '0',
+    hidelegend: minimal ? '1' : '0',
+    withdateranges: minimal ? '0' : '1',
     allow_symbol_change: '0',
     saveimage: '0',
     studies: '[]',

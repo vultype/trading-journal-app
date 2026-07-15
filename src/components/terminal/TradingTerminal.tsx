@@ -355,31 +355,42 @@ function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }
   )
 }
 
-// Chart XAU/USD via TradingView — 2 gaya berdampingan: candlestick + line, timeframe berbagi.
+// Chart komparasi via TradingView — 4 line chart clean (tanpa indikator), timeframe berbagi.
 const TV_INTERVALS: { label: string; value: string }[] = [
   { label: 'M5', value: '5' }, { label: 'M15', value: '15' }, { label: 'H1', value: '60' }, { label: 'H4', value: '240' }, { label: 'D1', value: 'D' },
+]
+// 3 penggerak makro emas — semua korelasi NEGATIF ke XAU/USD (naik → emas cenderung turun).
+const CMP_CHARTS: { symbol: string; title: string; hint: string }[] = [
+  { symbol: 'TVC:DXY', title: 'DXY · Indeks Dolar', hint: 'Dolar naik → emas turun' },
+  { symbol: 'TVC:US02Y', title: 'US02Y · Yield 2 Thn', hint: 'Yield naik → emas turun' },
+  { symbol: 'TVC:US10Y', title: 'US10Y · Yield 10 Thn', hint: 'Yield naik → emas turun' },
 ]
 function ChartPanel({ onExpand, hasAiLevels, className = 'lg:col-span-8' }: { onExpand: () => void; hasAiLevels: boolean; className?: string }) {
   const [interval, setIntervalTf] = useState('15')
   return (
-    <Panel title="Chart XAU/USD · TradingView" icon={Activity} className={className} info="Dua chart resmi TradingView (OANDA:XAU/USD) berdampingan: Candlestick untuk baca pola & level, Line untuk lihat arah tren bersih. Timeframe dipilih sekali (M5-D1) untuk kedua chart."
+    <Panel title="Chart Komparasi · TradingView" icon={Activity} className={className} info="4 line chart untuk komparasi: XAU/USD (utama) vs DXY, US02Y, US10Y. Emas biasanya bergerak BERLAWANAN dengan dolar & yield — bandingkan arah keduanya di timeframe yang sama. Semua tanpa indikator agar bersih."
       right={<button onClick={onExpand} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/80"><Maximize2 size={11} /> Perbesar</button>}>
       <div className="flex items-center gap-1 mb-2 shrink-0">
         {TV_INTERVALS.map(iv => (
           <button key={iv.value} onClick={() => setIntervalTf(iv.value)} className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors ${interval === iv.value ? 'bg-primary/20 text-primary' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>{iv.label}</button>
         ))}
-        <span className="ml-auto text-[9px] text-white/30">TradingView · OANDA</span>
+        <span className="ml-auto text-[9px] text-white/30">TradingView · Line · tanpa indikator</span>
       </div>
       {hasAiLevels && <p className="text-[9px] text-primary/70 mb-1.5 shrink-0">Level entry/SL/TP dari Analisa AI ada di panel "Analisa AI — Ambil Keputusan".</p>}
-      <div className="grid lg:grid-cols-2 gap-2.5">
-        <div>
-          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5"><BarChart3 size={11} /> Candlestick</p>
-          <TradingViewChart interval={interval} chartStyle="1" height={340} />
-        </div>
-        <div>
-          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5"><Activity size={11} /> Line</p>
-          <TradingViewChart interval={interval} chartStyle="2" height={340} />
-        </div>
+      {/* XAU/USD utama */}
+      <div className="mb-2.5">
+        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary/80 mb-1.5"><Coins size={11} /> XAU/USD · Emas <span className="text-white/30 normal-case tracking-normal font-normal">— chart utama</span></p>
+        <TradingViewChart symbol="OANDA:XAUUSD" interval={interval} chartStyle="2" minimal height={300} />
+      </div>
+      {/* 3 penggerak makro untuk komparasi */}
+      <div className="grid sm:grid-cols-3 gap-2.5">
+        {CMP_CHARTS.map(c => (
+          <div key={c.symbol}>
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5"><Activity size={11} /> {c.title}</p>
+            <TradingViewChart symbol={c.symbol} interval={interval} chartStyle="2" minimal height={190} />
+            <p className="text-[9px] text-white/30 mt-1">{c.hint}</p>
+          </div>
+        ))}
       </div>
     </Panel>
   )
@@ -1015,7 +1026,7 @@ export function TradingTerminal() {
       {chartFull && (
         <div className="fixed inset-0 z-[60] bg-[#060a09] p-3 flex flex-col">
           <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD — {f2(feed.price)} · TradingView</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>
-          <div className="flex-1 min-h-0"><TradingViewChart height="100%" /></div>
+          <div className="flex-1 min-h-0"><TradingViewChart symbol="OANDA:XAUUSD" chartStyle="2" height="100%" /></div>
         </div>
       )}
 
