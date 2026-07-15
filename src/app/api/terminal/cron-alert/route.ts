@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { fetchCandles, fetchQuote } from '@/lib/twelvedata'
 import { fetchMacro, type MacroPoint } from '@/lib/fred'
-import { computeTF, riskOnScore, scores, confluence, regimeOf, adxLabel, type TF, type TFData, type CrossQuote } from '@/lib/terminal-signal'
+import { computeTF, riskOnScore, scores, confluence, regimeOf, adxLabel, usMarketOpen, type TF, type TFData, type CrossQuote } from '@/lib/terminal-signal'
 import { sendTelegram, telegramConfigured } from '@/lib/telegram'
-import { getAlertState, setAlertState, alertStateConfigured, type AlertState } from '@/lib/alert-state'
+import { getAlertState, setAlertState, alertStateConfigured, logPrediction, evaluateDuePredictions, type AlertState } from '@/lib/alert-state'
 
 // ─────────────────────────────────────────────────────────────────────────
 // CRON NOTIFIKASI TELEGRAM — dipanggil berkala (mis. cron-job.org tiap 5 menit).
@@ -94,7 +94,9 @@ export async function GET(req: Request) {
     const toCandles = (arr: { o: number; h: number; l: number; c: number; t: number }[]) => arr.map(c => ({ ...c, v: 1 }))
     const tf: Record<TF, TFData> = { M5: computeTF(toCandles(m5)), M15: computeTF(toCandles(m15)), H1: computeTF(toCandles(h1)) }
     const macro = macroArr.length ? Object.fromEntries(macroArr.map(p => [p.key, p])) : null
-    const riskOn = riskOnScore(cross)
+    const now = Date.now()
+    const usOpen = usMarketOpen(now)
+    const riskOn = riskOnScore(cross, usOpen)
     const sc = scores(tf, macro, null, riskOn)   // newsScore null → senti dari risk-on (sama dgn dashboard saat AI belum jalan)
     const conf = confluence(tf)
     const adx = tf.M15.adx
@@ -102,11 +104,20 @@ export async function GET(req: Request) {
     const regime = regimeOf({ bbSqueeze: tf.M15.boll.squeeze, adx, adxTrend: tf.M15.adxTrend, trendUp })
     const price = quote?.price ?? tf.M5.candles[tf.M5.candles.length - 1].c
 
+    // #7 guard pasar tutup: candle M5 terbaru lebih tua dari 15 menit → jangan kirim alert dari data mati
+    const lastCandleT = m5.length ? m5[m5.length - 1].t : 0
+    if (lastCandleT && now - lastCandleT > 15 * 60_000) {
+      return NextResponse.json({ ok: true, skipped: 'market_closed', ageMin: Math.round((now - lastCandleT) / 60_000) })
+    }
+
+    // #8 kalibrasi: catat kesimpulan sekarang + evaluasi kesimpulan lama (gagal-diam bila tabel belum ada)
+    await logPrediction({ dir: sc.label, confidence: sc.confidence, price, regime: regime.label })
+    await evaluateDuePredictions(price)
+
     const trending = regime.phase === 'trending'
     const layak = trending && sc.confidence >= CONF_MIN && conf.strength === 'kuat'
     const layakDir = conf.label === 'BULLISH' || conf.label === 'BEARISH' ? conf.label : null
     const tfWord = `M5 ${tf.M5.bias.label} · M15 ${tf.M15.bias.label} · H1 ${tf.H1.bias.label}`
-    const now = Date.now()
 
     // 3) State sebelumnya
     const prev: AlertState = (await getAlertState()) ?? {}

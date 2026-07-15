@@ -23,7 +23,7 @@ import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
 import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
 import { type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 import {
-  TFS, clamp, atrLast, adxLabel, computeTF, riskOnScore, scores, confluence, regimeOf,
+  TFS, clamp, atrLast, adxLabel, computeTF, riskOnScore, scores, confluence, regimeOf, usMarketOpen,
   type TF, type Dir, type Candle, type Bias, type ReversalDir, type Reversal, type TFData, type CrossQuote,
 } from '@/lib/terminal-signal'
 
@@ -41,7 +41,25 @@ function useClock() {
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
   return now
 }
-type LiveXau = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData>; htf: Partial<Record<HTF, TFData>> }
+type LiveXau = { price: number; changePct: number; dayHigh: number; dayLow: number; tf: Record<TF, TFData>; htf: Partial<Record<HTF, TFData>>; lastCandleT: number }
+// #2 High/Low harian & changePct diturunkan dari CANDLE sendiri (D1 berjalan + close kemarin),
+// bukan field quote Twelve Data yang untuk XAU/USD sering kosong/degenerate.
+function deriveDay(cRef: Partial<Record<TF | HTF, Candle[]>>, price: number): { dayHigh: number; dayLow: number; changePct: number } {
+  const d1 = cRef.D1
+  let dayHigh = price, dayLow = price, prevClose = 0
+  if (d1 && d1.length >= 2) {
+    const today = d1[d1.length - 1], prev = d1[d1.length - 2]
+    dayHigh = today.h; dayLow = today.l; prevClose = prev.c
+  } else if (cRef.M5 && cRef.M5.length) {
+    const dayMs = 86_400_000, anchor = Math.floor(Date.now() / dayMs) * dayMs
+    const today = cRef.M5.filter(c => c.t >= anchor)
+    if (today.length) { dayHigh = Math.max(...today.map(c => c.h)); dayLow = Math.min(...today.map(c => c.l)) }
+    prevClose = cRef.M5[0].c
+  }
+  dayHigh = Math.max(dayHigh, price); dayLow = Math.min(dayLow, price)
+  const changePct = prevClose ? ((price - prevClose) / prevClose) * 100 : 0
+  return { dayHigh, dayLow, changePct }
+}
 function useLiveXauFeed() {
   const [data, setData] = useState<LiveXau | null>(null)
   const [status, setStatus] = useState<'loading' | 'live' | 'error'>('loading')
@@ -53,7 +71,7 @@ function useLiveXauFeed() {
     let stopped = false
     async function pollQuote() {
       try { const j = await (await fetch('/api/terminal/quote')).json(); if (j.error) throw new Error(j.error); if (stopped) return
-        setData(prev => prev ? { ...prev, price: j.price, changePct: j.changePct, dayHigh: Math.max(j.dayHigh, j.price), dayLow: Math.min(j.dayLow, j.price) } : prev); setStatus('live'); setQuoteAt(Date.now())
+        setData(prev => prev ? { ...prev, price: j.price, ...deriveDay(candlesRef.current, j.price) } : prev); setStatus('live'); setQuoteAt(Date.now())
       } catch { if (!stopped) setStatus(candlesRef.current.M5 ? 'live' : 'error') }
     }
     function rebuild() {
@@ -62,11 +80,10 @@ function useLiveXauFeed() {
       const M5 = c.M5
       const htf: Partial<Record<HTF, TFData>> = {}
       for (const t of HTFS) if (c[t]) htf[t] = computeTF(c[t]!)
-      setData(prev => ({
-        price: prev?.price ?? M5[M5.length - 1].c, changePct: prev?.changePct ?? 0,
-        dayHigh: prev?.dayHigh ?? M5[M5.length - 1].c, dayLow: prev?.dayLow ?? M5[M5.length - 1].c,
-        tf: { M5: computeTF(M5), M15: computeTF(c.M15!), H1: computeTF(c.H1!) }, htf,
-      }))
+      setData(prev => {
+        const price = prev?.price ?? M5[M5.length - 1].c
+        return { price, ...deriveDay(c, price), tf: { M5: computeTF(M5), M15: computeTF(c.M15!), H1: computeTF(c.H1!) }, htf, lastCandleT: M5[M5.length - 1].t }
+      })
       setStatus('live')
     }
     async function pollCandles(tf: TF | HTF) {
@@ -144,6 +161,12 @@ function useNews() {
   const [updatedAt, setUpdatedAt] = useState<number | null>(null)
   useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/news')).json(); if (!s && Array.isArray(j)) { setData(j); setUpdatedAt(Date.now()) } } catch { } }; poll(); const id = setInterval(poll, 600_000); return () => { s = true; clearInterval(id) } }, [])
   return { data, updatedAt }
+}
+type Accuracy = { total: number; correct: number; pct: number | null; window: number; ready: boolean }
+function useAccuracy() {
+  const [acc, setAcc] = useState<Accuracy | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/accuracy?days=30')).json(); if (!s) setAcc(j) } catch { } }; poll(); const id = setInterval(poll, 1800_000); return () => { s = true; clearInterval(id) } }, [])
+  return acc
 }
 
 
@@ -495,6 +518,7 @@ export function TradingTerminal() {
   const { cot, updatedAt: cotAt } = useCot()
   const ai = useAiAnalysis()
   const { data: newsItems, updatedAt: newsAt } = useNews()
+  const accuracy = useAccuracy()
   const [tab, setTab] = useState<Tab>('ringkasan')
   const [chartFull, setChartFull] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
@@ -511,10 +535,14 @@ export function TradingTerminal() {
   )
 
   const feed = live.data, up = feed.changePct >= 0
-  const aiScore = ai.data ? (ai.data.verdict === 'Bullish' ? ai.data.confidence : ai.data.verdict === 'Bearish' ? -ai.data.confidence : 0) : null
-  // risk-on/off: >0 risk-on (cenderung bearish emas), <0 risk-off (cenderung bullish emas)
-  const riskOn = riskOnScore(cross)
-  const sc = scores(feed.tf, macro, aiScore, riskOn)
+  // #5 kesegaran pilar: bursa AS tutup → ekuitas beku, kecilkan bobotnya
+  const usOpen = usMarketOpen(now)
+  // #7 guard pasar tutup: candle M5 terbaru lebih tua dari ~15 menit = pasar tutup / data mati
+  const marketStale = feed.lastCandleT ? now - feed.lastCandleT > 15 * 60_000 : false
+  const staleAgeMin = feed.lastCandleT ? Math.round((now - feed.lastCandleT) / 60_000) : 0
+  // #6 putus feedback loop: verdict AI TIDAK diumpankan ke skor (dulu bikin AI konfirmasi diri sendiri)
+  const riskOn = riskOnScore(cross, usOpen)
+  const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null)
   const conf = confluence(feed.tf)
   const dir = sc.label
   const m5 = feed.tf.M5.candles
@@ -652,7 +680,7 @@ export function TradingTerminal() {
       <p className="text-[9px] uppercase tracking-wider text-white/35 mb-1">RSI per Timeframe</p>
       <div className="grid grid-cols-3 gap-1.5">{TFS.map(t => { const r = feed.tf[t].rsi; return (
         <div key={t} className="rounded-lg bg-white/[0.03] py-1.5 text-center"><p className="text-[8px] text-white/35">{t}</p><p className={`text-sm font-bold tabular-nums ${r > 70 ? 'text-red-400' : r < 30 ? 'text-emerald-400' : 'text-white/80'}`}>{r.toFixed(0)}</p><p className="text-[7px] text-white/30">{r > 70 ? 'jenuh beli' : r < 30 ? 'jenuh jual' : 'normal'}</p></div>) })}</div>
-      <div className="flex justify-between text-[10px] mt-2 pt-2 border-t border-white/5"><span className="text-white/45">Harga vs VWAP M15</span><span className={`font-bold ${feed.price > feed.tf.M15.vwap ? 'text-emerald-400' : 'text-red-400'}`}>{feed.price > feed.tf.M15.vwap ? 'di atas (+' : 'di bawah ('}{(feed.price - feed.tf.M15.vwap).toFixed(1)})</span></div>
+      <div className="flex justify-between text-[10px] mt-2 pt-2 border-t border-white/5"><span className="text-white/45" title="Rata-rata harga sejak awal sesi hari ini (anchored, bukan jendela sembarang)">Harga vs VWAP Sesi M15</span><span className={`font-bold ${feed.price > feed.tf.M15.vwap ? 'text-emerald-400' : 'text-red-400'}`}>{feed.price > feed.tf.M15.vwap ? 'di atas (+' : 'di bawah ('}{(feed.price - feed.tf.M15.vwap).toFixed(1)})</span></div>
     </Panel>
   )
   const ZonaRow = ({ z }: { z: typeof allZones[number] }) => (
@@ -814,6 +842,22 @@ export function TradingTerminal() {
             <span className="text-[10px] font-bold text-sky-400 shrink-0">Terjadwal</span>
           </div>
         </div>
+      </Panel>
+      <Panel title="Akurasi Kesimpulan (30 hari)" icon={Target} className="lg:col-span-12" info="Kalibrasi ke depan: tiap kesimpulan yang tercatat (via cron) dievaluasi 2 jam kemudian — apakah harga bergerak sesuai arah yang disimpulkan. Butuh cron aktif + tabel terminal_predictions; angka akurat terkumpul setelah beberapa hari/minggu.">
+        {accuracy?.ready && accuracy.total > 0 ? (
+          <div className="flex items-center gap-5">
+            <div className="text-center">
+              <p className={`text-4xl font-black tabular-nums ${(accuracy.pct ?? 0) >= 60 ? 'text-emerald-400' : (accuracy.pct ?? 0) >= 45 ? 'text-amber-400' : 'text-red-400'}`}>{accuracy.pct}%</p>
+              <p className="text-[10px] text-white/40 mt-0.5">arah benar</p>
+            </div>
+            <div className="flex-1">
+              <div className="h-2.5 rounded-full bg-white/5 overflow-hidden"><div className={`h-full rounded-full ${(accuracy.pct ?? 0) >= 60 ? 'bg-emerald-400' : (accuracy.pct ?? 0) >= 45 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${accuracy.pct ?? 0}%` }} /></div>
+              <p className="text-[11px] text-white/55 mt-2"><b className="text-white/85 tabular-nums">{accuracy.correct}</b> dari <b className="text-white/85 tabular-nums">{accuracy.total}</b> kesimpulan terarah benar dalam 2 jam (30 hari terakhir). Dipakai untuk menakar keandalan sinyal — makin banyak data, makin akurat angkanya.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 text-white/45 text-[11px] py-2"><Clock size={14} className="text-white/30" /> Mengumpulkan data kalibrasi{accuracy?.ready ? ' (belum ada kesimpulan yang dievaluasi)' : ' — aktifkan cron & tabel terminal_predictions'}. Angka akurasi muncul setelah beberapa jam berjalan.</div>
+        )}
       </Panel>
     </>
   )
@@ -1131,6 +1175,12 @@ export function TradingTerminal() {
           </header>
 
           <main className="p-2.5 pb-20 md:pb-6">
+            {marketStale && (
+              <div className="mb-2.5 flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
+                <WifiOff size={16} className="text-amber-400 shrink-0" />
+                <p className="text-[11px] text-amber-200/90 leading-snug"><b>Pasar kemungkinan tutup.</b> Candle terakhir {staleAgeMin >= 60 ? `${Math.floor(staleAgeMin / 60)} jam` : `${staleAgeMin} menit`} lalu — analisa di bawah dihitung dari data terakhir (biasanya penutupan Jumat), belum tentu mencerminkan kondisi saat pasar buka lagi.</p>
+              </div>
+            )}
             {tab === 'ringkasan' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
               {DecisionHero}
               {InsightStrip}

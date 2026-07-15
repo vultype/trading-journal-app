@@ -47,3 +47,50 @@ export async function setAlertState(state: AlertState): Promise<void> {
   const { error } = await c.from('terminal_alert_state').upsert({ id: ROW_ID, state, updated_at: new Date().toISOString() })
   if (error) throw new Error(`Supabase write: ${error.message}`)
 }
+
+// ─────────────────────────── #8 Kalibrasi ke depan (akurasi kesimpulan) ───────────────────────────
+// Simpan tiap kesimpulan, lalu setelah HORIZON jam bandingkan dengan harga saat itu.
+// Butuh 1 tabel (jalankan sekali di Supabase SQL editor):
+//   create table if not exists terminal_predictions (
+//     id uuid primary key default gen_random_uuid(),
+//     created_at timestamptz not null default now(),
+//     dir text not null, confidence int, price numeric not null, regime text,
+//     evaluated boolean not null default false, correct boolean, price_after numeric, evaluated_at timestamptz
+//   );
+// Semua operasi GAGAL-DIAM (tabel belum ada → skip), tidak pernah menggagalkan cron.
+const HORIZON_MS = 2 * 3600_000  // evaluasi kesimpulan setelah 2 jam
+const MOVE_MIN = 0.5             // gerak minimal (poin) supaya dihitung benar/salah, bukan noise
+
+export async function logPrediction(p: { dir: string; confidence: number; price: number; regime: string }): Promise<void> {
+  const c = client(); if (!c) return
+  try { await c.from('terminal_predictions').insert({ dir: p.dir, confidence: p.confidence, price: p.price, regime: p.regime }) } catch { /* tabel belum ada → skip */ }
+}
+
+export async function evaluateDuePredictions(priceNow: number): Promise<number> {
+  const c = client(); if (!c) return 0
+  try {
+    const cutoff = new Date(Date.now() - HORIZON_MS).toISOString()
+    const { data, error } = await c.from('terminal_predictions').select('id,dir,price').eq('evaluated', false).lte('created_at', cutoff).limit(200)
+    if (error || !data) return 0
+    let done = 0
+    for (const row of data as { id: string; dir: string; price: number }[]) {
+      const diff = priceNow - row.price
+      const correct = row.dir === 'BULLISH' ? diff > MOVE_MIN : row.dir === 'BEARISH' ? diff < -MOVE_MIN : null
+      await c.from('terminal_predictions').update({ evaluated: true, correct, price_after: priceNow, evaluated_at: new Date().toISOString() }).eq('id', row.id)
+      done++
+    }
+    return done
+  } catch { return 0 }
+}
+
+export async function getAccuracy(days = 30): Promise<{ total: number; correct: number; pct: number | null; window: number } | null> {
+  const c = client(); if (!c) return null
+  try {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString()
+    const { data, error } = await c.from('terminal_predictions').select('correct').eq('evaluated', true).not('correct', 'is', null).gte('created_at', since).limit(5000)
+    if (error || !data) return null
+    const total = data.length
+    const correct = (data as { correct: boolean }[]).filter(r => r.correct).length
+    return { total, correct, pct: total ? Math.round((correct / total) * 100) : null, window: days }
+  } catch { return null }
+}

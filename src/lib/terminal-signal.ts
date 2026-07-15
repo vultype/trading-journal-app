@@ -25,17 +25,29 @@ export function emaArr(vals: number[], period: number): number[] {
   const k = 2 / (period + 1); const out: number[] = []; let prev = vals[0] ?? 0
   vals.forEach((v, i) => { prev = i ? v * k + prev * (1 - k) : v; out.push(prev) }); return out
 }
+// RSI Wilder (smoothing) — cocok dengan RSI di TradingView. Full-series smoothing.
 export function rsiLast(vals: number[], period = 14): number {
   if (vals.length < period + 1) return 50
   let gain = 0, loss = 0
-  for (let i = vals.length - period; i < vals.length; i++) { const d = vals[i] - vals[i - 1]; if (d >= 0) gain += d; else loss -= d }
-  const rs = loss === 0 ? 100 : gain / loss; return 100 - 100 / (1 + rs)
+  for (let i = 1; i <= period; i++) { const d = vals[i] - vals[i - 1]; if (d >= 0) gain += d; else loss -= d }
+  let avgGain = gain / period, avgLoss = loss / period
+  for (let i = period + 1; i < vals.length; i++) {
+    const d = vals[i] - vals[i - 1]
+    avgGain = (avgGain * (period - 1) + (d > 0 ? d : 0)) / period
+    avgLoss = (avgLoss * (period - 1) + (d < 0 ? -d : 0)) / period
+  }
+  if (avgLoss === 0) return 100
+  const rs = avgGain / avgLoss; return 100 - 100 / (1 + rs)
 }
+// ATR Wilder (smoothing) — cocok dengan ATR di TradingView.
 export function atrLast(candles: Candle[], period = 14): number {
-  if (candles.length < 2) return 0
+  if (candles.length < period + 1) return 0
   const trs: number[] = []
   for (let i = 1; i < candles.length; i++) { const c = candles[i], p = candles[i - 1]; trs.push(Math.max(c.h - c.l, Math.abs(c.h - p.c), Math.abs(c.l - p.c))) }
-  const s = trs.slice(-period); return s.reduce((a, b) => a + b, 0) / s.length
+  if (trs.length < period) return trs.reduce((a, b) => a + b, 0) / trs.length
+  let atr = trs.slice(0, period).reduce((a, b) => a + b, 0) / period
+  for (let i = period; i < trs.length; i++) atr = (atr * (period - 1) + trs[i]) / period
+  return atr
 }
 // ADX (Wilder) — kekuatan tren + arah (+DI/-DI)
 export function adxCalc(candles: Candle[], period = 14): { adx: number; plusDI: number; minusDI: number } {
@@ -88,41 +100,70 @@ export function detectReversal(candles: Candle[]): Reversal {
   const arah: ReversalDir = bull > bear ? 'bullish' : bear > bull ? 'bearish' : 'netral'
   return { arah, skor: Math.max(bull, bear), sinyal }
 }
+// VWAP sesi ter-anchor: rata-rata typical-price sejak awal HARI trading (00:00 UTC),
+// bukan jendela 150 bar sembarang. Volume tak tersedia utk spot gold → bobot per bar = 1
+// (secara efektif TWAP sesi). Fallback ke seluruh bar bila candle sesi terlalu sedikit.
+function sessionVwap(candles: Candle[]): { arr: number[]; last: number } {
+  const dayMs = 86_400_000
+  const lastT = candles[candles.length - 1]?.t ?? Date.now()
+  const anchor = Math.floor(lastT / dayMs) * dayMs // 00:00 UTC hari candle terakhir
+  let startIdx = candles.findIndex(c => c.t >= anchor)
+  if (startIdx < 0 || candles.length - startIdx < 5) startIdx = 0 // sesi terlalu pendek → pakai semua
+  const arr: number[] = []; let sum = 0, n = 0
+  for (let i = 0; i < candles.length; i++) {
+    if (i >= startIdx) { sum += (candles[i].h + candles[i].l + candles[i].c) / 3; n++ }
+    arr.push(n ? sum / n : candles[i].c)
+  }
+  return { arr, last: arr[arr.length - 1] }
+}
 export function computeTF(candles: Candle[]): TFData {
-  const closes = candles.map(c => c.c)
-  const ema9 = emaArr(closes, 9), ema21 = emaArr(closes, 21), rsi = rsiLast(closes), atr = atrLast(candles)
-  const { adx, plusDI, minusDI } = adxCalc(candles)
-  const adxPrev = candles.length > 18 ? adxCalc(candles.slice(0, -4)).adx : adx
+  // #1 Repaint: buang candle TERAKHIR yang masih terbentuk — semua indikator hitung dari bar TERTUTUP.
+  const c = candles.length > 30 ? candles.slice(0, -1) : candles
+  const closes = c.map(x => x.c)
+  const ema9 = emaArr(closes, 9), ema21 = emaArr(closes, 21), rsi = rsiLast(closes), atr = atrLast(c)
+  const { adx, plusDI, minusDI } = adxCalc(c)
+  const adxPrev = c.length > 18 ? adxCalc(c.slice(0, -4)).adx : adx
   const adxTrend: TFData['adxTrend'] = adx > adxPrev + 0.5 ? 'naik' : adx < adxPrev - 0.5 ? 'turun' : 'stabil'
-  const vwapArr: number[] = []; let pv = 0, vv = 0
-  candles.forEach(c => { const tp = (c.h + c.l + c.c) / 3; pv += tp * c.v; vv += c.v; vwapArr.push(pv / vv) })
-  const vwap = vwapArr[vwapArr.length - 1], price = closes[closes.length - 1]
+  const { arr: vwapArr, last: vwap } = sessionVwap(c)
+  const price = closes[closes.length - 1]
   let score = 0
   if (ema9[ema9.length - 1] > ema21[ema21.length - 1]) score += 1; else score -= 1
   if (price > vwap) score += 1; else score -= 1
   if (rsi > 55) score += 1; else if (rsi < 45) score -= 1
   const bias: Bias = score >= 2 ? { label: 'BULLISH', score } : score <= -2 ? { label: 'BEARISH', score } : { label: 'NETRAL', score }
-  const macd = macdCalc(closes), boll = bollinger(closes), stoch = stochastic(candles), structure = marketStructure(candles)
+  const macd = macdCalc(closes), boll = bollinger(closes), stoch = stochastic(c), structure = marketStructure(c)
   const momentum = momentumScore(rsi, macd, stoch, boll)
-  const reversal = detectReversal(candles)
-  return { candles, ema9, ema21, vwapArr, rsi, atr, vwap, adx, adxTrend, plusDI, minusDI, bias, macd, boll, stoch, structure, momentum, reversal }
+  const reversal = detectReversal(c)
+  return { candles: c, ema9, ema21, vwapArr, rsi, atr, vwap, adx, adxTrend, plusDI, minusDI, bias, macd, boll, stoch, structure, momentum, reversal }
 }
 export const adxLabel = (adx: number) => adx < 20 ? 'Lemah' : adx < 25 ? 'Mulai' : adx < 40 ? 'Kuat' : 'Sangat Kuat'
 
 // ─────────────────────────── sentimen risiko & skor gabungan ───────────────────────────
-// Sentimen risiko pasar (risk-on/off), dari SPY/QQQ/VIXY/BTC. -1 (risk-off) .. +1 (risk-on).
-export function riskOnScore(cross: { spy: CrossQuote; qqq: CrossQuote; vixy: CrossQuote; btc: CrossQuote }): number {
+// Bursa saham AS (SPY/QQQ/VIXY) hanya hidup Sen-Jum 13:30-20:00 UTC. Di luar itu
+// datanya beku di penutupan → jangan dianggap sinyal segar.
+export function usMarketOpen(now = Date.now()): boolean {
+  const d = new Date(now), day = d.getUTCDay(), min = d.getUTCHours() * 60 + d.getUTCMinutes()
+  if (day === 0 || day === 6) return false
+  return min >= 810 && min <= 1200 // 13:30–20:00 UTC (sesi reguler NYSE)
+}
+// Sentimen risiko (risk-on/off) dari SPY/QQQ/VIXY/BTC. -1 (risk-off) .. +1 (risk-on).
+// Saat bursa AS tutup, SPY/QQQ/VIXY beku → bobotnya diperkecil, andalkan BTC (24/7).
+export function riskOnScore(cross: { spy: CrossQuote; qqq: CrossQuote; vixy: CrossQuote; btc: CrossQuote }, usOpen = true): number {
+  const eqW = usOpen ? 1 : 0.25 // bobot ekuitas AS saat bursa tutup dikecilkan
   let s = 0, n = 0
-  if (cross.spy) { s += clamp(cross.spy.changePct / 1.5, -1, 1); n++ }
-  if (cross.qqq) { s += clamp(cross.qqq.changePct / 1.8, -1, 1); n++ }
-  if (cross.vixy) { s += clamp(-cross.vixy.changePct / 4, -1, 1); n++ }
+  if (cross.spy) { s += clamp(cross.spy.changePct / 1.5, -1, 1) * eqW; n += eqW }
+  if (cross.qqq) { s += clamp(cross.qqq.changePct / 1.8, -1, 1) * eqW; n += eqW }
+  if (cross.vixy) { s += clamp(-cross.vixy.changePct / 4, -1, 1) * eqW; n += eqW }
   if (cross.btc) { s += clamp(cross.btc.changePct / 4, -1, 1) * 0.5; n += 0.5 }
   return n ? s / n : 0
 }
-export function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, riskOn: number) {
+// dollarLive = %change UUP (proxy dolar) real-time. Bila ada, arah dolar intraday
+// pakai UUP (bergerak live), FRED cuma untuk yield/real-yield yang lebih lambat.
+export function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, riskOn: number, dollarLive?: number | null) {
   const tech = clamp((tf.M5.bias.score + tf.M15.bias.score + tf.H1.bias.score) / 9, -1, 1) * 100
   const dir = (k: string) => { const p = macro?.[k]; return p ? Math.sign(p.value - p.prior) : 0 }
-  const macroScore = clamp(-(dir('dollar') * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
+  const dollarDir = dollarLive != null && Math.abs(dollarLive) > 0.02 ? Math.sign(dollarLive) : dir('dollar')
+  const macroScore = clamp(-(dollarDir * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
   const senti = newsScore != null ? clamp(newsScore / 100 * 0.7 + riskOn * 0.3, -1, 1) * 100 : riskOn * 100
   const overall = macroScore * 0.3 + tech * 0.45 + senti * 0.25
   const label: Dir = overall > 20 ? 'BULLISH' : overall < -20 ? 'BEARISH' : 'NETRAL'
