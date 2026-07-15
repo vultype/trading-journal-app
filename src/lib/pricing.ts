@@ -1,7 +1,7 @@
 // Harga & paket langganan (dipakai subscription, checkout, billing)
-export const BASE = { standar: 59000, pro: 129000 } as const
+export const BASE = { standar: 59000, pro: 129000, terminal: 179000 } as const
 
-export type PlanId = 'standar' | 'pro'
+export type PlanId = 'standar' | 'pro' | 'terminal'
 
 export const DURATIONS = [
   { months: 1, off: 0, id: 'Bulanan', en: 'Monthly' },
@@ -14,8 +14,8 @@ export const DURATIONS = [
 export const pkgPrice = (base: number, months: number, off: number) =>
   Math.round((base * months * (1 - off / 100)) / 1000) * 1000
 
-export const planBase = (plan: PlanId) => (plan === 'pro' ? BASE.pro : BASE.standar)
-export const planName = (plan: PlanId) => (plan === 'pro' ? 'Professional' : 'Standar')
+export const planBase = (plan: PlanId) => (plan === 'terminal' ? BASE.terminal : plan === 'pro' ? BASE.pro : BASE.standar)
+export const planName = (plan: PlanId) => (plan === 'terminal' ? 'Datalitiq AI Terminal' : plan === 'pro' ? 'Professional' : 'Standar')
 
 export const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
 

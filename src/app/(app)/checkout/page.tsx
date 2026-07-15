@@ -20,7 +20,8 @@ function CheckoutInner() {
   const router = useRouter()
   const { userId } = useStore()
 
-  const plan = (params.get('plan') === 'pro' ? 'pro' : 'standar') as PlanId
+  const pParam = params.get('plan')
+  const plan = (pParam === 'terminal' ? 'terminal' : pParam === 'pro' ? 'pro' : 'standar') as PlanId
   const months = Number(params.get('months') || 1)
   const dur = DURATIONS.find(d => d.months === months) ?? DURATIONS[0]
 
@@ -80,7 +81,7 @@ function CheckoutInner() {
         <CardContent className="pt-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-xl bg-primary/15">{plan === 'pro' ? <Crown size={18} className="text-primary" /> : <Sparkles size={18} className="text-primary" />}</span>
+              <span className="p-2 rounded-xl bg-primary/15">{plan === 'standar' ? <Sparkles size={18} className="text-primary" /> : <Crown size={18} className="text-primary" />}</span>
               <div>
                 <p className="font-bold">Paket {planName(plan)}</p>
                 <p className="text-xs text-muted-foreground">{dur.id}{dur.off > 0 ? ` · hemat ${dur.off}%` : ''}</p>

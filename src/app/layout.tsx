@@ -10,8 +10,8 @@ const jakarta = Plus_Jakarta_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "Datalitiq — Trading Journal & Analytics",
-  description: "Catat, analisa, dan tingkatkan performa trading kamu. Ukur performa nyata dengan Datalitiq.",
+  title: "Datalitiq AI Terminal — Analisa Emas (XAU/USD) Berbasis AI",
+  description: "Berhenti trading pakai feeling. Datalitiq AI menggabungkan harga, kondisi ekonomi, dan sentimen pasar jadi satu kesimpulan yang jelas & mudah dipahami — arah pasar, tingkat keyakinan, dan alasannya.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
