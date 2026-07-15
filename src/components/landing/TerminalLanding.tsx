@@ -8,7 +8,7 @@ import {
   Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star, Quote,
   Compass, Landmark, Newspaper, Bell, Target, MessageSquare, Gauge, TrendingUp,
   BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe, Activity,
-  Waves, BarChart3,
+  Waves, BarChart3, X, Zap,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -19,11 +19,27 @@ const CLIENTS = ['Exness', 'XM', 'IC Markets', 'FTMO', 'Pepperstone', 'OANDA', '
 // Sumber data yang benar-benar dipakai terminal.
 const DATA_SOURCES = ['Twelve Data', 'FRED (The Fed)', 'CFTC', 'TradingView']
 
+// Angka nyata dari sistem yang berjalan — bukan klaim marketing.
 const STATS = [
-  { v: '24/7', l: 'Pemantauan pasar otomatis' },
-  { v: '3 Dimensi', l: 'Teknikal · Makro · Sentimen' },
-  { v: '100%', l: 'Data real, tanpa rekayasa' },
-  { v: '1', l: 'Kesimpulan jelas, bukan puluhan angka' },
+  { v: '8 detik', l: 'Harga emas diperbarui — nyaris real-time' },
+  { v: '10.000+', l: 'Pembaruan data pasar setiap hari' },
+  { v: '12+', l: 'Indikator ekonomi resmi AS dipantau' },
+  { v: '3 → 1', l: 'Teknikal, makro & sentimen jadi satu kesimpulan' },
+]
+// Perbandingan cara lama vs dengan Datalitiq (section konversi)
+const OLD_WAY = [
+  '5–6 layar terbuka: chart, berita, kalender ekonomi, grup sinyal',
+  'Berjam-jam menyusun analisa sebelum berani entry',
+  'Sinyal saling bertentangan — akhirnya balik ke feeling',
+  'FOMO masuk saat berita, tanpa paham konteksnya',
+  'Tidak ada yang mengingatkan saat kondisi pasar berubah',
+]
+const NEW_WAY = [
+  'Satu layar: arah pasar, tingkat keyakinan & alasannya',
+  'Kesimpulan siap dalam hitungan detik, diperbarui otomatis',
+  'Tiga sisi analisa ditimbang objektif oleh AI — bukan emosi',
+  'Dampak berita & data ekonomi ke emas dijelaskan langsung',
+  'Notifikasi otomatis saat pasar mulai bergerak signifikan',
 ]
 
 const PROBLEMS = [
@@ -279,6 +295,7 @@ export function TerminalLanding() {
 
       {/* ── Hero ── */}
       <section className="relative">
+        <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '56px 56px', WebkitMaskImage: 'radial-gradient(ellipse 85% 65% at 50% 0%, #000 40%, transparent 100%)', maskImage: 'radial-gradient(ellipse 85% 65% at 50% 0%, #000 40%, transparent 100%)' }} />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[560px] bg-primary/15 blur-[150px] rounded-full pointer-events-none dtq-pulse" />
         <div className="absolute top-40 right-0 w-72 h-72 bg-cyan-500/10 blur-[120px] rounded-full pointer-events-none" />
         <div className="relative max-w-6xl mx-auto px-5 pt-16 pb-20 grid lg:grid-cols-2 gap-12 items-center">
@@ -291,13 +308,18 @@ export function TerminalLanding() {
               <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Mulai Trading dengan Data yang Mudah Dipahami.</span>
             </h1>
             <p className="text-base text-white/60 mt-5 leading-relaxed max-w-lg">
-              Datalitiq AI menggabungkan pergerakan harga, kondisi ekonomi global, dan sentimen pasar menjadi satu kesimpulan yang jelas — arah pasar, tingkat keyakinan, dan alasan di baliknya. Tanpa perlu membaca puluhan indikator sendiri.
+              Datalitiq AI membaca ribuan titik data — harga, ekonomi global, sentimen pasar — lalu menyimpulkannya untuk Anda: <span className="text-white/85 font-semibold">arah pasar, tingkat keyakinan, dan alasannya.</span> Dipahami dalam 5 detik, bukan 5 jam.
             </p>
             <div className="flex flex-wrap items-center gap-3 mt-7">
               <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
                 {loggedIn ? 'Buka Terminal' : `Mulai — ${rp(TERMINAL_PRICE)}/bln`} <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <a href="#cara-kerja" className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors">Lihat Cara Kerja</a>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-5">
+              {[{ icon: Zap, t: 'Harga di-update tiap 8 detik' }, { icon: Landmark, t: '12+ indikator ekonomi resmi' }, { icon: Globe, t: 'Posisi institusi global mingguan' }].map(c => (
+                <span key={c.t} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-white/60"><c.icon size={11} className="text-primary" /> {c.t}</span>
+              ))}
             </div>
             <p className="text-xs text-white/40 mt-4 flex items-center gap-1.5"><ShieldCheck size={13} className="text-primary" /> Data real-time · Bukan sinyal otomatis · Keputusan tetap di tangan Anda</p>
           </Reveal>
@@ -340,13 +362,14 @@ export function TerminalLanding() {
             </Reveal>
           ))}
         </div>
+        <Reveal><p className="text-center text-[10px] text-white/30 mt-4">Angka nyata dari sistem yang berjalan — kecepatan refresh & cakupan sumber data aktual, bukan klaim marketing.</p></Reveal>
       </section>
 
       {/* ── Problem ── */}
       <section className="max-w-6xl mx-auto px-5 py-16">
         <Reveal>
           <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">Kenapa Keputusan Trading Sering Salah? Bukan Kurang Data — Tapi Kurang Cara Membacanya.</h2>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">Masalahnya Bukan Kurang Data.<br className="hidden md:block" /> Tapi Tak Ada Waktu Membacanya Semua.</h2>
             <p className="text-sm text-white/50 mt-3">Market bergerak karena ratusan faktor sekaligus. Membacanya sendirian, secara manual, adalah alasan utama keputusan trading meleset.</p>
           </div>
         </Reveal>
@@ -366,6 +389,41 @@ export function TerminalLanding() {
           <div className="mt-8 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 to-transparent p-6 text-center">
             <Quote size={20} className="text-primary/60 mx-auto mb-2" />
             <p className="text-base md:text-lg font-semibold text-white/90 max-w-3xl mx-auto leading-relaxed">Trader yang unggul bukan yang punya lebih banyak informasi — tapi yang punya cara paling jelas untuk menyederhanakannya.</p>
+          </div>
+        </Reveal>
+      </section>
+
+      {/* ── Perbandingan (konversi) ── */}
+      <section className="max-w-5xl mx-auto px-5 py-16">
+        <Reveal>
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-xs font-bold uppercase tracking-widest text-primary">Sebelum & Sesudah</span>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Cara Lama Melelahkan.<br className="hidden md:block" /> Cara Baru Menjelaskan.</h2>
+          </div>
+        </Reveal>
+        <div className="grid md:grid-cols-2 gap-5">
+          <Reveal>
+            <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-7">
+              <p className="text-xs font-bold text-white/45 uppercase tracking-widest mb-5">Tanpa Datalitiq</p>
+              <ul className="space-y-3.5">
+                {OLD_WAY.map(x => <li key={x} className="flex items-start gap-2.5 text-sm text-white/55"><span className="shrink-0 mt-0.5 rounded-full bg-red-500/10 p-0.5"><X size={12} className="text-red-400" /></span>{x}</li>)}
+              </ul>
+            </div>
+          </Reveal>
+          <Reveal delay={100}>
+            <div className="relative h-full rounded-2xl p-[1px] bg-gradient-to-br from-primary/60 via-primary/15 to-cyan-500/25">
+              <div className="h-full rounded-2xl bg-[#0a1110] p-7">
+                <p className="text-xs font-bold text-primary uppercase tracking-widest mb-5">Dengan Datalitiq</p>
+                <ul className="space-y-3.5">
+                  {NEW_WAY.map(x => <li key={x} className="flex items-start gap-2.5 text-sm text-white/85"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>{x}</li>)}
+                </ul>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+        <Reveal delay={120}>
+          <div className="text-center mt-8">
+            <Link href={primaryCta} className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/25">Coba Cara Baru — {rp(TERMINAL_PRICE)}/bln <ArrowRight size={15} /></Link>
           </div>
         </Reveal>
       </section>
@@ -446,7 +504,7 @@ export function TerminalLanding() {
         <Reveal>
           <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">Testimoni</span>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Dipercaya Trader yang Ingin Lebih Jelas</h2>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Mereka Sudah Berhenti Menebak</h2>
           </div>
         </Reveal>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -482,7 +540,8 @@ export function TerminalLanding() {
                 <div className="flex items-center gap-2 mb-1"><Sparkles size={18} className="text-primary" /><h3 className="text-xl font-black">Datalitiq AI Terminal</h3></div>
                 <p className="text-xs text-white/45 mb-5">Analisa pasar emas berbasis AI, real-time.</p>
                 <div className="mb-1 flex items-end gap-1.5"><span className="text-5xl font-black tracking-tight">{rp(TERMINAL_PRICE)}</span><span className="text-sm text-white/40 mb-1.5">/ bulan</span></div>
-                <p className="text-xs text-white/40 mb-6">Akses penuh · tanpa batas penggunaan · berhenti kapan saja</p>
+                <p className="text-xs text-white/50 mb-1">≈ <b className="text-white/80">Rp6 ribu per hari</b> — satu keputusan yang lebih jelas sudah menutupnya.</p>
+                <p className="text-xs text-white/40 mb-6">Akses penuh · tanpa batas penggunaan · tanpa kontrak, berhenti kapan saja</p>
                 <ul className="space-y-2.5 mb-7 flex-1">
                   {['Kesimpulan arah pasar + tingkat keyakinan real-time', 'Analisa makro ekonomi & sentimen pasar', 'Level kunci & konteks multi-timeframe', 'Analisa AI sesuai permintaan', 'Notifikasi kondisi pasar penting'].map(f => (
                     <li key={f} className="flex items-start gap-2.5 text-sm"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span><span className="text-white/80">{f}</span></li>
@@ -520,8 +579,8 @@ export function TerminalLanding() {
         <Reveal>
           <div className="relative rounded-3xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/15 via-[#0a1110] to-[#0a1110] p-10 md:p-16 text-center">
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
-            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Siap Membaca Pasar dengan Lebih Jelas?</h2>
-            <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">Mulai berlangganan hari ini dan dapatkan analisa yang jelas, bukan tebakan.</p>
+            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Pasar Bergerak Setiap Hari.<br className="hidden md:block" /> Jangan Membacanya Sendirian.</h2>
+            <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">Mulai hari ini seharga ≈ Rp6 ribu/hari — tanpa kontrak, berhenti kapan saja. Satu keputusan yang lebih jelas sudah sepadan.</p>
             <Link href={primaryCta} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? 'Buka Terminal' : `Mulai Sekarang — ${rp(TERMINAL_PRICE)}/bln`} <ArrowRight size={16} />
             </Link>
