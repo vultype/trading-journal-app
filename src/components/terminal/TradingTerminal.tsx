@@ -354,13 +354,32 @@ function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }
   )
 }
 
-// Chart XAU/USD via TradingView (Advanced Real-Time Chart)
-function ChartPanel({ onExpand, hasAiLevels, className = 'lg:col-span-8 h-[460px]' }: { onExpand: () => void; hasAiLevels: boolean; className?: string }) {
+// Chart XAU/USD via TradingView — 2 gaya berdampingan: candlestick + line, timeframe berbagi.
+const TV_INTERVALS: { label: string; value: string }[] = [
+  { label: 'M5', value: '5' }, { label: 'M15', value: '15' }, { label: 'H1', value: '60' }, { label: 'H4', value: '240' }, { label: 'D1', value: 'D' },
+]
+function ChartPanel({ onExpand, hasAiLevels, className = 'lg:col-span-8' }: { onExpand: () => void; hasAiLevels: boolean; className?: string }) {
+  const [interval, setIntervalTf] = useState('15')
   return (
-    <Panel title="Chart XAU/USD · TradingView" icon={Activity} className={className} info="Chart resmi TradingView (OANDA:XAU/USD) dengan candle, indikator & drawing tools penuh. Ganti timeframe lewat tombol M5/M15/H1/H4/D1 atau toolbar TradingView."
+    <Panel title="Chart XAU/USD · TradingView" icon={Activity} className={className} info="Dua chart resmi TradingView (OANDA:XAU/USD) berdampingan: Candlestick untuk baca pola & level, Line untuk lihat arah tren bersih. Timeframe dipilih sekali (M5-D1) untuk kedua chart."
       right={<button onClick={onExpand} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/80"><Maximize2 size={11} /> Perbesar</button>}>
+      <div className="flex items-center gap-1 mb-2 shrink-0">
+        {TV_INTERVALS.map(iv => (
+          <button key={iv.value} onClick={() => setIntervalTf(iv.value)} className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors ${interval === iv.value ? 'bg-primary/20 text-primary' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>{iv.label}</button>
+        ))}
+        <span className="ml-auto text-[9px] text-white/30">TradingView · OANDA</span>
+      </div>
       {hasAiLevels && <p className="text-[9px] text-primary/70 mb-1.5 shrink-0">Level entry/SL/TP dari Analisa AI ada di panel "Analisa AI — Ambil Keputusan".</p>}
-      <div className="flex-1 min-h-0"><TradingViewChart height="100%" /></div>
+      <div className="grid lg:grid-cols-2 gap-2.5">
+        <div>
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5"><BarChart3 size={11} /> Candlestick</p>
+          <TradingViewChart interval={interval} chartStyle="1" height={340} />
+        </div>
+        <div>
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5"><Activity size={11} /> Line</p>
+          <TradingViewChart interval={interval} chartStyle="2" height={340} />
+        </div>
+      </div>
     </Panel>
   )
 }
