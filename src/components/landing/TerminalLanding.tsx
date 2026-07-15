@@ -6,9 +6,9 @@ import { createClient } from '@/lib/supabase'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
   Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star, Quote,
-  Compass, Landmark, Newspaper, Bell, Target, MessageSquare, Gauge, TrendingUp,
-  BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe, Activity,
-  Waves, BarChart3, X, Zap,
+  Compass, Landmark, Newspaper, Bell, Target, MessageSquare, TrendingUp,
+  BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe,
+  X, Zap,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -55,13 +55,14 @@ const STEPS = [
   { icon: Target, t: 'Menyampaikan Kesimpulan Jelas', d: 'Hasilnya bukan data mentah, tapi kesimpulan yang langsung dipahami: arah pasar, tingkat keyakinan, dan alasannya.' },
 ]
 
-const FEATURES = [
-  { icon: Gauge, t: 'Kesimpulan dalam Satu Layar', d: 'Tak perlu membaca banyak angka. Satu kesimpulan jelas: arah pasar dan seberapa besar tingkat keyakinannya.' },
-  { icon: Landmark, t: 'Konteks Ekonomi Global, Disederhanakan', d: 'Kebijakan bank sentral, nilai tukar dolar, dan data ekonomi penting dijelaskan dalam bahasa yang mudah dipahami.' },
-  { icon: Newspaper, t: 'Membaca Sentimen Pasar', d: 'Tahu bagaimana investor besar memposisikan diri, dan bagaimana berita terkini memengaruhi harga.' },
-  { icon: Target, t: 'Level Kunci yang Presisi', d: 'Area harga penting ditandai otomatis, membantu menentukan titik masuk & keluar yang lebih terukur.' },
-  { icon: MessageSquare, t: 'Analisa Sesuai Permintaan', d: 'Ajukan pertanyaan spesifik ke AI dan dapatkan jawaban yang relevan dengan situasi Anda saat itu.' },
-  { icon: Bell, t: 'Notifikasi Tepat Waktu', d: 'Pemberitahuan otomatis saat kondisi pasar berubah signifikan, tanpa harus memantau layar sepanjang hari.' },
+// Fitur dengan penjelasan lengkap (section zigzag)
+const FEATURE_ROWS: { icon: React.ElementType; kicker: string; t: string; d: string; bullets: string[]; visual: string }[] = [
+  { icon: Brain, kicker: 'Keputusan AI', t: 'Satu Kesimpulan Jelas, Bukan Puluhan Angka', d: 'Setiap saat, AI menimbang seluruh kondisi pasar lalu menyimpulkannya jadi satu keputusan yang bisa langsung Anda pahami: beli, jual, atau tunggu — lengkap dengan tingkat keyakinan dan alasan di baliknya.', bullets: ['Arah + tingkat keyakinan dalam satu tampilan', 'Alasan transparan, bukan kotak hitam', 'Rencana masuk, batas risiko & target disertakan'], visual: 'decision' },
+  { icon: Compass, kicker: 'Kondisi Pasar', t: 'Tahu Kapan Pasar Layak Ditradingkan', d: 'Tidak semua jam layak untuk masuk pasar. Terminal membaca kondisi pasar secara langsung — sedang bergerak searah, sedang ragu, atau sedang diam — supaya Anda tahu kapan agresif dan kapan menahan diri.', bullets: ['Status pasar real-time: trending, konfirmasi, atau ranging', 'Peringatan dini saat arah mulai berbalik', 'Ukuran volatilitas: kapan pergerakan cukup besar untuk masuk'], visual: 'gauge' },
+  { icon: Landmark, kicker: 'Ekonomi Global', t: 'Paham Kenapa Emas Bergerak, Bukan Cuma Ke Mana', d: 'Harga emas digerakkan kebijakan bank sentral, nilai dolar, dan data ekonomi besar. Semua itu dipantau dari sumber resmi dan dijelaskan dampaknya ke emas — dalam bahasa yang manusiawi.', bullets: ['12+ indikator ekonomi resmi AS dipantau otomatis', 'Dampak tiap rilis data dijelaskan: dukung atau tekan emas', 'Nada kebijakan The Fed dibaca dari data & pernyataan resmi'], visual: 'macro' },
+  { icon: Newspaper, kicker: 'Sentimen & Posisi Institusi', t: 'Lihat Apa yang Dilakukan Uang Besar', d: 'Pergerakan besar dimulai dari institusi. Terminal membaca posisi dana besar vs trader ritel setiap minggu, plus sentimen berita terkini — supaya Anda tidak berdiri di sisi yang salah.', bullets: ['Posisi institusi global, diperbarui mingguan (sumber resmi)', 'Berita emas & dolar dirangkum dampaknya oleh AI', 'Indikator “pasar takut vs serakah” yang mudah dibaca'], visual: 'sentiment' },
+  { icon: MessageSquare, kicker: 'Tanya AI', t: 'Analisa Sesuai Situasi Anda', d: 'Setiap trader punya konteks berbeda. Ajukan pertanyaan spesifik — “layak masuk sekarang?”, “level aman di mana?” — dan AI menjawab berdasarkan data pasar saat itu juga, bukan template.', bullets: ['Jawaban berbasis data live, bukan jawaban umum', 'Bisa fokus ke sesi, level, atau rilis berita tertentu', 'Tersedia di setiap halaman analisa'], visual: 'chat' },
+  { icon: Bell, kicker: 'Notifikasi', t: 'Pasar Dipantau, Anda Tidak Harus Standby', d: 'Sistem memeriksa kondisi pasar setiap beberapa menit, sepanjang hari. Saat pasar mulai bergerak searah dengan keyakinan tinggi, notifikasi masuk ke Telegram Anda — bukan spam, hanya saat kondisi berubah.', bullets: ['Notifikasi saat tren baru terkonfirmasi + % keyakinan', 'Sinyal “layak dicermati” saat semua kondisi selaras', 'Anti-spam: hanya saat kondisi benar-benar berubah'], visual: 'notif' },
 ]
 
 const BONUS = [
@@ -106,8 +107,18 @@ function Reveal({ children, delay = 0, className = '' }: { children: React.React
   )
 }
 
-// ── Mock terminal (hero visual) ──
-function MockTerminal() {
+// ── Hero chart: chart emas animasi (garis menggambar sendiri + harga berdetak) ──
+function HeroChart() {
+  const [price, setPrice] = useState(4032.4)
+  const [up, setUp] = useState(true)
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPrice(p => { const d = (Math.random() - 0.48) * 0.9; setUp(d >= 0); return +(p + d).toFixed(1) })
+    }, 1600)
+    return () => clearInterval(id)
+  }, [])
+  // jalur harga bergaya XAU/USD: naik bertahap dengan pullback
+  const line = 'M0,150 L28,143 L52,148 L76,132 L98,138 L122,118 L146,126 L170,104 L192,112 L216,88 L240,96 L264,72 L288,80 L312,58 L336,66 L360,44 L384,52 L408,34'
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0a1210] shadow-2xl shadow-black/60 overflow-hidden">
       <div className="flex items-center gap-1.5 px-4 py-3 border-b border-white/5">
@@ -115,59 +126,64 @@ function MockTerminal() {
         <span className="ml-3 text-[10px] text-white/30 font-mono">datalitiq.app/terminal</span>
         <span className="ml-auto flex items-center gap-1 text-[9px] text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dtq-pulse" /> LIVE</span>
       </div>
-      <div className="p-4 space-y-3 bg-[#0a1210]">
-        <div className="flex items-center justify-between">
-          <div><p className="text-[10px] text-white/40">XAU/USD · Emas</p><p className="text-xl font-black tabular-nums">$4,032<span className="text-emerald-400 text-xs font-bold ml-1">+0.4%</span></p></div>
+      <div className="p-4 bg-[#0a1210]">
+        <div className="flex items-center justify-between mb-3">
+          <div><p className="text-[10px] text-white/40">XAU/USD · Emas Spot</p>
+            <p className="text-2xl font-black tabular-nums">${price.toLocaleString('en-US', { minimumFractionDigits: 1 })}<span className={`text-xs font-bold ml-2 ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '▲' : '▼'} live</span></p></div>
           <span className="text-[9px] font-bold uppercase tracking-wider rounded px-2 py-1 bg-emerald-500/15 text-emerald-400">Trending Bullish</span>
         </div>
-        {/* Signal meter */}
-        <div className="rounded-xl bg-white/[0.03] border border-white/5 p-3 flex items-center gap-4">
-          <svg viewBox="0 0 120 70" className="w-28 shrink-0">
-            <path d="M10 62 A50 50 0 0 1 110 62" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7" strokeLinecap="round" />
-            <path d="M10 62 A50 50 0 0 1 96 26" fill="none" stroke="#34d399" strokeWidth="7" strokeLinecap="round" />
-            <line x1="60" y1="62" x2="90" y2="34" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" /><circle cx="60" cy="62" r="4" fill="#fff" />
+        <div className="relative rounded-xl border border-white/[0.06] bg-black/25 overflow-hidden">
+          <svg viewBox="0 0 408 180" className="w-full block" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="hcArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity="0.28" /><stop offset="100%" stopColor="#34d399" stopOpacity="0" /></linearGradient>
+            </defs>
+            {[36, 72, 108, 144].map(y => <line key={y} x1="0" y1={y} x2="408" y2={y} stroke="rgba(255,255,255,0.04)" strokeWidth="1" />)}
+            {[68, 136, 204, 272, 340].map(x => <line key={x} x1={x} y1="0" x2={x} y2="180" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />)}
+            <path d={`${line} L408,180 L0,180 Z`} fill="url(#hcArea)" className="dl-hero-area" />
+            <path d={line} fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="dl-hero-line" pathLength={1} />
+            <circle cx="408" cy="34" r="4" fill="#34d399" className="dl-hero-dot"><animate attributeName="opacity" values="1;0.35;1" dur="1.6s" repeatCount="indefinite" /></circle>
+            <circle cx="408" cy="34" r="9" fill="#34d399" opacity="0.18"><animate attributeName="r" values="7;13;7" dur="1.6s" repeatCount="indefinite" /></circle>
           </svg>
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-white/35">Kesimpulan</p>
-            <p className="text-lg font-black text-emerald-400 leading-none">Bias BELI</p>
-            <p className="text-[10px] text-white/45 mt-1">Keyakinan <b className="text-white/80">74%</b> · arah terkonfirmasi</p>
+          {/* garis harga berjalan */}
+          <div className="absolute right-0 top-[15%] flex items-center gap-1.5">
+            <span className="h-px w-16 bg-emerald-400/40" />
+            <span className="rounded bg-emerald-500/90 px-1.5 py-0.5 text-[9px] font-black text-[#062016] tabular-nums">{price.toFixed(1)}</span>
           </div>
         </div>
-        {/* 3 pilar */}
-        <div className="grid grid-cols-3 gap-2">
-          {[{ l: 'Teknikal', v: 'Bullish', c: 'text-emerald-400' }, { l: 'Makro', v: 'Mendukung', c: 'text-emerald-400' }, { l: 'Sentimen', v: 'Netral', c: 'text-white/60' }].map(p => (
-            <div key={p.l} className="rounded-lg bg-white/[0.03] border border-white/5 p-2">
-              <p className="text-[8px] uppercase tracking-wider text-white/35">{p.l}</p>
-              <p className={`text-[11px] font-black ${p.c}`}>{p.v}</p>
-            </div>
-          ))}
-        </div>
-        {/* AI decision */}
-        <div className="rounded-xl bg-gradient-to-br from-primary/12 to-transparent border border-primary/20 p-3 flex items-start gap-2.5">
+        <div className="mt-3 rounded-xl bg-gradient-to-br from-primary/12 to-transparent border border-primary/20 p-3 flex items-start gap-2.5">
           <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/20 shrink-0"><Brain size={14} className="text-primary" /></span>
           <div>
-            <p className="text-[10px] font-bold text-white/85">Datalitiq AI</p>
+            <p className="text-[10px] font-bold text-white/85">Datalitiq AI · Kesimpulan <span className="ml-1 text-emerald-400">Bias BELI · 74%</span></p>
             <p className="text-[10px] text-white/55 leading-relaxed">Tren naik didukung dolar melemah. Cari peluang beli di area pullback; hindari melawan arah utama.</p>
           </div>
         </div>
       </div>
+      <style>{`
+        @keyframes dlHeroLine { from { stroke-dasharray: 1; stroke-dashoffset: 1 } to { stroke-dasharray: 1; stroke-dashoffset: 0 } }
+        .dl-hero-line { animation: dlHeroLine 2.4s cubic-bezier(0.65,0,0.35,1) both }
+        @keyframes dlHeroArea { from { opacity: 0 } to { opacity: 1 } }
+        .dl-hero-area { animation: dlHeroArea 1s ease-out 1.6s both }
+        @keyframes dlHeroDot { from { opacity: 0 } to { opacity: 1 } }
+        .dl-hero-dot { animation: dlHeroDot .4s ease-out 2.2s both }
+        @media (prefers-reduced-motion: reduce) { .dl-hero-line, .dl-hero-area, .dl-hero-dot { animation: none } }
+      `}</style>
     </div>
   )
 }
 
-// ── Bento fitur (dummy mockups, futuristik) ──
-function BentoCard({ icon: Icon, title, live, className = '', children }: { icon: React.ElementType; title: string; live?: boolean; className?: string; children: React.ReactNode }) {
+// ── Bingkai visual fitur (dipakai section fitur zigzag) ──
+function FeatureFrame({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
   return (
-    <div className={`group relative h-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.05] to-transparent p-4 hover:border-primary/30 transition-colors ${className}`}>
+    <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.05] to-transparent p-5 hover:border-primary/30 transition-colors">
       <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.028) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
       <div className="absolute -top-12 -right-10 w-40 h-40 rounded-full bg-primary/15 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-      <div className="relative flex flex-col h-full">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="relative">
+        <div className="flex items-center gap-2 mb-4">
           <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/12 ring-1 ring-primary/25"><Icon size={14} className="text-primary" /></span>
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/55">{title}</span>
-          {live && <span className="ml-auto flex items-center gap-1 text-[8px] font-bold text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dtq-pulse" /> LIVE</span>}
+          <span className="ml-auto flex items-center gap-1 text-[8px] font-bold text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dtq-pulse" /> LIVE</span>
         </div>
-        <div className="relative flex-1 flex items-center justify-center">{children}</div>
+        <div className="flex items-center justify-center min-h-[130px]">{children}</div>
       </div>
     </div>
   )
@@ -211,26 +227,11 @@ function MSentiment() {
     </div>
   )
 }
-function MReversal() {
+function MChat() {
   return (
-    <div className="w-full space-y-1.5">
-      <div className="flex items-center gap-2 text-[10px] text-emerald-400"><TrendingUp size={13} /> EMA berbalik naik</div>
-      <div className="flex items-center gap-2 text-[10px] text-emerald-400"><Activity size={13} /> Momentum menguat</div>
-      <div className="flex items-center gap-2 text-[10px] text-white/40"><Compass size={13} /> Struktur berubah</div>
-      <span className="inline-flex mt-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 rounded px-2 py-0.5">Skor 3/4 · Bullish</span>
-    </div>
-  )
-}
-function MChart() {
-  const pts = ['0,22 12,18 24,20 36,11 48,13 60,5', '0,20 12,22 24,14 36,16 48,8 60,10', '0,24 12,16 24,18 36,12 48,7 60,9']
-  return (
-    <div className="w-full grid grid-cols-3 gap-2">
-      {['M5', 'M15', 'H1'].map((tf, i) => (
-        <div key={tf} className="rounded-lg bg-white/[0.03] border border-white/5 p-2">
-          <p className="text-[8px] text-white/35 mb-1">{tf}</p>
-          <svg viewBox="0 0 60 28" className="w-full"><polyline points={pts[i]} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </div>
-      ))}
+    <div className="w-full space-y-2">
+      <div className="ml-auto max-w-[85%] rounded-xl rounded-tr-sm bg-primary/15 border border-primary/20 px-3 py-2 text-[10px] text-white/85">Layak entry sekarang, atau tunggu pullback?</div>
+      <div className="max-w-[90%] rounded-xl rounded-tl-sm bg-white/[0.04] border border-white/10 px-3 py-2 text-[10px] text-white/65 leading-relaxed"><b className="text-primary">Datalitiq AI:</b> Tren naik masih sehat, tapi harga sedang di dekat area resistensi. Lebih aman menunggu pullback ke area support terdekat…</div>
     </div>
   )
 }
@@ -325,7 +326,7 @@ export function TerminalLanding() {
           </Reveal>
           <Reveal delay={150} className="lg:pl-6">
             <div className="relative">
-              <MockTerminal />
+              <HeroChart />
               <div className="absolute -left-4 top-14 hidden sm:flex items-center gap-2 rounded-xl bg-[#0d1614] ring-1 ring-emerald-500/30 px-3 py-2 shadow-xl dtq-float">
                 <TrendingUp size={15} className="text-emerald-400" /><span className="text-xs font-semibold">Arah + alasan jelas</span>
               </div>
@@ -456,47 +457,37 @@ export function TerminalLanding() {
         </Reveal>
       </section>
 
-      {/* ── Fitur ── */}
+      {/* ── Fitur (zigzag dengan penjelasan lengkap) ── */}
       <section id="fitur" className="max-w-6xl mx-auto px-5 py-16">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
+          <div className="text-center max-w-2xl mx-auto mb-14">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">Fitur</span>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Semua yang Anda Butuh untuk Membaca Pasar dengan Jelas</h2>
-            <p className="text-sm text-white/50 mt-3">Dirancang agar rumit di belakang layar, sederhana di depan mata Anda.</p>
+            <h2 className="text-2xl md:text-4xl font-black tracking-tight mt-2">Semua yang Anda Butuh untuk Membaca Pasar dengan Jelas</h2>
+            <p className="text-sm text-white/50 mt-3">Rumit di belakang layar. Sederhana di depan mata Anda.</p>
           </div>
         </Reveal>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {FEATURES.map((f, i) => (
-            <Reveal key={i} delay={(i % 3) * 100}>
-              <div className="h-full rounded-2xl border border-white/8 bg-white/[0.02] p-6 hover:border-primary/25 hover:bg-white/[0.04] transition-all hover:-translate-y-1">
-                <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/12 ring-1 ring-primary/20 mb-4"><f.icon size={20} className="text-primary" /></span>
-                <p className="text-base font-bold mb-1.5">{f.t}</p>
-                <p className="text-sm text-white/55 leading-relaxed">{f.d}</p>
+        <div className="space-y-14">
+          {FEATURE_ROWS.map((f, i) => (
+            <Reveal key={f.t}>
+              <div className={`grid lg:grid-cols-2 gap-8 lg:gap-12 items-center ${i % 2 ? 'lg:[direction:rtl]' : ''}`}>
+                <div className="lg:[direction:ltr]">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 rounded-full px-2.5 py-1 mb-4"><f.icon size={11} /> {f.kicker}</span>
+                  <h3 className="text-xl md:text-2xl font-black tracking-tight leading-tight">{f.t}</h3>
+                  <p className="text-sm text-white/60 mt-3 leading-relaxed">{f.d}</p>
+                  <ul className="mt-4 space-y-2">
+                    {f.bullets.map(b => <li key={b} className="flex items-start gap-2.5 text-sm text-white/75"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>{b}</li>)}
+                  </ul>
+                </div>
+                <div className="lg:[direction:ltr]">
+                  <FeatureFrame icon={f.icon} title={f.kicker}>
+                    {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
+                  </FeatureFrame>
+                </div>
               </div>
             </Reveal>
           ))}
         </div>
-      </section>
-
-      {/* ── Preview fitur (bento) ── */}
-      <section id="preview" className="max-w-6xl mx-auto px-5 py-16">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-10">
-            <span className="text-xs font-bold uppercase tracking-widest text-primary">Tampilan Terminal</span>
-            <h2 className="text-2xl md:text-4xl font-black tracking-tight mt-2">Sekali Lihat, Langsung Paham.</h2>
-            <p className="text-sm text-white/50 mt-3">Lima layar analisa — kini cukup satu.</p>
-          </div>
-        </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4 auto-rows-[minmax(150px,1fr)]">
-          <Reveal className="col-span-2 lg:col-span-3 h-full"><BentoCard icon={Compass} title="Signal Meter" live><MGauge /></BentoCard></Reveal>
-          <Reveal delay={80} className="col-span-2 lg:col-span-3 h-full"><BentoCard icon={Brain} title="Keputusan AI"><MDecision /></BentoCard></Reveal>
-          <Reveal delay={40} className="col-span-2 sm:col-span-1 lg:col-span-2 h-full"><BentoCard icon={Landmark} title="Makro"><MMacro /></BentoCard></Reveal>
-          <Reveal delay={120} className="col-span-2 sm:col-span-1 lg:col-span-2 h-full"><BentoCard icon={Newspaper} title="Sentimen & COT"><MSentiment /></BentoCard></Reveal>
-          <Reveal delay={160} className="col-span-2 sm:col-span-2 lg:col-span-2 h-full"><BentoCard icon={Waves} title="Deteksi Pembalikan"><MReversal /></BentoCard></Reveal>
-          <Reveal delay={80} className="col-span-2 lg:col-span-4 h-full"><BentoCard icon={BarChart3} title="Multi-Timeframe" live><MChart /></BentoCard></Reveal>
-          <Reveal delay={160} className="col-span-2 lg:col-span-2 h-full"><BentoCard icon={Bell} title="Notifikasi"><MNotif /></BentoCard></Reveal>
-        </div>
-        <Reveal><p className="text-center text-[10px] text-white/30 mt-5">Ilustrasi tampilan · data aktual real-time saat berlangganan.</p></Reveal>
+        <Reveal><p className="text-center text-[10px] text-white/30 mt-8">Ilustrasi tampilan · data aktual real-time saat berlangganan.</p></Reveal>
       </section>
 
       {/* ── Testimoni ── */}

@@ -240,11 +240,11 @@ function Panel({ title, icon: Icon, right, info, children, className = '', accen
   // accent = warna trend (opsional). Gradient dipasang sebagai BACKGROUND (di bawah konten)
   // + glow tepi atas, jadi modern/futuristik tanpa menutupi data.
   const accentStyle = accent ? {
-    backgroundImage: `radial-gradient(135% 90% at 50% -25%, ${accent}22, transparent 55%)`,
+    backgroundImage: `radial-gradient(135% 90% at 50% -25%, ${accent}22, transparent 55%), linear-gradient(to bottom, rgba(255,255,255,0.03), transparent 40%)`,
     boxShadow: `inset 0 1px 0 0 ${accent}66, inset 0 14px 40px -26px ${accent}`,
-  } : undefined
+  } : { backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.03), transparent 40%)', boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.06)' }
   return (
-    <div style={accentStyle} className={`rounded-2xl border ${accent ? 'border-white/[0.09]' : 'border-white/[0.06]'} bg-[#0b100e] p-3.5 flex flex-col ${className}`}>
+    <div style={accentStyle} className={`rounded-2xl border ${accent ? 'border-white/[0.09]' : 'border-white/[0.07]'} bg-[#0b100e] p-3.5 flex flex-col transition-colors hover:border-white/[0.13] ${className}`}>
       <div className="flex items-center justify-between mb-2.5">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
           <Icon size={12} /> {title}
@@ -433,8 +433,10 @@ function Sparkline({ data, color = '#34d399', h = 26, w = 84 }: { data: number[]
 // Tile insight ringkas (variatif — bukan grid kartu identik)
 function StatTile({ icon: Icon, label, value, sub, tone = 'neutral', spark, sparkColor, info }: { icon: React.ElementType; label: string; value: React.ReactNode; sub?: string; tone?: 'bull' | 'bear' | 'warn' | 'neutral'; spark?: number[]; sparkColor?: string; info?: string }) {
   const toneC = tone === 'bull' ? 'text-emerald-400' : tone === 'bear' ? 'text-red-400' : tone === 'warn' ? 'text-amber-400' : 'text-white/85'
+  const hair = tone === 'bull' ? 'from-emerald-400/60' : tone === 'bear' ? 'from-red-400/60' : tone === 'warn' ? 'from-amber-400/60' : 'from-white/15'
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#0b100e] p-2.5 flex flex-col justify-between min-h-[74px]" title={info}>
+    <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#0b100e] p-2.5 flex flex-col justify-between min-h-[76px] transition-colors hover:border-white/[0.14]" style={{ backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.03), transparent 45%)' }} title={info}>
+      <span className={`absolute top-0 left-0 right-0 h-px bg-gradient-to-r ${hair} to-transparent`} />
       <div className="flex items-center justify-between"><span className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-white/35"><Icon size={10} /> {label}</span>{info && <Info size={9} className="text-white/20" />}</div>
       <div className="flex items-end justify-between gap-1 mt-1">
         <div><p className={`text-base font-black leading-none ${toneC}`}>{value}</p>{sub && <p className="text-[9px] text-white/40 mt-0.5 leading-tight">{sub}</p>}</div>
@@ -817,6 +819,37 @@ export function TradingTerminal() {
   )
 
   // Strip insight (Ringkasan) — metrik turunan penting dalam satu pandangan
+  // ── Decision Hero: jawaban satu-pandang (arah + keyakinan + kondisi + aksi) ──
+  const heroClr = dir === 'BULLISH' ? '#34d399' : dir === 'BEARISH' ? '#f87171' : '#9ca3af'
+  const DecisionHero = (
+    <div className="lg:col-span-12 relative overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0b100e] p-4 sm:p-5"
+      style={{ backgroundImage: `radial-gradient(120% 140% at 0% 0%, ${heroClr}1c, transparent 50%), linear-gradient(to bottom, rgba(255,255,255,0.03), transparent 45%)`, boxShadow: `inset 0 1px 0 0 ${heroClr}55` }}>
+      <div className="absolute inset-0 pointer-events-none opacity-40" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
+      <div className="relative flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
+        <div className="flex items-center gap-4 lg:pr-6 lg:border-r lg:border-white/[0.07]">
+          <div className="relative w-[74px] h-[74px] shrink-0">
+            <svg viewBox="0 0 36 36" className="w-[74px] h-[74px] -rotate-90"><circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3" /><circle cx="18" cy="18" r="15.5" fill="none" stroke={heroClr} strokeWidth="3" strokeDasharray={`${sc.confidence / 100 * 97.4} 97.4`} strokeLinecap="round" /></svg>
+            <span className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-lg font-black tabular-nums leading-none">{sc.confidence}%</span><span className="text-[7px] text-white/40 uppercase tracking-wider mt-0.5">yakin</span></span>
+          </div>
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-1">Kesimpulan Saat Ini</p>
+            <p className="text-2xl font-black leading-none" style={{ color: heroClr }}>{dir === 'BULLISH' ? 'Bias BELI' : dir === 'BEARISH' ? 'Bias JUAL' : 'TUNGGU'}</p>
+            <p className="text-[10px] text-white/45 mt-1.5 tabular-nums">Skor {sc.overall > 0 ? '+' : ''}{Math.round(sc.overall)} · {meterZone(sc.overall).name}</p>
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="flex items-start gap-2 text-[12px] text-white/85 font-medium leading-relaxed"><Target size={14} className="mt-0.5 shrink-0" style={{ color: heroClr }} />{kAction}</p>
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
+            <span className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold ${regime.c}`}><Signal size={9} /> {regime.label}</span>
+            <span className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold ${volLabel === 'Tinggi' ? 'text-amber-400' : volLabel === 'Rendah' ? 'text-sky-400' : 'text-emerald-400'}`}><Flame size={9} /> Volatilitas {volLabel}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold text-white/60"><Crosshair size={9} /> {conf.bulls}B/{conf.bears}S dari 3 TF</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold text-white/60"><Circle size={7} className="fill-primary text-primary" /> Sesi {session}</span>
+          </div>
+        </div>
+        <p className="hidden xl:block text-[9px] text-white/30 max-w-[130px] leading-relaxed shrink-0">Ringkasan otomatis dari teknikal, makro & sentimen. Detail di panel bawah.</p>
+      </div>
+    </div>
+  )
   const InsightStrip = (
     <div className="lg:col-span-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
       <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi pasar. Ranging = sideways/squeeze, tanpa arah (main pantulan). Sedang Konfirmasi Arah = tren belum matang atau momentum berubah, arah belum pasti (tunggu). Trending Bullish/Bearish = ADX≥25 & menguat, arah terkonfirmasi (ikuti arah). Arah dari +DI vs -DI M15." />
@@ -1063,7 +1096,8 @@ export function TradingTerminal() {
                   {TABS.filter(t => (t.group ?? 'Menu') === g).map(t => {
                     const on = tab === t.id
                     return (
-                      <button key={t.id} onClick={() => setTab(t.id)} className={`w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${on ? 'bg-primary/15 text-white' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
+                      <button key={t.id} onClick={() => setTab(t.id)} className={`relative w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${on ? 'text-white bg-gradient-to-r from-primary/20 to-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
+                        {on && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary shadow-[0_0_8px_rgba(52,211,153,0.6)]" />}
                         <t.icon size={15} className={on ? 'text-primary' : ''} /> {t.label}
                         {t.id === 'status' && <span className={`ml-auto h-1.5 w-1.5 rounded-full ${STAT_META[overall].dot}`} />}
                       </button>
@@ -1098,6 +1132,7 @@ export function TradingTerminal() {
 
           <main className="p-2.5 pb-20 md:pb-6">
             {tab === 'ringkasan' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+              {DecisionHero}
               {InsightStrip}
               <Flow n={1} label="Keputusan" />
               {AiPanel}
