@@ -236,9 +236,15 @@ function swingLevels(candles: Candle[], left = 3, right = 3, lookback = 70): { h
 const dirColor = (l: string) => l === 'BULLISH' || l === 'Bullish' || l === 'bullish' ? 'text-emerald-400' : l === 'BEARISH' || l === 'Bearish' || l === 'bearish' ? 'text-red-400' : 'text-white/60'
 const dirBg = (l: string) => l === 'BULLISH' || l === 'Bullish' ? 'bg-emerald-500/15 text-emerald-400' : l === 'BEARISH' || l === 'Bearish' ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/60'
 
-function Panel({ title, icon: Icon, right, info, children, className = '' }: { title: string; icon: React.ElementType; right?: React.ReactNode; info?: string; children: React.ReactNode; className?: string }) {
+function Panel({ title, icon: Icon, right, info, children, className = '', accent }: { title: string; icon: React.ElementType; right?: React.ReactNode; info?: string; children: React.ReactNode; className?: string; accent?: string }) {
+  // accent = warna trend (opsional). Gradient dipasang sebagai BACKGROUND (di bawah konten)
+  // + glow tepi atas, jadi modern/futuristik tanpa menutupi data.
+  const accentStyle = accent ? {
+    backgroundImage: `radial-gradient(135% 90% at 50% -25%, ${accent}22, transparent 55%)`,
+    boxShadow: `inset 0 1px 0 0 ${accent}66, inset 0 14px 40px -26px ${accent}`,
+  } : undefined
   return (
-    <div className={`rounded-2xl border border-white/[0.06] bg-[#0b100e] p-3.5 flex flex-col ${className}`}>
+    <div style={accentStyle} className={`rounded-2xl border ${accent ? 'border-white/[0.09]' : 'border-white/[0.06]'} bg-[#0b100e] p-3.5 flex flex-col ${className}`}>
       <div className="flex items-center justify-between mb-2.5">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
           <Icon size={12} /> {title}
@@ -276,8 +282,42 @@ function Gauge({ score }: { score: number }) {
   return (
     <svg viewBox="0 0 240 130" className="w-full">
       {zones.map((z, i) => <polyline key={i} points={seg(z.a0, z.a1)} fill="none" stroke={z.color} strokeWidth={i === active ? 7 : 5} strokeLinecap="round" opacity={i === active ? 1 : 0.2} />)}
-      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="#fff" strokeWidth={2.5} strokeLinecap="round" /><circle cx={cx} cy={cy} r={4.5} fill="#fff" />
+      {/* jarum: getaran halus seperti speedometer + glow warna trend */}
+      <g className="dl-gauge-needle" style={{ transformOrigin: `${cx}px ${cy}px`, transformBox: 'view-box' }}>
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={zones[active].color} strokeWidth={5} strokeLinecap="round" opacity={0.35} />
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r={6} fill={zones[active].color} opacity={0.3} />
+        <circle cx={cx} cy={cy} r={3.5} fill="#fff" />
+      </g>
       {labels.map(l => <text key={l.t} x={l.x} y={l.y} textAnchor={l.anc as 'start' | 'middle' | 'end'} fontSize="8" fontWeight={l.idx === active ? 700 : 500} fill={l.idx === active ? zones[l.idx].color : 'rgba(255,255,255,0.32)'}>{l.t}</text>)}
+      <style>{`@keyframes dlGaugeNeedle{0%,100%{transform:rotate(-0.6deg)}50%{transform:rotate(0.6deg)}} .dl-gauge-needle{animation:dlGaugeNeedle .17s ease-in-out infinite} @media (prefers-reduced-motion:reduce){.dl-gauge-needle{animation:none}}`}</style>
+    </svg>
+  )
+}
+// Speedometer Volatilitas (ATR) — 3 zona Rendah/Normal/Tinggi, jarum bergetar halus.
+function VolatilityMeter({ ratio, label }: { ratio: number; label: string }) {
+  const cx = 100, cy = 96, r = 78
+  const polar = (rr: number, deg: number) => { const a = deg * Math.PI / 180; return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)] as const }
+  const seg = (a0: number, a1: number) => { let pts = ''; for (let i = 0; i <= 14; i++) { const a = a0 + (a1 - a0) * i / 14; const [x, y] = polar(r, a); pts += `${x.toFixed(1)},${y.toFixed(1)} ` } return pts.trim() }
+  const zones = [{ a0: 180, a1: 120, c: '#38bdf8', t: 'Rendah' }, { a0: 120, a1: 60, c: '#34d399', t: 'Normal' }, { a0: 60, a1: 0, c: '#fbbf24', t: 'Tinggi' }]
+  // posisi jarum 0..1 dari rasio ATR (sekarang vs rata-rata); ambang volLabel: 0.75 & 1.4
+  const pos = ratio < 0.75 ? clamp(ratio / 0.75, 0, 1) / 3
+    : ratio <= 1.4 ? 1 / 3 + (ratio - 0.75) / (1.4 - 0.75) / 3
+      : 2 / 3 + clamp((ratio - 1.4) / 1.1, 0, 1) / 3
+  const ang = 180 - clamp(pos, 0, 1) * 180
+  const [nx, ny] = polar(r - 12, ang)
+  const active = label === 'Rendah' ? 0 : label === 'Tinggi' ? 2 : 1
+  return (
+    <svg viewBox="0 0 200 110" className="w-full">
+      {zones.map((z, i) => <polyline key={i} points={seg(z.a0, z.a1)} fill="none" stroke={z.c} strokeWidth={i === active ? 8 : 5.5} strokeLinecap="round" opacity={i === active ? 1 : 0.22} />)}
+      <g className="dl-vol-needle" style={{ transformOrigin: `${cx}px ${cy}px`, transformBox: 'view-box' }}>
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={zones[active].c} strokeWidth={5} strokeLinecap="round" opacity={0.35} />
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="#fff" strokeWidth={2.5} strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r={6} fill={zones[active].c} opacity={0.3} />
+        <circle cx={cx} cy={cy} r={3.5} fill="#fff" />
+      </g>
+      {zones.map(z => { const [lx, ly] = polar(r + 9, (z.a0 + z.a1) / 2); return <text key={z.t} x={lx} y={ly + 3} textAnchor="middle" fontSize="7.5" fontWeight={z.t === label ? 700 : 500} fill={z.t === label ? z.c : 'rgba(255,255,255,0.3)'}>{z.t}</text> })}
+      <style>{`@keyframes dlVolNeedle{0%,100%{transform:rotate(-0.9deg)}50%{transform:rotate(0.9deg)}} .dl-vol-needle{animation:dlVolNeedle .16s ease-in-out infinite} @media (prefers-reduced-motion:reduce){.dl-vol-needle{animation:none}}`}</style>
     </svg>
   )
 }
@@ -355,43 +395,24 @@ function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }
   )
 }
 
-// Chart komparasi via TradingView — 4 line chart clean (tanpa indikator), timeframe berbagi.
-const TV_INTERVALS: { label: string; value: string }[] = [
-  { label: 'M5', value: '5' }, { label: 'M15', value: '15' }, { label: 'H1', value: '60' }, { label: 'H4', value: '240' }, { label: 'D1', value: 'D' },
-]
-// 3 penggerak makro emas — semua korelasi NEGATIF ke XAU/USD (naik → emas cenderung turun).
-const CMP_CHARTS: { symbol: string; title: string; hint: string }[] = [
-  { symbol: 'TVC:DXY', title: 'DXY · Indeks Dolar', hint: 'Dolar naik → emas turun' },
-  { symbol: 'TVC:US02Y', title: 'US02Y · Yield 2 Thn', hint: 'Yield naik → emas turun' },
-  { symbol: 'TVC:US10Y', title: 'US10Y · Yield 10 Thn', hint: 'Yield naik → emas turun' },
+// Chart XAU/USD via TradingView — 3 line chart clean (M5/M15/H1) berdampingan untuk komparasi.
+const CHART_TFS: { label: string; value: string }[] = [
+  { label: 'M5', value: '5' }, { label: 'M15', value: '15' }, { label: 'H1', value: '60' },
 ]
 function ChartPanel({ onExpand, hasAiLevels, className = 'lg:col-span-8' }: { onExpand: () => void; hasAiLevels: boolean; className?: string }) {
-  const [interval, setIntervalTf] = useState('15')
   return (
-    <Panel title="Chart Komparasi · TradingView" icon={Activity} className={className} info="4 line chart untuk komparasi: XAU/USD (utama) vs DXY, US02Y, US10Y. Emas biasanya bergerak BERLAWANAN dengan dolar & yield — bandingkan arah keduanya di timeframe yang sama. Semua tanpa indikator agar bersih."
+    <Panel title="Chart XAU/USD · TradingView" icon={Activity} className={className} info="3 line chart XAU/USD berdampingan (M5, M15, H1) untuk komparasi antar-timeframe — lihat apakah arah tren selaras di ketiganya. Bersih, tanpa indikator."
       right={<button onClick={onExpand} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/80"><Maximize2 size={11} /> Perbesar</button>}>
-      <div className="flex items-center gap-1 mb-2 shrink-0">
-        {TV_INTERVALS.map(iv => (
-          <button key={iv.value} onClick={() => setIntervalTf(iv.value)} className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors ${interval === iv.value ? 'bg-primary/20 text-primary' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>{iv.label}</button>
-        ))}
-        <span className="ml-auto text-[9px] text-white/30">TradingView · Line · tanpa indikator</span>
-      </div>
       {hasAiLevels && <p className="text-[9px] text-primary/70 mb-1.5 shrink-0">Level entry/SL/TP dari Analisa AI ada di panel "Analisa AI — Ambil Keputusan".</p>}
-      {/* XAU/USD utama */}
-      <div className="mb-2.5">
-        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary/80 mb-1.5"><Coins size={11} /> XAU/USD · Emas <span className="text-white/30 normal-case tracking-normal font-normal">— chart utama</span></p>
-        <TradingViewChart symbol="OANDA:XAUUSD" interval={interval} chartStyle="2" minimal height={300} />
-      </div>
-      {/* 3 penggerak makro untuk komparasi */}
       <div className="grid sm:grid-cols-3 gap-2.5">
-        {CMP_CHARTS.map(c => (
-          <div key={c.symbol}>
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5"><Activity size={11} /> {c.title}</p>
-            <TradingViewChart symbol={c.symbol} interval={interval} chartStyle="2" minimal height={190} />
-            <p className="text-[9px] text-white/30 mt-1">{c.hint}</p>
+        {CHART_TFS.map(tf => (
+          <div key={tf.value}>
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary/80 mb-1.5"><Coins size={11} /> XAU/USD · {tf.label}</p>
+            <TradingViewChart symbol="OANDA:XAUUSD" interval={tf.value} chartStyle="2" minimal height={300} />
           </div>
         ))}
       </div>
+      <p className="text-[9px] text-white/30 mt-1.5">Line chart · tanpa indikator · TradingView (OANDA)</p>
     </Panel>
   )
 }
@@ -496,7 +517,8 @@ export function TradingTerminal() {
   const dir = sc.label
   const m5 = feed.tf.M5.candles
   const atrNow = atrLast(m5, 7), atrBase = atrLast(m5, Math.min(40, m5.length - 1)) || atrNow
-  const volLabel = (atrBase ? atrNow / atrBase : 1) < 0.75 ? 'Rendah' : (atrBase ? atrNow / atrBase : 1) > 1.4 ? 'Tinggi' : 'Normal'
+  const volRatio = atrBase ? atrNow / atrBase : 1
+  const volLabel = volRatio < 0.75 ? 'Rendah' : volRatio > 1.4 ? 'Tinggi' : 'Normal'
   const adx = feed.tf.M15.adx, adxL = adxLabel(adx), trendUp = feed.tf.M15.plusDI >= feed.tf.M15.minusDI
   const confPct = Math.round((sc.overall + 100) / 2)
   const strongestPillar = Math.abs(sc.macro) >= Math.abs(sc.tech) && Math.abs(sc.macro) >= Math.abs(sc.senti) ? 'Makro' : Math.abs(sc.tech) >= Math.abs(sc.senti) ? 'Teknikal' : 'Sentimen'
@@ -567,7 +589,7 @@ export function TradingTerminal() {
 
   // ── panel-panel reusable ──
   const SignalMeterPanel = (
-    <Panel title="Signal Meter · XAU/USD" icon={Compass} info="Rangkuman keseluruhan dari 3 pilar (makro, teknikal, sentimen). Jarum ke kanan = bullish, ke kiri = bearish.">
+    <Panel title="Signal Meter · XAU/USD" icon={Compass} accent={meterZone(sc.overall).color} info="Rangkuman keseluruhan dari 3 pilar (makro, teknikal, sentimen). Jarum ke kanan = bullish, ke kiri = bearish. Warna kartu ikut arah tren (hijau bullish / merah bearish).">
       <div className="flex flex-col items-center">
         <div className="w-[210px] max-w-full"><Gauge score={sc.overall} /></div>
         <p className="text-lg font-black -mt-2 leading-none" style={{ color: meterZone(sc.overall).color }}>{meterZone(sc.overall).name}</p>
@@ -575,8 +597,6 @@ export function TradingTerminal() {
       </div>
       <div className="mt-2.5 space-y-1.5 text-[11px]">
         <div className="flex justify-between"><span className="text-white/45">Pendorong utama</span><span className="font-semibold text-white/85">{strongestPillar}</span></div>
-        <div className="flex justify-between"><span className="text-white/45">Kekuatan tren (ADX)</span><span className={`font-semibold ${adx >= 25 ? 'text-emerald-400' : adx < 20 ? 'text-amber-400' : 'text-white/70'}`}>{adxL} ({adx.toFixed(0)})</span></div>
-        {nearest && <div className="flex justify-between"><span className="text-white/45">Zona terdekat</span><span className="font-semibold text-white/85">{nearest.label} @ {f2(nearest.mid)} ({nearest.dist >= 0 ? '+' : ''}{nearest.dist.toFixed(1)})</span></div>}
         <div className="flex justify-between"><span className="text-white/45">Volatilitas</span><span className={`font-semibold ${volLabel === 'Rendah' ? 'text-amber-400' : 'text-emerald-400'}`}>{volLabel}</span></div>
       </div>
     </Panel>
@@ -617,16 +637,13 @@ export function TradingTerminal() {
     </Panel>
   )
   const MomentumPanel = (
-    <Panel title="Momentum & Volatilitas" icon={Waves} info="ADX = kekuatan tren (>25 kuat, <20 lemah/sideways). +DI vs -DI = arah tren. RSI = jenuh beli (>70)/jual (<30). ATR = besar pergerakan.">
-      <div className="grid grid-cols-2 gap-2 mb-2.5">
-        <div className="rounded-lg bg-white/[0.03] p-2">
-          <p className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-white/35 mb-0.5"><Flame size={10} /> Kekuatan Tren (ADX)</p>
-          <p className={`text-base font-black leading-none ${adx >= 25 ? 'text-emerald-400' : adx < 20 ? 'text-amber-400' : 'text-white/80'}`}>{adxL}</p>
-          <p className="text-[9px] text-white/40 mt-0.5 tabular-nums">ADX {adx.toFixed(0)} · arah {trendUp ? '▲ naik' : '▼ turun'} (+DI {feed.tf.M15.plusDI.toFixed(0)}/-DI {feed.tf.M15.minusDI.toFixed(0)})</p>
-        </div>
-        <div className="rounded-lg bg-white/[0.03] p-2">
-          <p className="text-[9px] uppercase tracking-wider text-white/35 mb-0.5">Volatilitas</p>
-          <p className={`text-base font-black leading-none ${volLabel === 'Tinggi' ? 'text-amber-400' : volLabel === 'Rendah' ? 'text-white/50' : 'text-emerald-400'}`}>{volLabel}</p>
+    <Panel title="Volatilitas & Momentum" icon={Waves} info="Volatilitas = seberapa besar pergerakan sekarang vs rata-rata (rasio ATR M5). Rendah = kurang reliabel/whipsaw, Tinggi = pergerakan cepat. RSI = jenuh beli (>70)/jual (<30). Jarum bergetar seperti speedometer.">
+      <div className="rounded-xl bg-white/[0.03] p-2.5 mb-2.5 flex items-center gap-3">
+        <div className="w-24 sm:w-28 shrink-0"><VolatilityMeter ratio={volRatio} label={volLabel} /></div>
+        <div className="min-w-0">
+          <p className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-white/35 mb-0.5"><Flame size={10} /> Volatilitas</p>
+          <p className={`text-xl font-black leading-none ${volLabel === 'Tinggi' ? 'text-amber-400' : volLabel === 'Rendah' ? 'text-sky-400' : 'text-emerald-400'}`}>{volLabel}</p>
+          <p className="text-[9px] text-white/40 mt-1 tabular-nums">rasio {volRatio.toFixed(2)}× vs rata-rata</p>
           <p className="text-[9px] text-white/40 mt-0.5 tabular-nums">ATR M5 ${feed.tf.M5.atr.toFixed(2)} · M15 ${feed.tf.M15.atr.toFixed(2)}</p>
         </div>
       </div>
