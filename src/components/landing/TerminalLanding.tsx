@@ -7,7 +7,8 @@ import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
   Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star, Quote,
   Compass, Landmark, Newspaper, Bell, Target, MessageSquare, Gauge, TrendingUp,
-  BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe, Clock, Activity,
+  BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe, Activity,
+  Waves, BarChart3,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -134,6 +135,94 @@ function MockTerminal() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Bento fitur (dummy mockups, futuristik) ──
+function BentoCard({ icon: Icon, title, live, className = '', children }: { icon: React.ElementType; title: string; live?: boolean; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={`group relative h-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.05] to-transparent p-4 hover:border-primary/30 transition-colors ${className}`}>
+      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.028) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+      <div className="absolute -top-12 -right-10 w-40 h-40 rounded-full bg-primary/15 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+      <div className="relative flex flex-col h-full">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/12 ring-1 ring-primary/25"><Icon size={14} className="text-primary" /></span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/55">{title}</span>
+          {live && <span className="ml-auto flex items-center gap-1 text-[8px] font-bold text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dtq-pulse" /> LIVE</span>}
+        </div>
+        <div className="relative flex-1 flex items-center justify-center">{children}</div>
+      </div>
+    </div>
+  )
+}
+function MGauge() {
+  return (
+    <svg viewBox="0 0 160 94" className="w-full max-w-[220px]">
+      <defs><linearGradient id="tlgg" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#f87171" /><stop offset="55%" stopColor="#9ca3af" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
+      <path d="M14 84 A66 66 0 0 1 146 84" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" strokeLinecap="round" />
+      <path d="M14 84 A66 66 0 0 1 132 44" fill="none" stroke="url(#tlgg)" strokeWidth="8" strokeLinecap="round" />
+      <line x1="80" y1="84" x2="120" y2="42" stroke="#fff" strokeWidth="3" strokeLinecap="round" /><circle cx="80" cy="84" r="5" fill="#fff" />
+      <text x="80" y="72" textAnchor="middle" fill="#34d399" fontSize="15" fontWeight="800">BULLISH</text>
+    </svg>
+  )
+}
+function MDecision() {
+  return (
+    <div className="w-full flex items-center gap-4">
+      <div className="relative w-16 h-16 shrink-0">
+        <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" /><circle cx="18" cy="18" r="15" fill="none" stroke="#34d399" strokeWidth="3.5" strokeDasharray="70 94" strokeLinecap="round" /></svg>
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-emerald-400">74%</span>
+      </div>
+      <div className="space-y-2 flex-1">
+        <span className="inline-flex text-[10px] font-black text-emerald-400 bg-emerald-500/10 rounded px-2 py-0.5">BIAS BELI</span>
+        <div className="h-1.5 w-full rounded bg-emerald-400/70" />
+        <div className="h-1.5 w-3/4 rounded bg-white/15" />
+        <div className="h-1.5 w-2/3 rounded bg-white/10" />
+      </div>
+    </div>
+  )
+}
+function MMacro() {
+  const rows = [{ l: 'Dolar (DXY)', v: '▼ Bullish emas', c: 'text-emerald-400' }, { l: 'Yield 10Y', v: '▼ Bullish emas', c: 'text-emerald-400' }, { l: 'Nada Fed', v: '• Netral', c: 'text-amber-400' }]
+  return <div className="w-full space-y-1.5">{rows.map(r => <div key={r.l} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-2.5 py-1.5"><span className="text-[10px] text-white/70">{r.l}</span><span className={`text-[9px] font-bold ${r.c}`}>{r.v}</span></div>)}</div>
+}
+function MSentiment() {
+  return (
+    <div className="w-full space-y-3">
+      <div><p className="text-[9px] text-white/40 mb-1">Institusi · net long</p><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full w-4/5 rounded-full bg-emerald-400/70" /></div></div>
+      <div><p className="text-[9px] text-white/40 mb-1">Retail · net short</p><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full w-1/3 rounded-full bg-red-400/70" /></div></div>
+    </div>
+  )
+}
+function MReversal() {
+  return (
+    <div className="w-full space-y-1.5">
+      <div className="flex items-center gap-2 text-[10px] text-emerald-400"><TrendingUp size={13} /> EMA berbalik naik</div>
+      <div className="flex items-center gap-2 text-[10px] text-emerald-400"><Activity size={13} /> Momentum menguat</div>
+      <div className="flex items-center gap-2 text-[10px] text-white/40"><Compass size={13} /> Struktur berubah</div>
+      <span className="inline-flex mt-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 rounded px-2 py-0.5">Skor 3/4 · Bullish</span>
+    </div>
+  )
+}
+function MChart() {
+  const pts = ['0,22 12,18 24,20 36,11 48,13 60,5', '0,20 12,22 24,14 36,16 48,8 60,10', '0,24 12,16 24,18 36,12 48,7 60,9']
+  return (
+    <div className="w-full grid grid-cols-3 gap-2">
+      {['M5', 'M15', 'H1'].map((tf, i) => (
+        <div key={tf} className="rounded-lg bg-white/[0.03] border border-white/5 p-2">
+          <p className="text-[8px] text-white/35 mb-1">{tf}</p>
+          <svg viewBox="0 0 60 28" className="w-full"><polyline points={pts[i]} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </div>
+      ))}
+    </div>
+  )
+}
+function MNotif() {
+  return (
+    <div className="w-full rounded-xl bg-white/[0.03] border border-white/5 p-3">
+      <div className="flex items-center gap-2 mb-1.5"><span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/20"><Bell size={12} className="text-primary" /></span><span className="text-[10px] font-bold text-white/80">Datalitiq Alert</span><span className="ml-auto text-[8px] text-white/30">baru saja</span></div>
+      <p className="text-[10px] text-white/60 leading-relaxed">🟢 <b className="text-white/85">Trending Bullish</b> — keyakinan 74%. Peluang beli terkonfirmasi.</p>
     </div>
   )
 }
@@ -331,23 +420,25 @@ export function TerminalLanding() {
         </div>
       </section>
 
-      {/* ── Showcase ── */}
-      <section className="max-w-6xl mx-auto px-5 py-10">
+      {/* ── Preview fitur (bento) ── */}
+      <section id="preview" className="max-w-6xl mx-auto px-5 py-16">
         <Reveal>
-          <div className="grid lg:grid-cols-2 gap-10 items-center">
-            <div>
-              <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/12 ring-1 ring-primary/20 mb-5"><Activity size={22} className="text-primary" /></span>
-              <h3 className="text-2xl font-black tracking-tight leading-tight">Dari Data yang Rumit, Menjadi Keputusan yang Sederhana</h3>
-              <p className="text-base text-white/60 mt-4 leading-relaxed">Alih-alih menyodorkan puluhan angka, Datalitiq menyampaikan inti yang Anda butuhkan: pasar sedang cenderung ke mana, seberapa kuat, dan apa yang mendorongnya. Cukup satu pandangan.</p>
-              <ul className="mt-5 space-y-2.5">
-                {['Arah pasar + tingkat keyakinan dalam satu tampilan', 'Alasan di balik setiap kesimpulan, bukan kotak hitam', 'Bahasa yang mudah dipahami, bukan istilah teknikal'].map(x => (
-                  <li key={x} className="flex items-start gap-2.5 text-sm text-white/75"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>{x}</li>
-                ))}
-              </ul>
-            </div>
-            <MockTerminal />
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-xs font-bold uppercase tracking-widest text-primary">Tampilan Terminal</span>
+            <h2 className="text-2xl md:text-4xl font-black tracking-tight mt-2">Sekali Lihat, Langsung Paham.</h2>
+            <p className="text-sm text-white/50 mt-3">Lima layar analisa — kini cukup satu.</p>
           </div>
         </Reveal>
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4 auto-rows-[minmax(150px,1fr)]">
+          <Reveal className="col-span-2 lg:col-span-3 h-full"><BentoCard icon={Compass} title="Signal Meter" live><MGauge /></BentoCard></Reveal>
+          <Reveal delay={80} className="col-span-2 lg:col-span-3 h-full"><BentoCard icon={Brain} title="Keputusan AI"><MDecision /></BentoCard></Reveal>
+          <Reveal delay={40} className="col-span-2 sm:col-span-1 lg:col-span-2 h-full"><BentoCard icon={Landmark} title="Makro"><MMacro /></BentoCard></Reveal>
+          <Reveal delay={120} className="col-span-2 sm:col-span-1 lg:col-span-2 h-full"><BentoCard icon={Newspaper} title="Sentimen & COT"><MSentiment /></BentoCard></Reveal>
+          <Reveal delay={160} className="col-span-2 sm:col-span-2 lg:col-span-2 h-full"><BentoCard icon={Waves} title="Deteksi Pembalikan"><MReversal /></BentoCard></Reveal>
+          <Reveal delay={80} className="col-span-2 lg:col-span-4 h-full"><BentoCard icon={BarChart3} title="Multi-Timeframe" live><MChart /></BentoCard></Reveal>
+          <Reveal delay={160} className="col-span-2 lg:col-span-2 h-full"><BentoCard icon={Bell} title="Notifikasi"><MNotif /></BentoCard></Reveal>
+        </div>
+        <Reveal><p className="text-center text-[10px] text-white/30 mt-5">Ilustrasi tampilan · data aktual real-time saat berlangganan.</p></Reveal>
       </section>
 
       {/* ── Testimoni ── */}
