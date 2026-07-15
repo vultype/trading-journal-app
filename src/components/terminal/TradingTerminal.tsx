@@ -14,9 +14,9 @@ import {
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
-  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins,
+  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server,
 } from 'lucide-react'
-import { AiChart, type ChartLevels } from './AiChart'
+import { TradingViewChart } from './TradingViewChart'
 import { TerminalAiPanel } from './TerminalAiPanel'
 import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
 import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
@@ -183,6 +183,55 @@ function FreshRow({ label, ts, intervalMs, now }: { label: string; ts: number | 
     </div>
   )
 }
+// Status online/offline per API — dari keberhasilan & keterbaruan fetch terakhir (data real).
+type ApiStat = 'online' | 'stale' | 'offline' | 'connecting'
+function apiStat(ts: number | null, intervalMs: number, now: number, forced?: ApiStat): ApiStat {
+  if (forced) return forced
+  if (ts == null) return 'connecting'
+  const age = now - ts
+  if (age < intervalMs * 2.5) return 'online'
+  if (age < intervalMs * 6) return 'stale'
+  return 'offline'
+}
+const STAT_META: Record<ApiStat, { label: string; dot: string; text: string; ring: string }> = {
+  online: { label: 'Online', dot: 'bg-emerald-400', text: 'text-emerald-400', ring: 'shadow-[0_0_0_3px_rgba(52,211,153,0.15)]' },
+  stale: { label: 'Lambat', dot: 'bg-amber-400', text: 'text-amber-400', ring: 'shadow-[0_0_0_3px_rgba(251,191,36,0.15)]' },
+  offline: { label: 'Offline', dot: 'bg-red-400', text: 'text-red-400', ring: 'shadow-[0_0_0_3px_rgba(248,113,113,0.15)]' },
+  connecting: { label: 'Menghubungkan', dot: 'bg-white/40', text: 'text-white/45', ring: '' },
+}
+function ApiStatusRow({ label, sub, stat, ts, intervalMs, now }: { label: string; sub: string; stat: ApiStat; ts: number | null; intervalMs: number; now: number }) {
+  const m = STAT_META[stat]
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+      <span className={`h-2 w-2 rounded-full shrink-0 ${m.dot} ${stat === 'online' ? m.ring : ''} ${stat === 'connecting' ? 'animate-pulse' : ''}`} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold text-white/85 truncate">{label}</p>
+        <p className="text-[9px] text-white/40 truncate">{sub}</p>
+      </div>
+      <div className="text-right leading-tight shrink-0">
+        <p className={`text-[10px] font-bold ${m.text}`}>{m.label}</p>
+        <p className="text-[9px] text-white/35 tabular-nums">{relTime(ts, now)} · ↻{countdownStr(ts, intervalMs, now)}</p>
+      </div>
+    </div>
+  )
+}
+// Level swing intraday (pivot lokal) dari candle — untuk zona S/R yang DEKAT harga (scalping).
+// Swing high = high lebih tinggi dari `left` candle sebelum & `right` sesudahnya; swing low sebaliknya.
+function swingLevels(candles: Candle[], left = 3, right = 3, lookback = 70): { highs: number[]; lows: number[] } {
+  const c = candles.slice(-lookback)
+  const highs: number[] = [], lows: number[] = []
+  for (let i = left; i < c.length - right; i++) {
+    let isHigh = true, isLow = true
+    for (let j = i - left; j <= i + right; j++) {
+      if (j === i) continue
+      if (c[j].h >= c[i].h) isHigh = false
+      if (c[j].l <= c[i].l) isLow = false
+    }
+    if (isHigh) highs.push(c[i].h)
+    if (isLow) lows.push(c[i].l)
+  }
+  return { highs, lows }
+}
 const dirColor = (l: string) => l === 'BULLISH' || l === 'Bullish' || l === 'bullish' ? 'text-emerald-400' : l === 'BEARISH' || l === 'Bearish' || l === 'bearish' ? 'text-red-400' : 'text-white/60'
 const dirBg = (l: string) => l === 'BULLISH' || l === 'Bullish' ? 'bg-emerald-500/15 text-emerald-400' : l === 'BEARISH' || l === 'Bearish' ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/60'
 
@@ -305,12 +354,13 @@ function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }
   )
 }
 
-// Chart XAU/USD (Lightweight Charts) + garis level dari Analisa AI
-function ChartPanel({ onExpand, tfData, levels }: { onExpand: () => void; tfData: Record<TF, TFData>; levels: ChartLevels }) {
+// Chart XAU/USD via TradingView (Advanced Real-Time Chart)
+function ChartPanel({ onExpand, hasAiLevels, className = 'lg:col-span-8 h-[460px]' }: { onExpand: () => void; hasAiLevels: boolean; className?: string }) {
   return (
-    <Panel title="Chart XAU/USD" icon={Activity} className="lg:col-span-8 h-[460px]" info="Candle XAU/USD + EMA9/EMA21/VWAP. Setelah klik Analisa AI, garis Entry/Stop/Target & Support/Resistance dari AI muncul otomatis di chart. Ganti timeframe di M5/M15/H1."
+    <Panel title="Chart XAU/USD · TradingView" icon={Activity} className={className} info="Chart resmi TradingView (OANDA:XAU/USD) dengan candle, indikator & drawing tools penuh. Ganti timeframe lewat tombol M5/M15/H1/H4/D1 atau toolbar TradingView."
       right={<button onClick={onExpand} className="flex items-center gap-1 text-[9px] text-white/40 hover:text-white/80"><Maximize2 size={11} /> Perbesar</button>}>
-      <div className="flex-1 min-h-0"><AiChart tfData={tfData} levels={levels} height={380} /></div>
+      {hasAiLevels && <p className="text-[9px] text-primary/70 mb-1.5 shrink-0">Level entry/SL/TP dari Analisa AI ada di panel "Analisa AI — Ambil Keputusan".</p>}
+      <div className="flex-1 min-h-0"><TradingViewChart height="100%" /></div>
     </Panel>
   )
 }
@@ -370,14 +420,15 @@ function RiskMeter({ riskOn }: { riskOn: number }) {
 }
 
 // ─────────────────────────── TAB ───────────────────────────
-type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'sentimen' | 'berita' | 'panduan'
-const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard },
-  { id: 'teknikal', label: 'Teknikal', icon: Activity },
-  { id: 'makro', label: 'Makro', icon: Landmark },
-  { id: 'sentimen', label: 'Sentimen', icon: Users },
-  { id: 'berita', label: 'Berita AI', icon: Newspaper },
-  { id: 'panduan', label: 'Panduan', icon: BookOpen },
+type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'sentimen' | 'berita' | 'status' | 'panduan'
+const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string }[] = [
+  { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard, group: 'Analisa' },
+  { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa' },
+  { id: 'makro', label: 'Makro', icon: Landmark, group: 'Analisa' },
+  { id: 'sentimen', label: 'Sentimen', icon: Users, group: 'Analisa' },
+  { id: 'berita', label: 'Berita AI', icon: Newspaper, group: 'Analisa' },
+  { id: 'status', label: 'Status Server', icon: Server, group: 'Sistem' },
+  { id: 'panduan', label: 'Panduan', icon: BookOpen, group: 'Sistem' },
 ]
 
 // ─────────────────────────── PAGE ───────────────────────────
@@ -420,15 +471,31 @@ export function TradingTerminal() {
   const strongestPillar = Math.abs(sc.macro) >= Math.abs(sc.tech) && Math.abs(sc.macro) >= Math.abs(sc.senti) ? 'Makro' : Math.abs(sc.tech) >= Math.abs(sc.senti) ? 'Teknikal' : 'Sentimen'
 
   // Zona Support/Resistance untuk SCALPING — band di sekitar level pivot, hanya yang DEKAT harga.
-  type Zone = { kind: 'res' | 'sup'; label: string; mid: number; low: number; high: number; dist: number; inside: boolean }
-  const zoneW = clamp((feed.tf.M15.atr || 3) * 0.35, 1.5, 6)  // setengah lebar band (skala volatilitas)
-  const allLv = pivotsLive ? [pivotsLive.R2, pivotsLive.R1, pivotsLive.P, pivotsLive.S1, pivotsLive.S2] : []
-  const mkZone = (mid: number, kind: 'res' | 'sup', idx: number): Zone => ({
-    kind, mid, low: mid - zoneW, high: mid + zoneW, dist: mid - feed.price, inside: feed.price >= mid - zoneW && feed.price <= mid + zoneW,
-    label: (kind === 'res' ? 'Resistance' : 'Support') + (idx === 0 ? ' terdekat' : ' kedua'),
+  // Zona S/R untuk SCALPING — utamakan swing intraday M5 & M15 (paling DEKAT harga),
+  // pivot harian dipakai sebagai pelengkap. Band lebarnya skala ATR (M5 utk lebih rapat).
+  type ZoneSrc = 'M5' | 'M15' | 'Pivot'
+  type Zone = { kind: 'res' | 'sup'; label: string; src: ZoneSrc; mid: number; low: number; high: number; dist: number; inside: boolean }
+  const zoneW = clamp((feed.tf.M5.atr || 2) * 0.5, 1, 5)  // setengah lebar band (skala volatilitas M5)
+  const swM5 = swingLevels(feed.tf.M5.candles), swM15 = swingLevels(feed.tf.M15.candles)
+  type LvCand = { price: number; src: ZoneSrc }
+  const pivRes: LvCand[] = pivotsLive ? [{ price: pivotsLive.R1, src: 'Pivot' }, { price: pivotsLive.R2, src: 'Pivot' }] : []
+  const pivSup: LvCand[] = pivotsLive ? [{ price: pivotsLive.S1, src: 'Pivot' }, { price: pivotsLive.S2, src: 'Pivot' }] : []
+  const resCand: LvCand[] = [...swM5.highs.map(p => ({ price: p, src: 'M5' as const })), ...swM15.highs.map(p => ({ price: p, src: 'M15' as const })), ...pivRes].filter(l => l.price > feed.price + 0.2)
+  const supCand: LvCand[] = [...swM5.lows.map(p => ({ price: p, src: 'M5' as const })), ...swM15.lows.map(p => ({ price: p, src: 'M15' as const })), ...pivSup].filter(l => l.price < feed.price - 0.2)
+  // gabung level yang berdekatan (dalam ~1 lebar band), ambil 3 terdekat ke harga
+  const mergeNear = (cands: LvCand[], dir: 'up' | 'down') => {
+    const sorted = cands.sort((a, b) => dir === 'up' ? a.price - b.price : b.price - a.price)
+    const kept: LvCand[] = []
+    for (const c of sorted) { if (!kept.some(k => Math.abs(k.price - c.price) < zoneW * 1.4)) kept.push(c) }
+    return kept.slice(0, 3)
+  }
+  const mkZone = (c: LvCand, kind: 'res' | 'sup', idx: number): Zone => ({
+    kind, src: c.src, mid: c.price, low: c.price - zoneW, high: c.price + zoneW, dist: c.price - feed.price,
+    inside: feed.price >= c.price - zoneW && feed.price <= c.price + zoneW,
+    label: (kind === 'res' ? 'Resistance' : 'Support') + (idx === 0 ? ' terdekat' : idx === 1 ? ' kedua' : ' ketiga'),
   })
-  const resZones = allLv.filter(v => v > feed.price).sort((a, b) => a - b).slice(0, 2).map((v, i) => mkZone(v, 'res', i))
-  const supZones = allLv.filter(v => v < feed.price).sort((a, b) => b - a).slice(0, 2).map((v, i) => mkZone(v, 'sup', i))
+  const resZones = mergeNear(resCand, 'up').map((c, i) => mkZone(c, 'res', i))
+  const supZones = mergeNear(supCand, 'down').map((c, i) => mkZone(c, 'sup', i))
   const allZones = [...resZones, ...supZones]
   const nearest = allZones.length ? allZones.reduce((a, b) => Math.abs(a.dist) < Math.abs(b.dist) ? a : b) : null
 
@@ -541,14 +608,14 @@ export function TradingTerminal() {
   const ZonaRow = ({ z }: { z: typeof allZones[number] }) => (
     <div className={`rounded-lg border px-2.5 py-1.5 ${z.inside ? 'border-amber-500/40 bg-amber-500/10' : z.kind === 'res' ? 'border-red-500/20 bg-red-500/[0.05]' : 'border-emerald-500/20 bg-emerald-500/[0.05]'}`}>
       <div className="flex items-center justify-between">
-        <span className={`text-[11px] font-bold ${z.kind === 'res' ? 'text-red-400' : 'text-emerald-400'}`}>{z.kind === 'res' ? '🔴' : '🟢'} {z.label}</span>
+        <span className={`flex items-center gap-1.5 text-[11px] font-bold ${z.kind === 'res' ? 'text-red-400' : 'text-emerald-400'}`}>{z.kind === 'res' ? '🔴' : '🟢'} {z.label}<span className="rounded px-1 py-0.5 text-[8px] font-bold bg-white/10 text-white/50">{z.src}</span></span>
         <span className={`text-[10px] font-bold tabular-nums ${z.inside ? 'text-amber-400' : 'text-white/40'}`}>{z.inside ? 'DI DALAM ZONA' : `${z.dist >= 0 ? '+' : ''}${z.dist.toFixed(1)} poin`}</span>
       </div>
       <p className="text-[11px] font-bold tabular-nums text-white/85 mt-0.5">{f2(z.low)} – {f2(z.high)}</p>
     </div>
   )
   const ZonaPanel = (
-    <Panel title="Zona Support & Resistance (Scalping)" icon={Layers} info="Zona (bukan garis) di sekitar level pivot, lebar mengikuti volatilitas (ATR). Hanya zona TERDEKAT yang ditampilkan untuk scalping — resistance di atas (rem naik), support di bawah (rem turun). Amber = harga sedang di dalam zona.">
+    <Panel title="Zona Support & Resistance (Scalping)" icon={Layers} info="Zona S/R TERDEKAT dari swing intraday M5 & M15 (paling relevan untuk scalping) + pivot harian. Tag M5/M15/Pivot menandai sumbernya. Lebar band ikut volatilitas (ATR M5). Resistance di atas (rem naik), support di bawah (rem turun). Amber = harga sedang di dalam zona.">
       {allZones.length ? (
         <div className="space-y-2">
           <div className="space-y-1.5">{resZones.slice().reverse().map((z, i) => <ZonaRow key={`r${i}`} z={z} />)}</div>
@@ -642,19 +709,63 @@ export function TradingTerminal() {
   )
 
   // Jadwal refresh data — semua auto-refresh sendiri, ini bukti + countdown-nya
-  const DataFreshnessPanel = (
-    <Panel title="Jadwal Refresh Data" icon={RefreshCw} className="lg:col-span-12" info="Semua data di terminal ini auto-refresh sendiri di browser — tidak perlu reload halaman. Interval beda tiap jenis data (data lambat = interval lebih panjang, hemat kuota API). Refresh sempat berhenti kalau tab browser di-background, lalu otomatis lanjut lagi saat dibuka.">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-        <FreshRow label="Harga" ts={live.quoteAt} intervalMs={8_000} now={now} />
-        <FreshRow label="Candle M5/M15/H1" ts={live.candlesAt} intervalMs={60_000} now={now} />
-        <FreshRow label="Candle H4/Daily" ts={live.htfAt} intervalMs={300_000} now={now} />
-        <FreshRow label="Lintas-Aset" ts={cross.updatedAt} intervalMs={45_000} now={now} />
-        <FreshRow label="Makro (FRED)" ts={macroAt} intervalMs={3_600_000} now={now} />
-        <FreshRow label="Pivot" ts={pivotAt} intervalMs={3_600_000} now={now} />
-        <FreshRow label="COT" ts={cotAt} intervalMs={6 * 3_600_000} now={now} />
-        <FreshRow label="Berita" ts={newsAt} intervalMs={600_000} now={now} />
-      </div>
-    </Panel>
+  // ── Status Server (menu terpisah) ──
+  const liveForced: ApiStat | undefined = live.status === 'error' ? 'offline' : undefined
+  const apiSources: { label: string; sub: string; ts: number | null; interval: number; forced?: ApiStat }[] = [
+    { label: 'Harga (Quote)', sub: 'Twelve Data · tiap 8 dtk', ts: live.quoteAt, interval: 8_000, forced: liveForced },
+    { label: 'Candle M5/M15/H1', sub: 'Twelve Data · tiap 60 dtk', ts: live.candlesAt, interval: 60_000, forced: liveForced },
+    { label: 'Candle H4/Daily', sub: 'Twelve Data · tiap 5 mnt', ts: live.htfAt, interval: 300_000, forced: liveForced },
+    { label: 'Lintas-Aset', sub: 'Twelve Data · tiap 45 dtk', ts: cross.updatedAt, interval: 45_000 },
+    { label: 'Makro', sub: 'FRED · tiap 1 jam', ts: macroAt, interval: 3_600_000 },
+    { label: 'Pivot Harian', sub: 'Twelve Data · tiap 1 jam', ts: pivotAt, interval: 3_600_000 },
+    { label: 'COT Institusi', sub: 'CFTC Socrata · tiap 6 jam', ts: cotAt, interval: 6 * 3_600_000 },
+    { label: 'Berita RSS', sub: 'Multi-sumber · tiap 10 mnt', ts: newsAt, interval: 600_000 },
+  ]
+  const apiStatuses = apiSources.map(s => apiStat(s.ts, s.interval, now, s.forced))
+  const onlineCount = apiStatuses.filter(s => s === 'online').length
+  const offlineCount = apiStatuses.filter(s => s === 'offline').length
+  const overall: ApiStat = offlineCount > 0 ? 'offline' : apiStatuses.some(s => s === 'stale') ? 'stale' : apiStatuses.some(s => s === 'connecting') ? 'connecting' : 'online'
+  const ServerStatusContent = (
+    <>
+      <Panel title="Ringkasan Server" icon={Server} className="lg:col-span-4" info="Status keseluruhan koneksi data terminal. Online = data terbaru berhasil diambil sesuai jadwal.">
+        <div className="flex flex-col items-center justify-center flex-1 py-2">
+          <div className="relative">
+            <div className={`h-16 w-16 rounded-full flex items-center justify-center ${STAT_META[overall].dot} ${overall === 'online' ? 'shadow-[0_0_0_6px_rgba(52,211,153,0.12)]' : ''}`}>
+              <Server size={26} className="text-[#060a09]" />
+            </div>
+            {overall === 'online' && <span className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping" />}
+          </div>
+          <p className={`mt-3 text-lg font-black ${STAT_META[overall].text}`}>{overall === 'online' ? 'Semua Online' : overall === 'offline' ? 'Ada Gangguan' : overall === 'stale' ? 'Sebagian Lambat' : 'Menghubungkan'}</p>
+          <p className="text-[11px] text-white/45 tabular-nums mt-0.5">{onlineCount}/{apiSources.length} API online{offlineCount > 0 ? ` · ${offlineCount} offline` : ''}</p>
+        </div>
+      </Panel>
+      <Panel title="Cara Kerja Refresh" icon={RefreshCw} className="lg:col-span-8" info="Ringkasan mekanisme auto-refresh terminal.">
+        <div className="space-y-2 text-[11px] text-white/60 leading-relaxed flex-1">
+          <p>Semua data <b className="text-white/80">auto-refresh sendiri</b> di browser — tidak perlu reload halaman. Tiap jenis data punya interval berbeda: data cepat (harga 8 dtk) menyegar sering, data lambat (COT 6 jam) jarang, agar hemat kuota API.</p>
+          <p className="flex items-start gap-2"><span className="text-amber-400 shrink-0">⏸</span> Refresh <b className="text-white/80">berhenti otomatis</b> saat tab browser di-background, lalu lanjut lagi begitu tab dibuka — ini normal, bukan error.</p>
+          <p className="flex items-start gap-2"><span className="text-emerald-400 shrink-0">↻</span> Angka ↻ di tiap baris = hitung mundur ke refresh berikutnya. Status dihitung dari keberhasilan & keterbaruan fetch terakhir.</p>
+        </div>
+      </Panel>
+      <Panel title="Status API Data" icon={Signal} className="lg:col-span-8" info="Status online/offline tiap sumber data real-time. Hijau = online & terbaru, kuning = data mulai basi, merah = gagal/putus.">
+        <div className="grid sm:grid-cols-2 gap-2">
+          {apiSources.map((s, i) => <ApiStatusRow key={s.label} label={s.label} sub={s.sub} stat={apiStatuses[i]} ts={s.ts} intervalMs={s.interval} now={now} />)}
+        </div>
+      </Panel>
+      <Panel title="Layanan On-Demand" icon={Brain} className="lg:col-span-4" info="Layanan yang jalan saat diminta / terjadwal, bukan polling terus-menerus.">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+            <span className="h-2 w-2 rounded-full bg-sky-400 shrink-0" />
+            <div className="min-w-0 flex-1"><p className="text-[11px] font-bold text-white/85">Analisa AI (Claude)</p><p className="text-[9px] text-white/40">Anthropic · saat klik "Jalankan Analisa"</p></div>
+            <span className="text-[10px] font-bold text-sky-400 shrink-0">On-demand</span>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+            <span className="h-2 w-2 rounded-full bg-sky-400 shrink-0" />
+            <div className="min-w-0 flex-1"><p className="text-[11px] font-bold text-white/85">Notifikasi Telegram</p><p className="text-[9px] text-white/40">Cron eksternal · tiap 5 mnt</p></div>
+            <span className="text-[10px] font-bold text-sky-400 shrink-0">Terjadwal</span>
+          </div>
+        </div>
+      </Panel>
+    </>
   )
 
   // Strip insight (Ringkasan) — metrik turunan penting dalam satu pandangan
@@ -869,93 +980,148 @@ export function TradingTerminal() {
     </div>
   )
 
+  const navGroups = Array.from(new Set(TABS.map(t => t.group ?? 'Menu')))
+  const activeTab = TABS.find(t => t.id === tab)
+  const Flow = ({ n, label }: { n: number; label: string }) => (
+    <div className="lg:col-span-12 flex items-center gap-2 pt-1">
+      <span className="flex items-center justify-center h-5 w-5 rounded-full bg-primary/15 text-primary text-[10px] font-black">{n}</span>
+      <span className="text-[11px] font-bold uppercase tracking-widest text-white/45">{label}</span>
+      <div className="flex-1 h-px bg-white/[0.06]" />
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-[#060a09] text-white">
       {chartFull && (
-        <div className="fixed inset-0 z-50 bg-[#060a09] p-3 flex flex-col">
-          <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD — {f2(feed.price)} {ai.data && <span className="text-[10px] font-normal text-white/40">· level AI aktif</span>}</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>
-          <div className="flex-1 min-h-0"><AiChart tfData={feed.tf} levels={ai.data?.chartLevels ?? null} height={typeof window !== 'undefined' ? window.innerHeight - 90 : 600} /></div>
+        <div className="fixed inset-0 z-[60] bg-[#060a09] p-3 flex flex-col">
+          <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD — {f2(feed.price)} · TradingView</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>
+          <div className="flex-1 min-h-0"><TradingViewChart height="100%" /></div>
         </div>
       )}
 
-      <header className="sticky top-0 z-30 bg-[#060a09]/95 backdrop-blur border-b border-white/8">
-        <div className="px-4 h-14 flex items-center gap-4">
-          <Link href="/dashboard" className="text-white/50 hover:text-white shrink-0"><ArrowLeft size={18} /></Link>
-          <div className="flex items-center gap-2 shrink-0"><span className="font-black tracking-tight">XAU/USD</span><span className={`text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 ${live.status === 'live' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>{live.status === 'live' ? 'Data Real' : 'Menyegarkan…'}</span></div>
-          <div className="flex items-baseline gap-2"><span className={`text-2xl font-black tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{f2(feed.price)}</span><span className={`text-xs font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{feed.changePct.toFixed(2)}%</span></div>
-          <div className="hidden md:flex items-center gap-4 text-[11px] text-white/50 tabular-nums"><span>H <b className="text-emerald-400/80">{f2(feed.dayHigh)}</b></span><span>L <b className="text-red-400/80">{f2(feed.dayLow)}</b></span></div>
-          <div className="ml-auto flex items-center gap-3 shrink-0">
-            <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {session}</span>
-            <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/40"><Clock size={11} /> {clock}</span>
-            <span className={`flex items-center gap-1 text-[10px] ${live.status === 'live' ? 'text-emerald-400' : 'text-amber-400'}`}>{live.status === 'live' ? <Wifi size={12} /> : <RefreshCw size={11} className="animate-spin" />} live</span>
-            <span className="hidden sm:flex items-center gap-1 text-[9px] text-white/30 tabular-nums" title="Harga auto-refresh tiap 8 detik">harga ↻{countdownStr(live.quoteAt, 8_000, now)}</span>
+      <div className="flex">
+        {/* Sidebar (md+) */}
+        <aside className="hidden md:flex flex-col w-52 shrink-0 h-screen sticky top-0 border-r border-white/[0.06] bg-[#080d0b]">
+          <div className="h-14 flex items-center gap-2 px-4 border-b border-white/[0.06] shrink-0">
+            <Link href="/dashboard" className="text-white/50 hover:text-white shrink-0" title="Kembali ke dashboard"><ArrowLeft size={17} /></Link>
+            <span className="font-black tracking-tight">Datalitiq</span>
+            <span className="ml-auto text-[8px] font-bold uppercase tracking-wider text-primary/70">XAU</span>
           </div>
+          <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-4">
+            {navGroups.map(g => (
+              <div key={g}>
+                <p className="px-2 mb-1.5 text-[9px] font-bold uppercase tracking-widest text-white/25">{g}</p>
+                <div className="space-y-0.5">
+                  {TABS.filter(t => (t.group ?? 'Menu') === g).map(t => {
+                    const on = tab === t.id
+                    return (
+                      <button key={t.id} onClick={() => setTab(t.id)} className={`w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${on ? 'bg-primary/15 text-white' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
+                        <t.icon size={15} className={on ? 'text-primary' : ''} /> {t.label}
+                        {t.id === 'status' && <span className={`ml-auto h-1.5 w-1.5 rounded-full ${STAT_META[overall].dot}`} />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+          <button onClick={() => setTab('status')} className="m-2.5 flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors shrink-0">
+            <span className={`h-2 w-2 rounded-full ${STAT_META[overall].dot} ${overall === 'online' ? 'shadow-[0_0_0_3px_rgba(52,211,153,0.15)]' : ''}`} />
+            <div className="min-w-0 flex-1"><p className={`text-[11px] font-bold ${STAT_META[overall].text}`}>{overall === 'online' ? 'Server Online' : overall === 'offline' ? 'Ada Gangguan' : overall === 'stale' ? 'Sebagian Lambat' : 'Menghubungkan'}</p><p className="text-[9px] text-white/35 tabular-nums">{onlineCount}/{apiSources.length} API aktif</p></div>
+          </button>
+        </aside>
+
+        {/* Main column */}
+        <div className="flex-1 min-w-0">
+          <header className="sticky top-0 z-30 bg-[#060a09]/95 backdrop-blur border-b border-white/[0.06]">
+            <div className="px-4 h-14 flex items-center gap-3 sm:gap-4">
+              <Link href="/dashboard" className="md:hidden text-white/50 hover:text-white shrink-0"><ArrowLeft size={18} /></Link>
+              <div className="flex items-center gap-2 shrink-0"><span className="font-black tracking-tight">XAU/USD</span><span className={`hidden sm:inline text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 ${live.status === 'live' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>{live.status === 'live' ? 'Data Real' : 'Menyegarkan…'}</span></div>
+              <div className="flex items-baseline gap-2"><span className={`text-2xl font-black tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{f2(feed.price)}</span><span className={`text-xs font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{feed.changePct.toFixed(2)}%</span></div>
+              <div className="hidden md:flex items-center gap-4 text-[11px] text-white/50 tabular-nums"><span>H <b className="text-emerald-400/80">{f2(feed.dayHigh)}</b></span><span>L <b className="text-red-400/80">{f2(feed.dayLow)}</b></span></div>
+              <div className="ml-auto flex items-center gap-3 shrink-0">
+                <span className="hidden md:flex items-center gap-1.5 text-[11px] font-semibold text-white/70">{activeTab && <activeTab.icon size={13} className="text-primary" />}{activeTab?.label}</span>
+                <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {session}</span>
+                <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/40"><Clock size={11} /> {clock}</span>
+                <span className={`flex items-center gap-1 text-[10px] ${live.status === 'live' ? 'text-emerald-400' : 'text-amber-400'}`}>{live.status === 'live' ? <Wifi size={12} /> : <RefreshCw size={11} className="animate-spin" />} live</span>
+              </div>
+            </div>
+          </header>
+
+          <main className="p-2.5 pb-20 md:pb-6">
+            {tab === 'ringkasan' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+              {InsightStrip}
+              <Flow n={1} label="Keputusan" />
+              {AiPanel}
+              <div className="lg:col-span-4">{SignalMeterPanel}</div>
+              <div className="lg:col-span-4">{BiasPanel}</div>
+              <div className="lg:col-span-4">{KesimpulanPanel}</div>
+              <Flow n={2} label="Konfirmasi Teknikal" />
+              <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
+              <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{MomentumPanel}</div>
+              <div className="lg:col-span-4">{HtfBiasPanel}</div>
+              <div className="lg:col-span-4">{ZonaPanel}</div>
+              <div className="lg:col-span-4">{ReversalPanel}</div>
+              <Flow n={3} label="Konteks Pasar" />
+              <div className="lg:col-span-6">{RiskSentimentPanel}</div>
+              <div className="lg:col-span-6">{IndicatorMatrix}</div>
+            </div>}
+
+            {tab === 'teknikal' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+              <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Claude baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
+                suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
+              <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
+              <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
+              <div className="lg:col-span-4">{HtfBiasPanel}</div>
+              <div className="lg:col-span-4">{ReversalPanel}</div>
+              <div className="lg:col-span-4">{OscillatorPanel}</div>
+              <div className="lg:col-span-4">{MomentumPanel}</div>
+              <div className="lg:col-span-4">{ZonaPanel}</div>
+              <div className="lg:col-span-12">{IndicatorMatrix}</div>
+            </div>}
+
+            {tab === 'makro' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+              <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
+                suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
+              {CrossPanel}
+              <div className="lg:col-span-5">{YieldCurvePanel}</div>
+              <div className="lg:col-span-7">{RiskSentimentPanel}</div>
+              {InflasiPanel}
+              <div className="lg:col-span-12">{CalendarPanel}</div>
+            </div>}
+
+            {tab === 'sentimen' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+              <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
+                suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
+              <div className="lg:col-span-7">{CotPanel}</div>
+              <div className="lg:col-span-5 grid grid-rows-2 gap-2.5">{RiskSentimentPanel}{GoldSilverPanel}</div>
+              <div className="lg:col-span-7">{NewsPanel}</div>
+              <div className="lg:col-span-5">{BiasPanel}</div>
+            </div>}
+
+            {tab === 'berita' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5"><TerminalNewsAnalysis snapshot={snapshot} /></div>}
+
+            {tab === 'status' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">{ServerStatusContent}</div>}
+
+            {tab === 'panduan' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5"><div className="lg:col-span-12"><PanduanContent /></div></div>}
+
+            <p className="text-center text-[10px] text-white/25 pt-6">Terminal XAUUSD · 100% data real. Bukan nasihat keuangan — gunakan sebagai alat bantu analisa, keputusan tetap di tangan kamu.</p>
+          </main>
         </div>
-        {/* Tab nav */}
-        <div className="px-3 flex items-center gap-1 overflow-x-auto">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 text-[11px] font-semibold px-3 py-2 border-b-2 transition-colors whitespace-nowrap ${tab === t.id ? 'border-primary text-white' : 'border-transparent text-white/40 hover:text-white/70'}`}>
-              <t.icon size={13} /> {t.label}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5">
-        {tab === 'ringkasan' && <>
-          {DataFreshnessPanel}
-          {InsightStrip}
-          {AiPanel}
-          <div className="lg:col-span-4">{SignalMeterPanel}</div>
-          <div className="lg:col-span-4">{BiasPanel}</div>
-          <div className="lg:col-span-4">{KesimpulanPanel}</div>
-          <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
-          <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{MomentumPanel}</div>
-          <div className="lg:col-span-4">{HtfBiasPanel}</div>
-          <div className="lg:col-span-4">{ZonaPanel}</div>
-          <div className="lg:col-span-4">{RiskSentimentPanel}</div>
-          <div className="lg:col-span-4">{ReversalPanel}</div>
-          <div className="lg:col-span-4">{IndicatorMatrix}</div>
-        </>}
-
-        {tab === 'teknikal' && <>
-          <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Claude baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
-            suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
-          <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
-          <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
-          <div className="lg:col-span-4">{HtfBiasPanel}</div>
-          <div className="lg:col-span-4">{ReversalPanel}</div>
-          <div className="lg:col-span-4">{OscillatorPanel}</div>
-          <div className="lg:col-span-4">{MomentumPanel}</div>
-          <div className="lg:col-span-4">{ZonaPanel}</div>
-          <div className="lg:col-span-12">{IndicatorMatrix}</div>
-        </>}
-
-        {tab === 'makro' && <>
-          <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
-            suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
-          {CrossPanel}
-          <div className="lg:col-span-5">{YieldCurvePanel}</div>
-          <div className="lg:col-span-7">{RiskSentimentPanel}</div>
-          {InflasiPanel}
-          <div className="lg:col-span-12">{CalendarPanel}</div>
-        </>}
-
-        {tab === 'sentimen' && <>
-          <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
-            suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
-          <div className="lg:col-span-7">{CotPanel}</div>
-          <div className="lg:col-span-5 grid grid-rows-2 gap-2.5">{RiskSentimentPanel}{GoldSilverPanel}</div>
-          <div className="lg:col-span-7">{NewsPanel}</div>
-          <div className="lg:col-span-5">{BiasPanel}</div>
-        </>}
-
-        {tab === 'berita' && <TerminalNewsAnalysis snapshot={snapshot} />}
-
-        {tab === 'panduan' && <div className="lg:col-span-12"><PanduanContent /></div>}
       </div>
 
-      <p className="text-center text-[10px] text-white/25 pb-6">Terminal XAUUSD · 100% data real. Bukan nasihat keuangan — gunakan sebagai alat bantu analisa, keputusan tetap di tangan kamu.</p>
+      {/* Bottom nav (mobile) */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#080d0b]/95 backdrop-blur border-t border-white/[0.06] flex items-center overflow-x-auto">
+        {TABS.map(t => {
+          const on = tab === t.id
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} className={`flex flex-col items-center gap-0.5 px-3 py-2 shrink-0 ${on ? 'text-primary' : 'text-white/40'}`}>
+              <t.icon size={16} />
+              <span className="text-[8px] font-semibold whitespace-nowrap">{t.label}</span>
+            </button>
+          )
+        })}
+      </nav>
     </div>
   )
 }
