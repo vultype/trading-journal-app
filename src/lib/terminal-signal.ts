@@ -141,16 +141,23 @@ export function confluence(tf: Record<TF, TFData>) {
   return { label, strength, bulls, bears }
 }
 
-// ─────────────────────────── regime pasar (4 kategori) ───────────────────────────
+// ─────────────────────────── regime pasar (4 fase × arah) ───────────────────────────
 // Semua berbasis M15: bbSqueeze (Bollinger menyempit), level ADX, arah slope ADX, arah DI.
-export type Regime = { label: 'Ranging' | 'Tren Melemah' | 'Trending' | 'Awal Tren'; c: string; desc: string }
+// `phase` = fase tren (dipakai untuk logika/notifikasi, stabil), `label` = teks tampilan
+// yang menyertakan ARAH (Bullish/Bearish), `dir` = arah tren dominan.
+export type RegimePhase = 'ranging' | 'awal' | 'trending' | 'melemah'
+export type RegimeDir = 'bullish' | 'bearish' | 'netral'
+export type Regime = { label: string; phase: RegimePhase; dir: RegimeDir; c: string; desc: string }
 export function regimeOf(p: { bbSqueeze: boolean; adx: number; adxTrend: 'naik' | 'turun' | 'stabil'; trendUp: boolean }): Regime {
   const { bbSqueeze, adx, adxTrend, trendUp } = p
-  return bbSqueeze || adx < 18
-    ? { label: 'Ranging', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit' : 'sideways / lemah' }
-    : adxTrend === 'turun'
-      ? { label: 'Tren Melemah', c: 'text-orange-400', desc: `momentum ${trendUp ? 'naik' : 'turun'} mulai pudar` }
-      : adx >= 25
-        ? { label: 'Trending', c: 'text-emerald-400', desc: trendUp ? 'tren naik kuat' : 'tren turun kuat' }
-        : { label: 'Awal Tren', c: 'text-sky-400', desc: `tren ${trendUp ? 'naik' : 'turun'} mulai terbentuk` }
+  const dir: RegimeDir = trendUp ? 'bullish' : 'bearish'
+  const Dir = trendUp ? 'Bullish' : 'Bearish'
+  const dirClr = trendUp ? 'text-emerald-400' : 'text-red-400'
+  if (bbSqueeze || adx < 18)
+    return { label: 'Ranging', phase: 'ranging', dir: 'netral', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit, tanpa arah jelas' : 'sideways / tren lemah' }
+  if (adxTrend === 'turun')
+    return { label: `${Dir} Melemah`, phase: 'melemah', dir, c: 'text-orange-400', desc: `tren ${trendUp ? 'naik' : 'turun'} kehilangan momentum — waspada pembalikan` }
+  if (adx >= 25)
+    return { label: `Trending ${Dir}`, phase: 'trending', dir, c: dirClr, desc: trendUp ? 'tren naik kuat — ikuti arah beli' : 'tren turun kuat — ikuti arah jual' }
+  return { label: `Awal Tren ${Dir}`, phase: 'awal', dir, c: dirClr, desc: `tren ${trendUp ? 'naik' : 'turun'} mulai terbentuk` }
 }

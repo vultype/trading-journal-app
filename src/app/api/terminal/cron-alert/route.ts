@@ -102,7 +102,7 @@ export async function GET(req: Request) {
     const regime = regimeOf({ bbSqueeze: tf.M15.boll.squeeze, adx, adxTrend: tf.M15.adxTrend, trendUp })
     const price = quote?.price ?? tf.M5.candles[tf.M5.candles.length - 1].c
 
-    const trending = regime.label === 'Trending'
+    const trending = regime.phase === 'trending'
     const layak = trending && sc.confidence >= CONF_MIN && conf.strength === 'kuat'
     const layakDir = conf.label === 'BULLISH' || conf.label === 'BEARISH' ? conf.label : null
     const tfWord = `M5 ${tf.M5.bias.label} · M15 ${tf.M15.bias.label} · H1 ${tf.H1.bias.label}`
