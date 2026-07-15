@@ -29,7 +29,9 @@ const HTFS: HTF[] = ['H4', 'D1']
 type Dir = 'BULLISH' | 'BEARISH' | 'NETRAL'
 type Candle = { o: number; h: number; l: number; c: number; t: number; v: number }
 type Bias = { label: Dir; score: number }
-type TFData = { candles: Candle[]; ema9: number[]; ema21: number[]; vwapArr: number[]; rsi: number; atr: number; vwap: number; adx: number; plusDI: number; minusDI: number; bias: Bias; macd: Macd; boll: Boll; stoch: Stoch; structure: Structure; momentum: number }
+type ReversalDir = 'bullish' | 'bearish' | 'netral'
+type Reversal = { arah: ReversalDir; skor: number; sinyal: string[] }
+type TFData = { candles: Candle[]; ema9: number[]; ema21: number[]; vwapArr: number[]; rsi: number; atr: number; vwap: number; adx: number; adxTrend: 'naik' | 'turun' | 'stabil'; plusDI: number; minusDI: number; bias: Bias; macd: Macd; boll: Boll; stoch: Stoch; structure: Structure; momentum: number; reversal: Reversal }
 type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
 type MacroPoint = { key: string; value: number; prior: number; date: string }
 type CotGroup = { long: number; short: number; net: number; deltaNet: number }
@@ -73,10 +75,43 @@ function adxCalc(candles: Candle[], period = 14): { adx: number; plusDI: number;
   const lastTR = trS[trS.length - 1]
   return { adx, plusDI: lastTR ? 100 * pS[pS.length - 1] / lastTR : 0, minusDI: lastTR ? 100 * mS[mS.length - 1] / lastTR : 0 }
 }
+// Deteksi pembalikan arah — gabungan 4 sinyal nyata yang baru saja "cross":
+// EMA9/21, +DI/-DI, MACD histogram tembus nol, dan perubahan struktur pasar (HH/HL).
+// skor = berapa banyak sinyal yang sepakat (0-4) dalam arah yang sama.
+function detectReversal(candles: Candle[]): Reversal {
+  const n = candles.length
+  if (n < 40) return { arah: 'netral', skor: 0, sinyal: [] }
+  // LOOKBACK: bandingkan kondisi sekarang vs beberapa candle lalu (bukan cuma 1 candle
+  // terakhir) — supaya sinyal cross tidak "basi" dalam 1 tick kalau pas polling meleset.
+  const LOOKBACK = 3
+  const closes = candles.map(c => c.c)
+  const ema9 = emaArr(closes, 9), ema21 = emaArr(closes, 21)
+  const sinyal: string[] = []; let bull = 0, bear = 0
+
+  if (ema9[n - 1] > ema21[n - 1] && ema9[n - 1 - LOOKBACK] <= ema21[n - 1 - LOOKBACK]) { bull++; sinyal.push('EMA9 cross naik EMA21') }
+  if (ema9[n - 1] < ema21[n - 1] && ema9[n - 1 - LOOKBACK] >= ema21[n - 1 - LOOKBACK]) { bear++; sinyal.push('EMA9 cross turun EMA21') }
+
+  const di0 = adxCalc(candles), di1 = adxCalc(candles.slice(0, -LOOKBACK))
+  if (di0.plusDI > di0.minusDI && di1.plusDI <= di1.minusDI) { bull++; sinyal.push('+DI cross di atas -DI') }
+  if (di0.minusDI > di0.plusDI && di1.minusDI <= di1.plusDI) { bear++; sinyal.push('-DI cross di atas +DI') }
+
+  const macd0 = macdCalc(closes), macd1 = macdCalc(closes.slice(0, -LOOKBACK))
+  if (macd0.hist > 0 && macd1.hist <= 0) { bull++; sinyal.push('MACD histogram tembus ke positif') }
+  if (macd0.hist < 0 && macd1.hist >= 0) { bear++; sinyal.push('MACD histogram tembus ke negatif') }
+
+  const struct0 = marketStructure(candles), struct1 = marketStructure(candles.slice(0, -3))
+  if (struct0.label === 'Uptrend' && struct1.label !== 'Uptrend') { bull++; sinyal.push('Struktur berubah jadi Uptrend (HH/HL)') }
+  if (struct0.label === 'Downtrend' && struct1.label !== 'Downtrend') { bear++; sinyal.push('Struktur berubah jadi Downtrend (LH/LL)') }
+
+  const arah: ReversalDir = bull > bear ? 'bullish' : bear > bull ? 'bearish' : 'netral'
+  return { arah, skor: Math.max(bull, bear), sinyal }
+}
 function computeTF(candles: Candle[]): TFData {
   const closes = candles.map(c => c.c)
   const ema9 = emaArr(closes, 9), ema21 = emaArr(closes, 21), rsi = rsiLast(closes), atr = atrLast(candles)
   const { adx, plusDI, minusDI } = adxCalc(candles)
+  const adxPrev = candles.length > 18 ? adxCalc(candles.slice(0, -4)).adx : adx
+  const adxTrend: TFData['adxTrend'] = adx > adxPrev + 0.5 ? 'naik' : adx < adxPrev - 0.5 ? 'turun' : 'stabil'
   const vwapArr: number[] = []; let pv = 0, vv = 0
   candles.forEach(c => { const tp = (c.h + c.l + c.c) / 3; pv += tp * c.v; vv += c.v; vwapArr.push(pv / vv) })
   const vwap = vwapArr[vwapArr.length - 1], price = closes[closes.length - 1]
@@ -87,7 +122,8 @@ function computeTF(candles: Candle[]): TFData {
   const bias: Bias = score >= 2 ? { label: 'BULLISH', score } : score <= -2 ? { label: 'BEARISH', score } : { label: 'NETRAL', score }
   const macd = macdCalc(closes), boll = bollinger(closes), stoch = stochastic(candles), structure = marketStructure(candles)
   const momentum = momentumScore(rsi, macd, stoch, boll)
-  return { candles, ema9, ema21, vwapArr, rsi, atr, vwap, adx, plusDI, minusDI, bias, macd, boll, stoch, structure, momentum }
+  const reversal = detectReversal(candles)
+  return { candles, ema9, ema21, vwapArr, rsi, atr, vwap, adx, adxTrend, plusDI, minusDI, bias, macd, boll, stoch, structure, momentum, reversal }
 }
 const adxLabel = (adx: number) => adx < 20 ? 'Lemah' : adx < 25 ? 'Mulai' : adx < 40 ? 'Kuat' : 'Sangat Kuat'
 
@@ -527,7 +563,14 @@ export function TradingTerminal() {
   const dayRange = feed.dayHigh - feed.dayLow
   const dayPos = dayRange > 0 ? clamp((feed.price - feed.dayLow) / dayRange, 0, 1) : 0.5
   const bbSqueeze = feed.tf.M15.boll.squeeze
-  const regime = adx >= 25 ? { label: 'Trending', c: 'text-emerald-400', desc: trendUp ? 'tren naik kuat' : 'tren turun kuat' } : (adx < 18 || bbSqueeze) ? { label: 'Ranging', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit' : 'sideways / lemah' } : { label: 'Transisi', c: 'text-sky-400', desc: 'tren mulai terbentuk' }
+  const adxTrend = feed.tf.M15.adxTrend
+  const regime = bbSqueeze || adx < 18
+    ? { label: 'Ranging', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit' : 'sideways / lemah' }
+    : adxTrend === 'turun'
+      ? { label: 'Tren Melemah', c: 'text-orange-400', desc: `momentum ${trendUp ? 'naik' : 'turun'} mulai pudar` }
+      : adx >= 25
+        ? { label: 'Trending', c: 'text-emerald-400', desc: trendUp ? 'tren naik kuat' : 'tren turun kuat' }
+        : { label: 'Awal Tren', c: 'text-sky-400', desc: `tren ${trendUp ? 'naik' : 'turun'} mulai terbentuk` }
   const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
@@ -545,8 +588,8 @@ export function TradingTerminal() {
   const snapshot = {
     price: +feed.price.toFixed(2), changePct: +feed.changePct.toFixed(2), session, volatility: volLabel,
     signal: { overall: Math.round(sc.overall), label: sc.label, confidence: sc.confidence, macro: Math.round(sc.macro), tech: Math.round(sc.tech), senti: Math.round(sc.senti) },
-    tf: Object.fromEntries(TFS.map(t => { const d = feed.tf[t]; return [t, { bias: d.bias.label, rsi: Math.round(d.rsi), macd: d.macd.state, stoch: Math.round(d.stoch.k), struktur: d.structure.label }] })),
-    adx: +adx.toFixed(0), trendDir: trendUp ? 'naik' : 'turun', atrM15: +feed.tf.M15.atr.toFixed(2), vwapM15: +feed.tf.M15.vwap.toFixed(2),
+    tf: Object.fromEntries(TFS.map(t => { const d = feed.tf[t]; return [t, { bias: d.bias.label, rsi: Math.round(d.rsi), macd: d.macd.state, stoch: Math.round(d.stoch.k), struktur: d.structure.label, reversal: d.reversal.arah !== 'netral' ? `${d.reversal.arah} (${d.reversal.skor}/4 sinyal)` : null }] })),
+    adx: +adx.toFixed(0), adxTrend, trendDir: trendUp ? 'naik' : 'turun', atrM15: +feed.tf.M15.atr.toFixed(2), vwapM15: +feed.tf.M15.vwap.toFixed(2),
     biasTFbesar: { H4: feed.htf.H4 ? { bias: feed.htf.H4.bias.label, rsi: Math.round(feed.htf.H4.rsi), struktur: feed.htf.H4.structure.label } : null, D1: feed.htf.D1 ? { bias: feed.htf.D1.bias.label, rsi: Math.round(feed.htf.D1.rsi), struktur: feed.htf.D1.structure.label } : null },
     regime: regime.label, momentum: Math.round(avgMomentum), bbSqueeze, riskSentiment: riskOn < -0.1 ? 'risk-off' : riskOn > 0.1 ? 'risk-on' : 'netral',
     goldSilverRatio: goldSilver ? +goldSilver.toFixed(1) : null, yieldCurve2s10: curve2s10 != null ? +curve2s10.toFixed(2) : null,
@@ -750,7 +793,7 @@ export function TradingTerminal() {
   // Strip insight (Ringkasan) — metrik turunan penting dalam satu pandangan
   const InsightStrip = (
     <div className="lg:col-span-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="Trending = ADX≥25 (ikuti tren). Ranging = sideways/squeeze (main pantulan)." />
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="Ranging = sideways/squeeze (main pantulan). Awal Tren = ADX 18-25 & naik (tren baru terbentuk). Trending = ADX≥25 & masih naik (ikuti tren). Tren Melemah = ADX mulai turun (momentum pudar, waspada reversal)." />
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
@@ -782,6 +825,34 @@ export function TradingTerminal() {
           )
         })}
       </div>
+    </Panel>
+  )
+
+  // Deteksi Pembalikan Arah — gabungan cross EMA/DI/MACD/struktur per timeframe
+  const ReversalPanel = (
+    <Panel title="Deteksi Pembalikan Arah" icon={Waves} info="Menggabungkan 4 sinyal cross yang BARU SAJA terjadi: EMA9×EMA21, +DI×-DI, MACD histogram tembus nol, dan perubahan struktur pasar (HH/HL). Skor = berapa sinyal yang sepakat (0-4). Skor ≥2 = indikasi cukup kuat; skor 1 = masih lemah, tunggu konfirmasi.">
+      <div className="space-y-2">
+        {TFS.map(t => {
+          const r = feed.tf[t].reversal
+          const strong = r.skor >= 2
+          const boxCls = r.arah === 'bullish' ? 'bg-emerald-500/10 border-emerald-500/25' : r.arah === 'bearish' ? 'bg-red-500/10 border-red-500/25' : 'bg-white/[0.03] border-white/10'
+          return (
+            <div key={t} className={`rounded-lg border px-2.5 py-2 ${boxCls}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] font-bold text-white/70">{t}</span>
+                {r.arah === 'netral' ? <span className="text-[10px] text-white/35">Tidak ada sinyal reversal</span> : (
+                  <span className={`flex items-center gap-1 text-[10px] font-black ${dirColor(r.arah)}`}>
+                    {r.arah === 'bullish' ? '↗ Reversal Bullish' : '↘ Reversal Bearish'}
+                    <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[9px] ${strong ? 'bg-white/15' : 'bg-white/5'}`}>{r.skor}/4</span>
+                  </span>
+                )}
+              </div>
+              {r.sinyal.length > 0 && <p className="text-[9px] text-white/45 leading-snug">{r.sinyal.join(' · ')}</p>}
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-[9px] text-white/30 mt-2 pt-2 border-t border-white/5">Ini sinyal teknikal murni (price action), bukan jaminan — kombinasikan dengan Regime Pasar & bias timeframe besar sebelum bertindak.</p>
     </Panel>
   )
 
@@ -976,7 +1047,8 @@ export function TradingTerminal() {
           <div className="lg:col-span-4">{HtfBiasPanel}</div>
           <div className="lg:col-span-4">{ZonaPanel}</div>
           <div className="lg:col-span-4">{RiskSentimentPanel}</div>
-          <div className="lg:col-span-12">{IndicatorMatrix}</div>
+          <div className="lg:col-span-4">{ReversalPanel}</div>
+          <div className="lg:col-span-4">{IndicatorMatrix}</div>
         </>}
 
         {tab === 'teknikal' && <>
@@ -985,10 +1057,11 @@ export function TradingTerminal() {
           <ChartPanel onExpand={() => setChartFull(true)} tfData={feed.tf} levels={ai.data?.chartLevels ?? null} />
           <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
           <div className="lg:col-span-4">{HtfBiasPanel}</div>
+          <div className="lg:col-span-4">{ReversalPanel}</div>
           <div className="lg:col-span-4">{OscillatorPanel}</div>
           <div className="lg:col-span-4">{MomentumPanel}</div>
-          <div className="lg:col-span-8">{IndicatorMatrix}</div>
           <div className="lg:col-span-4">{ZonaPanel}</div>
+          <div className="lg:col-span-12">{IndicatorMatrix}</div>
         </>}
 
         {tab === 'makro' && <>
