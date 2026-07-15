@@ -101,12 +101,15 @@ type LiveXau = { price: number; changePct: number; dayHigh: number; dayLow: numb
 function useLiveXauFeed() {
   const [data, setData] = useState<LiveXau | null>(null)
   const [status, setStatus] = useState<'loading' | 'live' | 'error'>('loading')
+  const [quoteAt, setQuoteAt] = useState<number | null>(null)
+  const [candlesAt, setCandlesAt] = useState<number | null>(null)
+  const [htfAt, setHtfAt] = useState<number | null>(null)
   const candlesRef = useRef<Partial<Record<TF | HTF, Candle[]>>>({})
   useEffect(() => {
     let stopped = false
     async function pollQuote() {
       try { const j = await (await fetch('/api/terminal/quote')).json(); if (j.error) throw new Error(j.error); if (stopped) return
-        setData(prev => prev ? { ...prev, price: j.price, changePct: j.changePct, dayHigh: Math.max(j.dayHigh, j.price), dayLow: Math.min(j.dayLow, j.price) } : prev); setStatus('live')
+        setData(prev => prev ? { ...prev, price: j.price, changePct: j.changePct, dayHigh: Math.max(j.dayHigh, j.price), dayLow: Math.min(j.dayLow, j.price) } : prev); setStatus('live'); setQuoteAt(Date.now())
       } catch { if (!stopped) setStatus(candlesRef.current.M5 ? 'live' : 'error') }
     }
     function rebuild() {
@@ -126,6 +129,7 @@ function useLiveXauFeed() {
       try { const arr = await (await fetch(`/api/terminal/candles?tf=${tf}`)).json(); if (stopped || !Array.isArray(arr) || !arr.length) return
         candlesRef.current[tf] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
         rebuild()
+        if (TFS.includes(tf as TF)) setCandlesAt(Date.now()); else setHtfAt(Date.now())
       } catch { }
     }
     const hidden = () => typeof document !== 'undefined' && document.hidden
@@ -140,33 +144,37 @@ function useLiveXauFeed() {
     document.addEventListener('visibilitychange', onVis)
     return () => { stopped = true; clearInterval(qId); clearInterval(eId); clearInterval(cId); clearInterval(hId); document.removeEventListener('visibilitychange', onVis) }
   }, [])
-  return { data, status }
+  return { data, status, quoteAt, candlesAt, htfAt }
 }
 type CrossQuote = { price: number; changePct: number } | null
 function useCrossAsset() {
   const [map, setMap] = useState<Record<string, CrossQuote> | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
   useEffect(() => {
     let stopped = false
-    const poll = async () => { try { const j = await (await fetch('/api/terminal/crossasset')).json(); if (!stopped && j['BTC/USD']) setMap(j) } catch { } }
+    const poll = async () => { try { const j = await (await fetch('/api/terminal/crossasset')).json(); if (!stopped && j['BTC/USD']) { setMap(j); setUpdatedAt(Date.now()) } } catch { } }
     poll(); const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) poll() }, 45_000)
     return () => { stopped = true; clearInterval(id) }
   }, [])
-  return { btc: map?.['BTC/USD'] ?? null, spy: map?.SPY ?? null, qqq: map?.QQQ ?? null, vixy: map?.VIXY ?? null, uup: map?.UUP ?? null, xag: map?.['XAG/USD'] ?? null }
+  return { btc: map?.['BTC/USD'] ?? null, spy: map?.SPY ?? null, qqq: map?.QQQ ?? null, vixy: map?.VIXY ?? null, uup: map?.UUP ?? null, xag: map?.['XAG/USD'] ?? null, updatedAt }
 }
 function useMacro() {
   const [map, setMap] = useState<Record<string, MacroPoint> | null>(null)
-  useEffect(() => { let s = false; const poll = async () => { try { const arr = await (await fetch('/api/terminal/macro')).json(); if (s || !Array.isArray(arr)) return; const m: Record<string, MacroPoint> = {}; for (const p of arr as MacroPoint[]) m[p.key] = p; setMap(m) } catch { } }; poll(); const id = setInterval(poll, 3600_000); return () => { s = true; clearInterval(id) } }, [])
-  return map
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const arr = await (await fetch('/api/terminal/macro')).json(); if (s || !Array.isArray(arr)) return; const m: Record<string, MacroPoint> = {}; for (const p of arr as MacroPoint[]) m[p.key] = p; setMap(m); setUpdatedAt(Date.now()) } catch { } }; poll(); const id = setInterval(poll, 3600_000); return () => { s = true; clearInterval(id) } }, [])
+  return { map, updatedAt }
 }
 function usePivots() {
   const [p, setP] = useState<Pivots | null>(null)
-  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/pivots')).json(); if (!s && j.P) setP(j) } catch { } }; poll(); const id = setInterval(poll, 3600_000); return () => { s = true; clearInterval(id) } }, [])
-  return p
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/pivots')).json(); if (!s && j.P) { setP(j); setUpdatedAt(Date.now()) } } catch { } }; poll(); const id = setInterval(poll, 3600_000); return () => { s = true; clearInterval(id) } }, [])
+  return { p, updatedAt }
 }
 function useCot() {
   const [cot, setCot] = useState<Cot | null>(null)
-  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/cot')).json(); if (!s && j.date) setCot(j) } catch { } }; poll(); const id = setInterval(poll, 6 * 3600_000); return () => { s = true; clearInterval(id) } }, [])
-  return cot
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/cot')).json(); if (!s && j.date) { setCot(j); setUpdatedAt(Date.now()) } } catch { } }; poll(); const id = setInterval(poll, 6 * 3600_000); return () => { s = true; clearInterval(id) } }, [])
+  return { cot, updatedAt }
 }
 type AiAnalysis = {
   verdict: 'Bullish' | 'Bearish' | 'Netral'; confidence: number; keputusan: 'BELI' | 'JUAL' | 'TUNGGU'; keputusanAlasan: string; conviction: 'Tinggi' | 'Sedang' | 'Rendah'
@@ -190,8 +198,9 @@ function useAiAnalysis() {
 type NewsItem = { text: string; source: string; time: string; link: string }
 function useNews() {
   const [data, setData] = useState<NewsItem[] | null>(null)
-  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/news')).json(); if (!s && Array.isArray(j)) setData(j) } catch { } }; poll(); const id = setInterval(poll, 600_000); return () => { s = true; clearInterval(id) } }, [])
-  return data
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/news')).json(); if (!s && Array.isArray(j)) { setData(j); setUpdatedAt(Date.now()) } } catch { } }; poll(); const id = setInterval(poll, 600_000); return () => { s = true; clearInterval(id) } }, [])
+  return { data, updatedAt }
 }
 
 // ─────────────────────────── scoring ───────────────────────────
@@ -231,6 +240,40 @@ function confluence(tf: Record<TF, TFData>) {
 // ─────────────────────────── helpers UI ───────────────────────────
 const f2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const kfmt = (n: number) => (n >= 0 ? '+' : '') + (Math.abs(n) >= 1000 ? (n / 1000).toFixed(0) + 'k' : n.toFixed(0))
+
+// Waktu relatif ("5d lalu") & countdown ("berikutnya 3d") untuk indikator freshness data.
+function relTime(ts: number | null, now: number): string {
+  if (!ts) return 'memuat…'
+  const s = Math.floor((now - ts) / 1000)
+  if (s < 2) return 'baru saja'
+  if (s < 60) return `${s}d lalu`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m lalu`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}j lalu`
+  return `${Math.floor(h / 24)}h lalu`
+}
+function countdownStr(ts: number | null, intervalMs: number, now: number): string {
+  if (!ts) return '—'
+  const remain = Math.max(0, Math.ceil((ts + intervalMs - now) / 1000))
+  if (remain <= 0) return 'sebentar lagi'
+  if (remain < 60) return `${remain}d`
+  const m = Math.floor(remain / 60), s = remain % 60
+  if (m < 60) return `${m}m ${s}d`
+  const h = Math.floor(m / 60)
+  return `${h}j ${m % 60}m`
+}
+function FreshRow({ label, ts, intervalMs, now }: { label: string; ts: number | null; intervalMs: number; now: number }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-2.5 py-1.5">
+      <span className="text-[10px] font-semibold text-white/70">{label}</span>
+      <div className="text-right leading-tight">
+        <p className="text-[9px] text-white/45">{relTime(ts, now)}</p>
+        <p className="text-[9px] text-primary/70 tabular-nums">↻ {countdownStr(ts, intervalMs, now)}</p>
+      </div>
+    </div>
+  )
+}
 const dirColor = (l: string) => l === 'BULLISH' || l === 'Bullish' || l === 'bullish' ? 'text-emerald-400' : l === 'BEARISH' || l === 'Bearish' || l === 'bearish' ? 'text-red-400' : 'text-white/60'
 const dirBg = (l: string) => l === 'BULLISH' || l === 'Bullish' ? 'bg-emerald-500/15 text-emerald-400' : l === 'BEARISH' || l === 'Bearish' ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/60'
 
@@ -433,11 +476,11 @@ export function TradingTerminal() {
   const now = useClock()
   const live = useLiveXauFeed()
   const cross = useCrossAsset()
-  const macro = useMacro()
-  const pivotsLive = usePivots()
-  const cot = useCot()
+  const { map: macro, updatedAt: macroAt } = useMacro()
+  const { p: pivotsLive, updatedAt: pivotAt } = usePivots()
+  const { cot, updatedAt: cotAt } = useCot()
   const ai = useAiAnalysis()
-  const newsItems = useNews()
+  const { data: newsItems, updatedAt: newsAt } = useNews()
   const [tab, setTab] = useState<Tab>('ringkasan')
   const [chartFull, setChartFull] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
@@ -688,6 +731,22 @@ export function TradingTerminal() {
     </Panel>
   )
 
+  // Jadwal refresh data — semua auto-refresh sendiri, ini bukti + countdown-nya
+  const DataFreshnessPanel = (
+    <Panel title="Jadwal Refresh Data" icon={RefreshCw} className="lg:col-span-12" info="Semua data di terminal ini auto-refresh sendiri di browser — tidak perlu reload halaman. Interval beda tiap jenis data (data lambat = interval lebih panjang, hemat kuota API). Refresh sempat berhenti kalau tab browser di-background, lalu otomatis lanjut lagi saat dibuka.">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        <FreshRow label="Harga" ts={live.quoteAt} intervalMs={8_000} now={now} />
+        <FreshRow label="Candle M5/M15/H1" ts={live.candlesAt} intervalMs={60_000} now={now} />
+        <FreshRow label="Candle H4/Daily" ts={live.htfAt} intervalMs={300_000} now={now} />
+        <FreshRow label="Lintas-Aset" ts={cross.updatedAt} intervalMs={45_000} now={now} />
+        <FreshRow label="Makro (FRED)" ts={macroAt} intervalMs={3_600_000} now={now} />
+        <FreshRow label="Pivot" ts={pivotAt} intervalMs={3_600_000} now={now} />
+        <FreshRow label="COT" ts={cotAt} intervalMs={6 * 3_600_000} now={now} />
+        <FreshRow label="Berita" ts={newsAt} intervalMs={600_000} now={now} />
+      </div>
+    </Panel>
+  )
+
   // Strip insight (Ringkasan) — metrik turunan penting dalam satu pandangan
   const InsightStrip = (
     <div className="lg:col-span-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -891,6 +950,7 @@ export function TradingTerminal() {
             <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {session}</span>
             <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/40"><Clock size={11} /> {clock}</span>
             <span className={`flex items-center gap-1 text-[10px] ${live.status === 'live' ? 'text-emerald-400' : 'text-amber-400'}`}>{live.status === 'live' ? <Wifi size={12} /> : <RefreshCw size={11} className="animate-spin" />} live</span>
+            <span className="hidden sm:flex items-center gap-1 text-[9px] text-white/30 tabular-nums" title="Harga auto-refresh tiap 8 detik">harga ↻{countdownStr(live.quoteAt, 8_000, now)}</span>
           </div>
         </div>
         {/* Tab nav */}
@@ -905,6 +965,7 @@ export function TradingTerminal() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 p-2.5">
         {tab === 'ringkasan' && <>
+          {DataFreshnessPanel}
           {InsightStrip}
           {AiPanel}
           <div className="lg:col-span-4">{SignalMeterPanel}</div>
