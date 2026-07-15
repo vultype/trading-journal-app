@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Brain, Loader2, RefreshCw, Send, Wand2, Gauge, Target, Eye, ShieldAlert, ListChecks, Newspaper, Coins, Sparkles, Clapperboard, Landmark } from 'lucide-react'
+import { AiLoading } from './AiLoading'
 import { Markdown } from '@/components/ui/markdown'
 import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, dirBg, FaktorRow, type Dir } from './aiViz'
 
@@ -49,7 +50,7 @@ export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, sugges
         <div className="flex items-center gap-2.5">
           <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Brain size={16} className="text-primary" /></span>
           <div>
-            <h3 className="text-sm font-black flex items-center gap-1.5">{title} <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h3>
+            <h3 className="text-sm font-black flex items-center gap-1.5">{title} <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Datalitiq AI</span></h3>
             <p className="text-[11px] text-white/45">{subtitle}</p>
           </div>
         </div>
@@ -79,7 +80,7 @@ export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, sugges
         </div>
       </div>
 
-      {loading && <div className="py-8 flex flex-col items-center gap-2 text-white/50"><Loader2 size={22} className="animate-spin text-primary" /><p className="text-xs">Claude menganalisa dampak {scope} ke XAU/USD…</p></div>}
+      {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menimbang faktor & dampak ke emas…', 'Menyusun bias & narasi…']} />}
       {error && !loading && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p></div>}
 
       {/* Jawaban prompt (markdown) */}
@@ -190,7 +191,7 @@ function StructResult({ a, scope }: { a: Analysis; scope: ScopeKind }) {
         {a.risiko.length > 0 && <Section icon={ShieldAlert} title="Risiko"><ul className="space-y-0.5">{a.risiko.map((r, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-amber-400/70">⚠</span>{r}</li>)}</ul></Section>}
       </div>
 
-      <p className="text-[9px] text-white/30 text-right">Diolah Claude dari data terminal · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
+      <p className="text-[9px] text-white/30 text-right">Diolah Datalitiq AI dari data terminal · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
     </div>
   )
 }

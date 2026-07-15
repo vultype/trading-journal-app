@@ -3,7 +3,7 @@
 /*
  * TERMINAL XAUUSD — 100% data real, dashboard bertab.
  * Tab: Ringkasan · Teknikal · Makro · Sentimen · Panduan.
- * Sumber: Twelve Data (harga/candle/pivot/lintas-aset), FRED (makro), CFTC (COT), Claude AI (analisa).
+ * Sumber: Twelve Data (harga/candle/pivot/lintas-aset), FRED (makro), CFTC (COT), Datalitiq AI (analisa).
  * Istilah arah: Bullish (naik) / Bearish (turun).
  */
 
@@ -17,6 +17,7 @@ import {
   Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
+import { AiLoading } from './AiLoading'
 import { TerminalAiPanel } from './TerminalAiPanel'
 import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
 import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
@@ -774,7 +775,7 @@ export function TradingTerminal() {
         <div className="space-y-2">
           <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
             <span className="h-2 w-2 rounded-full bg-sky-400 shrink-0" />
-            <div className="min-w-0 flex-1"><p className="text-[11px] font-bold text-white/85">Analisa AI (Claude)</p><p className="text-[9px] text-white/40">Anthropic · saat klik "Jalankan Analisa"</p></div>
+            <div className="min-w-0 flex-1"><p className="text-[11px] font-bold text-white/85">Analisa AI (Datalitiq AI)</p><p className="text-[9px] text-white/40">saat klik "Jalankan Analisa"</p></div>
             <span className="text-[10px] font-bold text-sky-400 shrink-0">On-demand</span>
           </div>
           <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
@@ -790,7 +791,7 @@ export function TradingTerminal() {
   // Strip insight (Ringkasan) — metrik turunan penting dalam satu pandangan
   const InsightStrip = (
     <div className="lg:col-span-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="Fase + arah tren. Ranging = sideways/squeeze, tanpa arah (main pantulan). Awal Tren Bullish/Bearish = ADX 18-25 & mulai terbentuk. Trending Bullish/Bearish = ADX≥25 & kuat (ikuti arah). Bullish/Bearish Melemah = ADX mulai turun, momentum pudar (waspada pembalikan). Arah dari +DI vs -DI M15." />
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi pasar. Ranging = sideways/squeeze, tanpa arah (main pantulan). Sedang Konfirmasi Arah = tren belum matang atau momentum berubah, arah belum pasti (tunggu). Trending Bullish/Bearish = ADX≥25 & menguat, arah terkonfirmasi (ikuti arah). Arah dari +DI vs -DI M15." />
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
@@ -927,7 +928,7 @@ export function TradingTerminal() {
     <div className="lg:col-span-12 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-[#0b100e] to-[#0b100e] p-4">
       <div className="flex items-center gap-2 mb-3">
         <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Brain size={17} className="text-primary" /></span>
-        <div><h2 className="text-sm font-black flex items-center gap-1.5">Analisa AI — Ambil Keputusan <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h2><p className="text-[10px] text-white/40">Semi-otomatis: gabungkan SEMUA data terminal + konteks/pertanyaan darimu → keputusan.</p></div>
+        <div><h2 className="text-sm font-black flex items-center gap-1.5">Analisa AI — Ambil Keputusan <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Datalitiq AI</span></h2><p className="text-[10px] text-white/40">Semi-otomatis: gabungkan SEMUA data terminal + konteks/pertanyaan darimu → keputusan.</p></div>
       </div>
       {/* Input prompt semi-otomatis */}
       <div className="rounded-xl border border-white/10 bg-black/20 p-3 mb-3">
@@ -944,8 +945,8 @@ export function TradingTerminal() {
           <button onClick={() => ai.run(snapshot, aiPrompt)} disabled={ai.loading} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0">{ai.loading ? <><Loader2 size={14} className="animate-spin" /> Menganalisa…</> : ai.data ? <><RefreshCw size={13} /> Analisa Ulang</> : <><Sparkles size={14} /> Jalankan Analisa AI</>}</button>
         </div>
       </div>
-      {!ai.data && !ai.loading && !ai.error && <div className="py-4 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> — Claude membaca seluruh data terminal + berita terkini {aiPrompt.trim() ? '+ konteks darimu ' : ''}lalu memberi <b>keputusan (Beli/Jual/Tunggu)</b> beserta alasan, confluence, rencana, & risiko.</p></div>}
-      {ai.loading && <div className="py-8 flex flex-col items-center gap-2 text-white/50"><Loader2 size={22} className="animate-spin text-primary" /><p className="text-[11px]">Membaca semua parameter & berita, menyusun keputusan…</p></div>}
+      {!ai.data && !ai.loading && !ai.error && <div className="py-4 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> — Datalitiq AI membaca seluruh data terminal + berita terkini {aiPrompt.trim() ? '+ konteks darimu ' : ''}lalu memberi <b>keputusan (Beli/Jual/Tunggu)</b> beserta alasan, confluence, rencana, & risiko.</p></div>}
+      {ai.loading && <AiLoading steps={['Membaca harga, candle & indikator…', 'Menimbang makro, COT & berita…', 'Mengecek konfluensi timeframe…', 'Menyusun keputusan & level…']} />}
       {ai.error && !ai.loading && <div className="py-6 text-center"><p className="text-[11px] text-red-400 mb-1">Gagal: {ai.error}</p><button onClick={() => ai.run(snapshot, aiPrompt)} className="text-[11px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
       {ai.data && !ai.loading && (() => {
         const a = ai.data
@@ -992,7 +993,7 @@ export function TradingTerminal() {
               {a.risks.length > 0 && <div><p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-400/70 mb-1"><ShieldAlert size={11} /> Risiko</p><ul className="space-y-0.5">{a.risks.map((r, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-amber-400/70">⚠</span>{r}</li>)}</ul></div>}
               {a.watch.length > 0 && <div><p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1"><Eye size={11} /> Dipantau</p><ul className="space-y-0.5">{a.watch.map((w, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-primary">→</span>{w}</li>)}</ul></div>}
             </div>
-            <p className="text-[8px] text-white/25 text-right">Diolah Claude AI dari data terminal real · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
+            <p className="text-[8px] text-white/25 text-right">Diolah Datalitiq AI dari data terminal real · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
           </div>
         )
       })()}
@@ -1087,7 +1088,7 @@ export function TradingTerminal() {
             </div>}
 
             {tab === 'teknikal' && <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
-              <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Claude baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
+              <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Datalitiq AI baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
                 suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
               <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{SignalMeterPanel}</div>
@@ -1193,7 +1194,7 @@ function PanduanContent() {
           <p>• <b>Berita</b>: headline terbaru; analisa sentimennya ada di Analisa AI.</p>
         </GuideCard>
         <GuideCard title="Analisa AI & Cara Pakai" icon={Brain}>
-          <p>Di tab <b>Ringkasan</b>, klik <b className="text-primary">Jalankan Analisa AI</b>. Claude membaca SEMUA data + berita lalu memberi:</p>
+          <p>Di tab <b>Ringkasan</b>, klik <b className="text-primary">Jalankan Analisa AI</b>. Datalitiq AI membaca SEMUA data + berita lalu memberi:</p>
           <p>• <b>Keputusan</b> (Beli/Jual/Tunggu) + alasan + tingkat keyakinan.</p>
           <p>• <b>Peta faktor</b> (mana yang bullish/bearish), rencana (entry/stop/target), level kunci, skenario, & risiko.</p>
           <p className="text-amber-400/80">⚠ Ini alat bantu, <b>bukan nasihat keuangan</b>. Selalu pakai stop loss & kelola risiko. Keputusan akhir tetap di tanganmu.</p>

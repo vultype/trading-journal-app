@@ -6,6 +6,7 @@ import {
   Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks, Link2,
 } from 'lucide-react'
 import { BiasBar, DirIcon, Section, NewsSentimentColumns, FaktorRow, dirColor, dirBg, type Dir } from './aiViz'
+import { AiLoading } from './AiLoading'
 
 // Preset komponen umum tiap rilis (auto-isi label saat pilih event).
 const PRESETS: Record<string, string[]> = {
@@ -74,7 +75,7 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
         <div className="flex items-center gap-2.5 mb-3">
           <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Newspaper size={18} className="text-primary" /></span>
           <div>
-            <h3 className="text-sm font-black flex items-center gap-1.5">Analisa Dampak Berita <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h3>
+            <h3 className="text-sm font-black flex items-center gap-1.5">Analisa Dampak Berita <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Datalitiq AI</span></h3>
             <p className="text-[11px] text-white/45">Prediksi arah emas sebelum rilis — gabung makro, teknikal, sentimen & semua komponen data.</p>
           </div>
         </div>
@@ -129,7 +130,7 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
         {error && !loading && <p className="mt-2 text-xs text-red-400 text-center">{error}</p>}
       </div>
 
-      {loading && <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e] py-10 flex flex-col items-center gap-2 text-white/50"><Loader2 size={24} className="animate-spin text-primary" /><p className="text-xs">Claude menimbang komponen, makro, teknikal & headline…</p></div>}
+      {loading && <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e]"><AiLoading steps={['Menimbang komponen & makro…', 'Menganalisa teknikal & headline…', 'Menyusun dampak ke emas…']} /></div>}
 
       {/* ── HASIL INTERAKTIF ── */}
       {data && !loading && <Result a={data} />}
@@ -254,7 +255,7 @@ function Result({ a }: { a: Analysis }) {
         )}
       </div>
 
-      <p className="text-[9px] text-white/30 text-right">Diolah Claude dari data terminal + headline berita · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Masuk sebelum berita = risiko tinggi. Bukan nasihat keuangan.</p>
+      <p className="text-[9px] text-white/30 text-right">Diolah Datalitiq AI dari data terminal + headline berita · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Masuk sebelum berita = risiko tinggi. Bukan nasihat keuangan.</p>
     </div>
   )
 }

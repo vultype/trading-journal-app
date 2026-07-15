@@ -141,23 +141,24 @@ export function confluence(tf: Record<TF, TFData>) {
   return { label, strength, bulls, bears }
 }
 
-// ─────────────────────────── regime pasar (4 fase × arah) ───────────────────────────
+// ─────────────────────────── regime pasar (3 kondisi) ───────────────────────────
 // Semua berbasis M15: bbSqueeze (Bollinger menyempit), level ADX, arah slope ADX, arah DI.
-// `phase` = fase tren (dipakai untuk logika/notifikasi, stabil), `label` = teks tampilan
-// yang menyertakan ARAH (Bullish/Bearish), `dir` = arah tren dominan.
-export type RegimePhase = 'ranging' | 'awal' | 'trending' | 'melemah'
+// Hanya 3 kondisi: Ranging (sideways), Trending (tren kuat & searah, dgn arah
+// Bullish/Bearish), dan Sedang Konfirmasi Arah (tren belum matang / momentum berubah).
+// `phase` = kondisi (stabil, dipakai logika/notifikasi), `label` = teks tampilan.
+export type RegimePhase = 'ranging' | 'konfirmasi' | 'trending'
 export type RegimeDir = 'bullish' | 'bearish' | 'netral'
 export type Regime = { label: string; phase: RegimePhase; dir: RegimeDir; c: string; desc: string }
 export function regimeOf(p: { bbSqueeze: boolean; adx: number; adxTrend: 'naik' | 'turun' | 'stabil'; trendUp: boolean }): Regime {
   const { bbSqueeze, adx, adxTrend, trendUp } = p
   const dir: RegimeDir = trendUp ? 'bullish' : 'bearish'
   const Dir = trendUp ? 'Bullish' : 'Bearish'
-  const dirClr = trendUp ? 'text-emerald-400' : 'text-red-400'
+  // Ranging: squeeze atau ADX lemah → tanpa arah
   if (bbSqueeze || adx < 18)
     return { label: 'Ranging', phase: 'ranging', dir: 'netral', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit, tanpa arah jelas' : 'sideways / tren lemah' }
-  if (adxTrend === 'turun')
-    return { label: `${Dir} Melemah`, phase: 'melemah', dir, c: 'text-orange-400', desc: `tren ${trendUp ? 'naik' : 'turun'} kehilangan momentum — waspada pembalikan` }
-  if (adx >= 25)
-    return { label: `Trending ${Dir}`, phase: 'trending', dir, c: dirClr, desc: trendUp ? 'tren naik kuat — ikuti arah beli' : 'tren turun kuat — ikuti arah jual' }
-  return { label: `Awal Tren ${Dir}`, phase: 'awal', dir, c: dirClr, desc: `tren ${trendUp ? 'naik' : 'turun'} mulai terbentuk` }
+  // Trending: ADX kuat & MASIH menguat (arah terkonfirmasi)
+  if (adx >= 25 && adxTrend !== 'turun')
+    return { label: `Trending ${Dir}`, phase: 'trending', dir, c: trendUp ? 'text-emerald-400' : 'text-red-400', desc: trendUp ? 'tren naik kuat — ikuti arah beli' : 'tren turun kuat — ikuti arah jual' }
+  // Sisanya (ADX 18-25 sedang terbentuk, atau ADX turun/momentum pudar) → arah belum pasti
+  return { label: 'Sedang Konfirmasi Arah', phase: 'konfirmasi', dir: 'netral', c: 'text-sky-400', desc: `cenderung ${trendUp ? 'naik' : 'turun'}, tapi ${adxTrend === 'turun' ? 'momentum mulai pudar' : 'tren belum matang'} — tunggu konfirmasi` }
 }

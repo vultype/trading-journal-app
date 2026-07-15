@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Brain, Sparkles, Loader2, RefreshCw, Send, Wand2 } from 'lucide-react'
+import { AiLoading } from './AiLoading'
 import { Markdown } from '@/components/ui/markdown'
 
 export type AiScope = 'teknikal' | 'makro' | 'sentimen'
@@ -35,7 +36,7 @@ export function TerminalAiPanel({ scope, title, subtitle, snapshot, suggestions 
         <div className="flex items-center gap-2.5">
           <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/15 ring-1 ring-primary/30"><Brain size={16} className="text-primary" /></span>
           <div>
-            <h3 className="text-sm font-black flex items-center gap-1.5">{title} <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Claude</span></h3>
+            <h3 className="text-sm font-black flex items-center gap-1.5">{title} <span className="text-[8px] font-bold uppercase bg-primary/15 text-primary rounded px-1.5 py-0.5">Datalitiq AI</span></h3>
             <p className="text-[11px] text-white/45">{subtitle}</p>
           </div>
         </div>
@@ -64,7 +65,7 @@ export function TerminalAiPanel({ scope, title, subtitle, snapshot, suggestions 
         </div>
       </div>
 
-      {loading && <div className="py-8 flex flex-col items-center gap-2 text-white/50"><Loader2 size={22} className="animate-spin text-primary" /><p className="text-xs">Claude sedang menganalisa {scope}…</p></div>}
+      {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menghitung indikator & struktur…', 'Menyusun arah & level…']} />}
       {error && !loading && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p><button onClick={() => run(result?.mode === 'custom' ? 'custom' : 'auto')} className="text-xs font-semibold text-primary hover:underline mt-1">Coba lagi</button></div>}
       {result && !loading && (
         <div className="mt-4">
@@ -73,7 +74,7 @@ export function TerminalAiPanel({ scope, title, subtitle, snapshot, suggestions 
             <button onClick={() => run(result.mode === 'custom' ? 'custom' : 'auto')} disabled={!!loading} className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white disabled:opacity-50"><RefreshCw size={10} /> Ulang</button>
           </div>
           <div className="rounded-xl bg-black/20 border border-white/10 p-4"><Markdown text={result.text} /></div>
-          <p className="text-[9px] text-white/30 text-right mt-2">Diolah Claude dari data terminal · {new Date(result.at).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
+          <p className="text-[9px] text-white/30 text-right mt-2">Diolah Datalitiq AI dari data terminal · {new Date(result.at).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
         </div>
       )}
       {!result && !loading && !error && (
