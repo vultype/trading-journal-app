@@ -33,7 +33,7 @@ export type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number
 
 // Pivot harian standar dari OHLC hari sebelumnya (candle 1day, ambil bar kemarin)
 export async function fetchDailyPivots(): Promise<Pivots | null> {
-  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=1day&outputsize=2&apikey=${key()}`, { cache: 'no-store' })
+  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=1day&outputsize=2&timezone=UTC&apikey=${key()}`, { cache: 'no-store' })
   const j = await res.json()
   if (j.status === 'error' || j.code) throw new Error(j.message || 'Twelve Data pivots error')
   const v = (j.values ?? []) as { high: string; low: string; close: string }[]
@@ -46,7 +46,10 @@ export async function fetchDailyPivots(): Promise<Pivots | null> {
 
 export async function fetchCandles(tf: TF, outputsize = 150): Promise<TDCandle[]> {
   const interval = TD_INTERVAL[tf]
-  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=${interval}&outputsize=${outputsize}&apikey=${key()}`, { cache: 'no-store' })
+  // timezone=UTC WAJIB: tanpa ini Twelve Data memakai timezone exchange/server (bukan UTC),
+  // padahal parser di bawah menganggap datetime sebagai UTC — bikin jendela sesi,
+  // anchor VWAP harian & guard pasar-tutup bergeser beberapa jam.
+  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${key()}`, { cache: 'no-store' })
   const j = await res.json()
   if (j.status === 'error' || j.code) throw new Error(j.message || 'Twelve Data time_series error')
   const values = (j.values ?? []) as { datetime: string; open: string; high: string; low: string; close: string }[]
