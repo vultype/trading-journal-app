@@ -34,14 +34,17 @@ export async function POST(req: Request) {
     }).select('id').single()
     if (oErr || !order) return NextResponse.json({ error: 'Gagal membuat pesanan: ' + (oErr?.message ?? '') }, { status: 500 })
 
-    const finishUrl = origin ? `${origin}/checkout?status=finish` : undefined
+    // URL publik untuk finish & webhook. Pakai origin bila https, jika tidak (mis. localhost)
+    // fallback ke domain produksi supaya Midtrans bisa mengirim notifikasi.
+    const pubBase = origin && String(origin).startsWith('https') ? String(origin) : 'https://www.datalitiq.com'
     const snap = await createSnapTransaction({
       orderId: order.id,
       grossAmount: amount,
       itemName: `Datalitiq ${planName(plan)} ${dur.months} bln`,
       customerEmail: user.email,
       customerName: (user.user_metadata?.full_name as string) || user.email?.split('@')[0],
-      finishUrl,
+      finishUrl: `${pubBase}/checkout?status=finish`,
+      notificationUrl: `${pubBase}/api/payment/notification`,
     })
 
     return NextResponse.json({ token: snap.token, redirectUrl: snap.redirect_url, orderId: order.id, amount })

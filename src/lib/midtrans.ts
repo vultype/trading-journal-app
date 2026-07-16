@@ -22,6 +22,7 @@ export type SnapParams = {
   customerEmail?: string
   customerName?: string
   finishUrl?: string
+  notificationUrl?: string
 }
 
 // Buat transaksi Snap → { token, redirect_url }. Lempar Error dgn pesan Midtrans bila gagal.
@@ -36,9 +37,12 @@ export async function createSnapTransaction(p: SnapParams): Promise<{ token: str
     credit_card: { secure: true },
     ...(p.finishUrl ? { callbacks: { finish: p.finishUrl } } : {}),
   }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Basic ${auth}` }
+  // Set URL webhook langsung dari kode (tanpa perlu setting di dashboard Midtrans).
+  if (p.notificationUrl) headers['X-Override-Notification'] = p.notificationUrl
   const res = await fetch(`${apiBase}/snap/v1/transactions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Basic ${auth}` },
+    headers,
     body: JSON.stringify(body),
     cache: 'no-store',
   })
