@@ -43,7 +43,7 @@ function SyncErrorBanner() {
 
 // Halaman yang TIDAK boleh dihalangi wizard jurnal — alur langganan/pembayaran/akun
 // (mis. user Terminal baru yang mau langganan tak perlu isi setup jurnal dulu).
-const WIZARD_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings']
+const WIZARD_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings', '/simulator']
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { loading, userId, settings } = useStore()

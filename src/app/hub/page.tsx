@@ -10,7 +10,7 @@ import { ADMIN_EMAIL } from '@/lib/store'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
   Activity, BookOpen, ArrowRight, LogOut, Loader2, ShieldCheck, Sparkles,
-  Gauge, Bell, Landmark, LineChart, Lock, Settings,
+  Gauge, Bell, Landmark, LineChart, Lock, Settings, FlaskConical, Calculator, TrendingUp,
 } from 'lucide-react'
 
 export default function HubPage() {
@@ -67,7 +67,7 @@ export default function HubPage() {
           <h1 className="text-2xl md:text-3xl font-black tracking-tight mt-1">Pilih tools yang mau kamu pakai</h1>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-3 gap-5">
           {/* Terminal — tool utama */}
           <div className="relative rounded-3xl p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30">
             <div className="relative h-full rounded-3xl bg-[#0a1110] p-6 flex flex-col overflow-hidden">
@@ -110,6 +110,23 @@ export default function HubPage() {
             <div className="mt-auto pt-6">
               <Link href="/jurnal" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
                 Buka Jurnal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Simulator — tool terpisah */}
+          <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 flex flex-col hover:border-white/20 transition-colors">
+            <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 ring-1 ring-white/10 mb-4"><FlaskConical size={22} className="text-white/80" /></span>
+            <h2 className="text-lg font-black">Simulator</h2>
+            <p className="text-sm text-white/55 mt-1.5 leading-relaxed">Latih risk-reward & position sizing tanpa menyentuh data trade asli — uji strategi sebelum eksekusi nyata.</p>
+            <div className="flex flex-wrap gap-1.5 mt-4">
+              {[{ i: Calculator, t: 'Position sizing' }, { i: TrendingUp, t: 'Risk-reward' }].map(x => (
+                <span key={x.t} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/55"><x.i size={10} className="text-white/50" /> {x.t}</span>
+              ))}
+            </div>
+            <div className="mt-auto pt-6">
+              <Link href="/simulator" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
+                Buka Simulator <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </div>
           </div>

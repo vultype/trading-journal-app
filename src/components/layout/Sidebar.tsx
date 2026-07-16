@@ -6,8 +6,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
-  FlaskConical, LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
-  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart, Crown, Radio,
+  LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
+  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart, Crown,
 } from 'lucide-react'
 
 // Plan mock — semua user Free untuk saat ini
@@ -24,7 +24,6 @@ type NavGroup = { label: string; items: NavItem[] }
 
 const dashboard: NavItem  = { href: '/jurnal',       label: 'Dashboard', icon: LayoutDashboard }
 const trades: NavItem     = { href: '/trades',       label: 'Trade',     icon: TrendingUp }
-const simulator: NavItem  = { href: '/simulator',    label: 'Simulator', icon: FlaskConical }
 const finance: NavItem    = { href: '/finance', label: 'Keuangan', icon: Wallet, children: [
   { href: '/finance',      label: 'Ringkasan',          icon: PieChart },
   { href: '/transactions', label: 'Deposit & Withdraw', icon: ArrowLeftRight },
@@ -36,7 +35,6 @@ const billing: NavItem    = { href: '/billing',      label: 'Tagihan',   icon: R
 const settings: NavItem   = { href: '/settings',     label: 'Setting',   icon: Settings }
 const panduan: NavItem    = { href: '/panduan',      label: 'Panduan',   icon: HelpCircle }
 const adminItem: NavItem  = { href: '/admin',        label: 'Admin',     icon: Shield }
-const terminalItem: NavItem = { href: '/terminal',   label: 'Terminal XAU', icon: Radio }
 const hubItem: NavItem    = { href: '/hub',          label: 'Ganti Tools', icon: Grid2x2 }
 
 // Menu yang tetap terbuka sebelum user mencatat trade pertama
@@ -45,13 +43,11 @@ export const ALWAYS_UNLOCKED = ['/jurnal', '/panduan']
 function useGroups(): NavGroup[] {
   const { isAdmin } = useStore()
   const account: NavItem[] = [subscription, billing, settings, ...(isAdmin ? [adminItem] : [])]
-  const tools: NavItem[] = [terminalItem, simulator]
   return [
     { label: 'Menu',            items: [hubItem] },
     { label: 'Ringkasan',       items: [dashboard] },
     { label: 'Trading',         items: [trades, finance] },
     { label: 'Jurnal & Analisa', items: [analisis, journal] },
-    { label: 'Tools',           items: tools },
     { label: 'Akun',            items: account },
     { label: 'Bantuan',         items: [panduan] },
   ]
