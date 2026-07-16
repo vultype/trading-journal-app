@@ -21,7 +21,7 @@ const DATA_SOURCES = ['Twelve Data', 'FRED (The Fed)', 'CFTC', 'TradingView']
 
 // Angka nyata dari sistem yang berjalan — bukan klaim marketing.
 const STATS: { icon: React.ElementType; v: string; l: string }[] = [
-  { icon: Zap, v: '8 dtk', l: 'Update harga' },
+  { icon: Layers, v: '3 Pilar', l: 'Makro · Teknikal · Sentimen' },
   { icon: Landmark, v: '12+', l: 'Indikator makro resmi' },
   { icon: Radio, v: '24/7', l: 'Pemantauan pasar' },
   { icon: Compass, v: '1', l: 'Bias harian yang jelas' },
@@ -473,7 +473,12 @@ export function TerminalLanding() {
 
   useEffect(() => {
     const sb = createClient()
-    sb.from('app_config').select('logo_url, feature_images').eq('id', 1).maybeSingle().then(({ data }) => {
+    sb.from('app_config').select('logo_url, feature_images').eq('id', 1).maybeSingle().then(({ data, error }) => {
+      if (error) {
+        // Kolom feature_images mungkin belum ada (instalasi lama) — jangan ikut mematikan logo
+        sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle().then(({ data: d2 }) => setLogoUrl((d2?.logo_url as string | null) ?? null))
+        return
+      }
       setLogoUrl((data?.logo_url as string | null) ?? null)
       const fi = data?.feature_images
       if (fi && typeof fi === 'object') setFeatureImages(fi as Record<string, string>)
@@ -609,6 +614,7 @@ export function TerminalLanding() {
         <Reveal>
           <div className="text-center max-w-xl mx-auto mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight">Dari Ribuan Data,<br />Jadi Satu Bias Harian.</h2>
+            <p className="text-base text-white/50 mt-5 leading-relaxed">Harga tiap detik, data ekonomi resmi, posisi institusi, dan berita terkini diproses bersamaan. Datalitiq AI menimbang tiga pilar — makro, teknikal, sentimen — lalu menyaringnya jadi <span className="text-white/80 font-semibold">satu arah yang jelas beserta tingkat keyakinannya</span>. Empat langkah di bawah terjadi otomatis, real-time.</p>
           </div>
         </Reveal>
         <Reveal delay={100}><HowItWorks /></Reveal>
@@ -670,9 +676,16 @@ export function TerminalLanding() {
               <div className="rounded-3xl bg-[#0a1110] h-full p-8 flex flex-col">
                 <div className="flex items-center gap-2 mb-1"><Sparkles size={18} className="text-primary" /><h3 className="text-xl font-black">Datalitiq AI Terminal</h3></div>
                 <p className="text-xs text-white/45 mb-5">Analisa pasar emas berbasis AI, real-time.</p>
-                <div className="mb-1 flex items-end gap-1.5"><span className="text-5xl font-black tracking-tight">{rp(TERMINAL_PRICE)}</span><span className="text-sm text-white/40 mb-1.5">/ bulan</span></div>
-                <p className="text-xs text-white/50 mb-1">≈ <b className="text-white/80">Rp6 ribu per hari</b> — satu keputusan yang lebih jelas sudah menutupnya.</p>
-                <p className="text-xs text-white/40 mb-6">Akses penuh · tanpa batas penggunaan · tanpa kontrak, berhenti kapan saja</p>
+                <div className="mb-3 flex items-end gap-1.5"><span className="text-5xl font-black tracking-tight">{rp(TERMINAL_PRICE)}</span><span className="text-sm text-white/40 mb-1.5">/ bulan</span></div>
+                {/* Spotlight: harga per hari */}
+                <div className="mb-3 inline-flex items-center gap-2.5 self-start rounded-2xl border border-primary/30 bg-primary/[0.08] px-4 py-2.5">
+                  <span className="text-2xl">☕</span>
+                  <div>
+                    <p className="text-lg font-black text-primary leading-none">≈ Rp6 ribu <span className="text-sm font-bold text-primary/80">/ hari</span></p>
+                    <p className="text-[11px] text-white/55 mt-1">Lebih murah dari secangkir kopi</p>
+                  </div>
+                </div>
+                <p className="text-xs text-white/45 mb-6">Satu keputusan yang lebih jelas sudah menutupnya · akses penuh, tanpa batas · tanpa kontrak, berhenti kapan saja</p>
                 <ul className="space-y-2.5 mb-7 flex-1">
                   {['Kesimpulan arah pasar + tingkat keyakinan real-time', 'Analisa makro ekonomi & sentimen pasar', 'Level kunci & konteks multi-timeframe', 'Analisa AI sesuai permintaan', 'Notifikasi kondisi pasar penting'].map(f => (
                     <li key={f} className="flex items-start gap-2.5 text-sm"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span><span className="text-white/80">{f}</span></li>

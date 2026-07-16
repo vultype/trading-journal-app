@@ -88,17 +88,21 @@ const FEATURE_SLOTS: { key: string; label: string }[] = [
 function FeatureImagesManager() {
   const [images, setImages] = useState<Record<string, string>>({})
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [needsMigration, setNeedsMigration] = useState(false)
 
   useEffect(() => {
     createClient().from('app_config').select('feature_images').eq('id', 1).maybeSingle()
-      .then(({ data }) => { const fi = data?.feature_images; if (fi && typeof fi === 'object') setImages(fi as Record<string, string>) })
+      .then(({ data, error }) => {
+        if (error) { setNeedsMigration(true); return }
+        const fi = data?.feature_images; if (fi && typeof fi === 'object') setImages(fi as Record<string, string>)
+      })
   }, [])
 
   async function save(next: Record<string, string>) {
     setImages(next)
     const { error } = await createClient().from('app_config')
       .upsert({ id: 1, feature_images: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-    if (error) toast.error('Gagal menyimpan: ' + error.message)
+    if (error) { setNeedsMigration(true); toast.error('Gagal menyimpan: ' + error.message) }
   }
 
   async function handleUpload(key: string, file: File) {
@@ -125,6 +129,13 @@ function FeatureImagesManager() {
     <Card>
       <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ImageIcon size={15} className="text-primary" /> Gambar Fitur Homepage (Showcase)</CardTitle></CardHeader>
       <CardContent className="space-y-4">
+        {needsMigration && (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <p className="font-bold text-amber-500 mb-1.5">⚠ Kolom database belum ada — upload belum bisa disimpan</p>
+            <p className="text-muted-foreground mb-2">Jalankan SQL ini sekali di <strong>Supabase → SQL Editor</strong>, lalu refresh halaman:</p>
+            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists feature_images jsonb not null default {'\''}{'{}'}{'\''}::jsonb;</code>
+          </div>
+        )}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {FEATURE_SLOTS.map(s => (
             <div key={s.key} className="rounded-xl border border-border/50 bg-muted/20 p-3">

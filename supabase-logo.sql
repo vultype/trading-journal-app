@@ -12,6 +12,10 @@ create table if not exists app_config (
 );
 insert into app_config (id) values (1) on conflict (id) do nothing;
 
+-- Gambar fitur showcase homepage (jsonb: { "gauge": "url", "decision": "url", ... })
+-- Untuk instalasi lama yang tabelnya sudah ada tanpa kolom ini:
+alter table app_config add column if not exists feature_images jsonb not null default '{}'::jsonb;
+
 alter table app_config enable row level security;
 
 -- Semua orang boleh baca (termasuk halaman login yang belum login)
