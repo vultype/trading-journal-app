@@ -8,7 +8,7 @@ import {
   Sparkles, Brain, ArrowRight, ChevronDown, ChevronUp, ShieldCheck, Check, Star,
   Compass, Landmark, Newspaper, Bell, Target, MessageSquare,
   BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe,
-  X, Zap, Radio,
+  X, Zap, Radio, TrendingUp, BarChart3,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -448,6 +448,99 @@ function FeatureShowcase({ images }: { images: Record<string, string> }) {
   )
 }
 
+// ── Data-Driven section: konsol data futuristik (ticker + metrik + sparkline) ──
+const DD_TICKER = ['XAU/USD 4032.4 ▲', 'DXY 104.2 ▼', 'US10Y 4.58% ▼', 'VIX +1.4% ▲', 'S&P500 +0.3%', 'BTC 68.2K ▲', 'COT net-long ▲', 'CPI 3.4% ▼', 'Real Yield 2.1% ▼', 'Gold/Silver 88.3']
+function Sparkline({ up = true, delay = 0 }: { up?: boolean; delay?: number }) {
+  const d = up ? 'M0,26 L14,22 L28,24 L42,15 L56,18 L70,8 L84,11 L98,3' : 'M0,4 L14,9 L28,7 L42,15 L56,12 L70,20 L84,17 L98,26'
+  const c = up ? '#34d399' : '#f87171'
+  return (
+    <svg viewBox="0 0 98 30" className="w-full h-8" preserveAspectRatio="none">
+      <path d={`${d} L98,30 L0,30 Z`} fill={c} opacity="0.08" />
+      <path d={d} fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeDasharray="220" strokeDashoffset="220" className="dtq-draw" style={{ animationDelay: `${delay}ms` }} />
+    </svg>
+  )
+}
+const DD_METRICS = [
+  { l: 'Bias Harian', v: 'Bullish', s: '74% keyakinan', up: true },
+  { l: 'Momentum M15', v: '+62', s: 'menguat', up: true },
+  { l: 'Tekanan Dolar', v: '−0.31%', s: 'dukung emas', up: true },
+  { l: 'Sentimen Risiko', v: 'Risk-Off', s: 'defensif', up: true },
+]
+const DD_POINTS: { icon: React.ElementType; t: string; d: string }[] = [
+  { icon: Zap, t: 'Scalping', d: 'Fokus M5/M15/H1 — momentum & level intraday yang bergerak cepat.' },
+  { icon: Compass, t: 'Intraday', d: 'Bias harian + sesi Asia/London/NY untuk timing entry sepanjang hari.' },
+  { icon: TrendingUp, t: 'Swing', d: 'Konteks H4/Daily, makro & posisi institusi untuk pandangan lebih panjang.' },
+]
+function DataDrivenSection({ primaryCta }: { primaryCta: string }) {
+  return (
+    <section className="relative overflow-hidden py-20 md:py-28">
+      <div className="absolute inset-0 pointer-events-none opacity-40" style={{ backgroundImage: 'linear-gradient(rgba(52,211,153,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(52,211,153,0.06) 1px, transparent 1px)', backgroundSize: '32px 32px', WebkitMaskImage: 'radial-gradient(ellipse 70% 60% at 50% 50%, #000, transparent 100%)', maskImage: 'radial-gradient(ellipse 70% 60% at 50% 50%, #000, transparent 100%)' }} />
+      <div className="absolute left-1/2 -translate-x-1/2 top-10 w-[700px] h-72 bg-primary/10 blur-[130px] rounded-full pointer-events-none dtq-pulse" />
+      <div className="relative max-w-6xl mx-auto px-6">
+        <Reveal>
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/30 px-3.5 py-1.5 text-xs font-bold text-primary mb-6"><BarChart3 size={13} /> Data-Driven Analysis</span>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Keputusan yang Digerakkan <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Data</span>, Bukan Firasat.</h2>
+            <p className="text-base text-white/55 mt-5 leading-relaxed">Setiap angka di layar punya arti. Terminal menerjemahkan aliran data pasar jadi sinyal yang bisa ditindak — dan menyesuaikannya dengan gaya trading-mu.</p>
+          </div>
+        </Reveal>
+        {/* Konsol data */}
+        <Reveal delay={100}>
+          <div className="relative rounded-3xl border border-primary/20 bg-gradient-to-b from-[#0a1512] to-[#080d0b] overflow-hidden">
+            <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-primary/12 blur-3xl pointer-events-none dtq-pulse" />
+            {/* Ticker atas */}
+            <div className="relative border-b border-white/[0.06] py-2.5 overflow-hidden">
+              <div className="flex gap-8 w-max dtq-marquee">
+                {[...DD_TICKER, ...DD_TICKER].map((t, i) => {
+                  const up = t.includes('▲'), down = t.includes('▼')
+                  return <span key={i} className={`text-xs font-bold tabular-nums whitespace-nowrap ${up ? 'text-emerald-400/90' : down ? 'text-red-400/80' : 'text-white/50'}`}>{t}</span>
+                })}
+              </div>
+              <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-[#0a1210] to-transparent" />
+              <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#0a1210] to-transparent" />
+            </div>
+            {/* Metrik + sparkline */}
+            <div className="relative grid grid-cols-2 lg:grid-cols-4">
+              {DD_METRICS.map((m, i) => (
+                <div key={m.l} className="p-5 md:p-6 border-b lg:border-b-0 border-white/[0.05] [&:not(:nth-child(2n))]:border-r lg:[&:not(:last-child)]:border-r">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] uppercase tracking-wider text-white/40">{m.l}</p>
+                    <span className={`flex items-center gap-1 text-[10px] font-bold ${m.up ? 'text-emerald-400' : 'text-red-400'}`}><span className={`w-1.5 h-1.5 rounded-full ${m.up ? 'bg-emerald-400' : 'bg-red-400'} dtq-blink`} style={{ animationDelay: `${i * 300}ms` }} /> live</span>
+                  </div>
+                  <p className={`text-2xl font-black tracking-tight ${m.up ? 'text-white' : 'text-white'}`}>{m.v}</p>
+                  <p className="text-[11px] text-white/45 mb-2">{m.s}</p>
+                  <Sparkline up={m.up} delay={i * 250} />
+                </div>
+              ))}
+            </div>
+            {/* scanline */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 dtq-scan" style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.12), transparent)' }} />
+          </div>
+        </Reveal>
+        {/* Gaya trading */}
+        <div className="grid sm:grid-cols-3 gap-4 mt-8">
+          {DD_POINTS.map((p, i) => (
+            <Reveal key={p.t} delay={i * 90}>
+              <div className="group h-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 hover:border-primary/30 transition-colors">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/12 ring-1 ring-primary/20 text-primary"><p.icon size={18} /></span>
+                  <p className="text-base font-black">{p.t}</p>
+                </div>
+                <p className="text-sm text-white/55 leading-relaxed">{p.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal delay={120}>
+          <div className="text-center mt-10">
+            <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-lg shadow-primary/25">Trading dengan Data Sekarang <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></Link>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
 // ── Premium AI section: graphic konvergensi data futuristik ──
 const AI_SOURCES = ['Makro', 'Teknikal', 'Sentimen', 'Berita', 'COT', 'Price Action']
 function AiDataViz() {
@@ -636,33 +729,42 @@ export function TerminalLanding() {
           </Reveal>
         </div>
 
-        {/* Dashboard besar — gambar upload admin (fallback: chart animasi) */}
+        {/* Dashboard besar — gambar upload admin (fallback: chart animasi).
+            Hanya bagian ATAS gambar yang tampil; sisanya tertutup section logo di depan. */}
         <Reveal delay={150}>
-          <div className="relative max-w-6xl mx-auto px-6 mt-14 md:mt-20 pb-24 md:pb-28">
+          <div className={`relative max-w-6xl mx-auto px-6 mt-14 md:mt-20 ${heroImage ? '' : 'pb-28 md:pb-36'}`}>
+            {/* Light futuristic di belakang gambar */}
+            <div className="absolute -z-10 inset-0 pointer-events-none overflow-visible">
+              <div className="absolute left-1/4 top-8 w-80 h-80 bg-primary/25 blur-[120px] rounded-full dtq-pulse" />
+              <div className="absolute right-1/4 top-16 w-80 h-80 bg-cyan-500/18 blur-[130px] rounded-full dtq-pulse" style={{ animationDelay: '1.2s' }} />
+              <div className="absolute left-1/2 -translate-x-1/2 top-0 w-[70%] h-40 dtq-sweep" style={{ background: 'conic-gradient(from 180deg at 50% 0%, transparent, rgba(52,211,153,0.12), transparent 120deg)', transformOrigin: '50% 0%' }} />
+            </div>
             {heroImage ? (
-              <div className="relative rounded-2xl border border-white/10 bg-[#0a1210] overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/5">
+              <div className="relative rounded-t-2xl border border-white/10 border-b-0 bg-[#0a1210] overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/5">
                 {/* chrome bar */}
                 <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02]">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-400/60" /><span className="w-2.5 h-2.5 rounded-full bg-amber-400/60" /><span className="w-2.5 h-2.5 rounded-full bg-emerald-400/60" />
                   <span className="ml-3 text-[10px] text-white/30 font-medium">datalitiq.com/terminal</span>
                 </div>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={heroImage} alt="Datalitiq AI Terminal" className="w-full h-auto block" />
-                {/* fade bawah supaya menyatu */}
-                <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#060a09] to-transparent pointer-events-none" />
+                {/* Klip: hanya tampil bagian atas gambar (object-top) */}
+                <div className="relative max-h-[260px] md:max-h-[440px] overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={heroImage} alt="Datalitiq AI Terminal" className="w-full h-auto block object-top" />
+                </div>
               </div>
             ) : (
               <div className="max-w-2xl mx-auto"><HeroChart /></div>
             )}
-            {/* glow di belakang dashboard */}
-            <div className="absolute -z-10 inset-x-10 top-10 bottom-10 bg-primary/10 blur-[100px] rounded-full pointer-events-none" />
           </div>
         </Reveal>
       </section>
 
-      {/* ── Client trust slider ── */}
-      <section className="border-y border-white/5 bg-white/[0.015] py-6 overflow-hidden">
-        <p className="text-center text-xs text-white/30 mb-4 uppercase tracking-widest">Dipakai trader dari berbagai broker & platform</p>
+      {/* ── Client trust slider (overlap di DEPAN gambar hero) ── */}
+      <section className="relative z-20 -mt-14 md:-mt-24 border-b border-white/5 py-6 overflow-hidden">
+        {/* backdrop: transparan di atas (gambar menembus) → solid di bawah (menutup gambar) */}
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#060a09]/70 via-[#060a09] to-[#060a09]" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+        <p className="relative text-center text-xs text-white/30 mb-4 pt-4 uppercase tracking-widest">Dipakai trader dari berbagai broker & platform</p>
         <div className="relative">
           <div className="flex gap-12 w-max dtq-marquee">
             {[...CLIENTS, ...CLIENTS].map((b, i) => <span key={i} className="text-sm font-bold text-white/25 whitespace-nowrap">{b}</span>)}
@@ -747,13 +849,16 @@ export function TerminalLanding() {
       {/* ── Fitur (explorer interaktif) ── */}
       <section id="fitur" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
-          <div className="text-center max-w-xl mx-auto mb-14">
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Institusi Punya.</h2>
-            <p className="text-base text-white/45 mt-4">Enam alat analisa, dalam satu layar.</p>
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Dulu Hanya Dimiliki Meja Trading Institusi.</h2>
+            <p className="text-base text-white/50 mt-4 max-w-2xl mx-auto leading-relaxed">Dari data makro bank sentral, posisi uang besar (COT), sentimen berita, sampai keputusan AI berbasis price action — enam alat analisa kelas institusi, kini menyatu dalam satu layar untuk trader retail.</p>
           </div>
         </Reveal>
         <Reveal delay={100}><FeatureShowcase images={featureImages} /></Reveal>
       </section>
+
+      {/* ── Data-Driven (konsol data futuristik) ── */}
+      <DataDrivenSection primaryCta={primaryCta} />
 
       {/* ── Testimoni ── */}
       <section id="testimoni" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
@@ -842,8 +947,8 @@ export function TerminalLanding() {
         <Reveal>
           <div className="relative rounded-3xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/15 via-[#0a1110] to-[#0a1110] p-10 md:p-16 text-center">
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
-            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Besok Pagi, Buka Pasar<br className="hidden md:block" /> dengan Bias yang Jelas.</h2>
-            <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">Mulai hari ini seharga ≈ Rp6 ribu/hari — tanpa kontrak, berhenti kapan saja. Satu keputusan yang lebih jelas sudah sepadan.</p>
+            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Berhenti Menebak Arah Pasar.<br className="hidden md:block" /> Biar Data yang Memandu.</h2>
+            <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">Gabung hari ini seharga ≈ Rp6 ribu/hari — makro, sentimen & bias harian XAU/USD dalam satu terminal. Tanpa kontrak, berhenti kapan saja.</p>
             <Link href={primaryCta} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? 'Buka Terminal' : `Mulai Sekarang — ${rp(TERMINAL_PRICE)}/bln`} <ArrowRight size={16} />
             </Link>
@@ -907,7 +1012,11 @@ export function TerminalLanding() {
         .dtq-flow { animation: dtq-flow-kf 1.4s linear infinite; }
         @keyframes dtq-corepulse-kf { 0%,100% { opacity: .75; transform: scale(1) } 50% { opacity: 1; transform: scale(1.06) } }
         .dtq-corepulse { transform-box: fill-box; transform-origin: center; animation: dtq-corepulse-kf 2.4s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress, .dtq-bob, .dtq-ripple, .dtq-slide-up, .dtq-flow, .dtq-corepulse { animation: none } }
+        @keyframes dtq-draw-kf { to { stroke-dashoffset: 0 } }
+        .dtq-draw { animation: dtq-draw-kf 1.6s ease-out both; }
+        @keyframes dtq-scan-kf { 0% { transform: translateY(-64px) } 100% { transform: translateY(360px) } }
+        .dtq-scan { animation: dtq-scan-kf 4s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress, .dtq-bob, .dtq-ripple, .dtq-slide-up, .dtq-flow, .dtq-corepulse, .dtq-draw, .dtq-scan { animation: none } }
       `}</style>
     </div>
   )
