@@ -5,10 +5,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
-  Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star,
+  Sparkles, Brain, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ShieldCheck, Check, Star,
   Compass, Landmark, Newspaper, Bell, Target, MessageSquare,
   BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe,
-  X,
+  X, Zap, Radio,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -20,11 +20,11 @@ const CLIENTS = ['Exness', 'XM', 'IC Markets', 'FTMO', 'Pepperstone', 'OANDA', '
 const DATA_SOURCES = ['Twelve Data', 'FRED (The Fed)', 'CFTC', 'TradingView']
 
 // Angka nyata dari sistem yang berjalan — bukan klaim marketing.
-const STATS = [
-  { v: '8 dtk', l: 'Update harga' },
-  { v: '12+', l: 'Indikator makro resmi' },
-  { v: '24/7', l: 'Pemantauan pasar' },
-  { v: '1', l: 'Bias harian yang jelas' },
+const STATS: { icon: React.ElementType; v: string; l: string }[] = [
+  { icon: Zap, v: '8 dtk', l: 'Update harga' },
+  { icon: Landmark, v: '12+', l: 'Indikator makro resmi' },
+  { icon: Radio, v: '24/7', l: 'Pemantauan pasar' },
+  { icon: Compass, v: '1', l: 'Bias harian yang jelas' },
 ]
 // Sebelum & Sesudah — copy pendek untuk toggle interaktif
 const OLD_WAY = [
@@ -56,6 +56,14 @@ const FEATURES_X: { icon: React.ElementType; t: string; d: string; visual: strin
   { icon: Newspaper, t: 'Posisi Institusi', d: 'Lihat ke mana uang besar bergerak setiap minggu — jangan berdiri di sisi yang salah.', visual: 'sentiment' },
   { icon: MessageSquare, t: 'Tanya AI', d: 'Ajukan pertanyaan spesifik, dijawab dari data pasar saat itu juga.', visual: 'chat' },
   { icon: Bell, t: 'Alert Telegram', d: 'Pasar dipantau untukmu — notifikasi hanya saat kondisi benar-benar berubah.', visual: 'notif' },
+]
+
+// Apa yang Datalitiq pantau untukmu — icon ilustrasi section "Pasar Bergerak Setiap Hari"
+const WATCHERS: { icon: React.ElementType; t: string; d: string; glow: string }[] = [
+  { icon: Globe, t: 'Harga Real-Time', d: 'Pergerakan XAU/USD dipantau tiap detik, lintas sesi Asia–London–NY.', glow: 'rgba(52,211,153,0.25)' },
+  { icon: Landmark, t: 'Ekonomi Global', d: 'Dolar, yield, inflasi & kebijakan Fed dari sumber resmi.', glow: 'rgba(34,211,238,0.22)' },
+  { icon: Newspaper, t: 'Berita & Sentimen', d: 'Headline emas/dolar dan posisi institusi, dibaca dampaknya.', glow: 'rgba(251,191,36,0.2)' },
+  { icon: Bell, t: 'Perubahan Kondisi', d: 'Saat arah pasar berubah signifikan, kamu langsung diberi tahu.', glow: 'rgba(129,140,248,0.22)' },
 ]
 
 const BONUS = [
@@ -232,33 +240,40 @@ function MNotif() {
   )
 }
 
-// ── Sebelum & Sesudah: toggle interaktif dengan thumb geser + konten stagger ──
+// ── Sebelum & Sesudah: dua sisi tampil sekaligus (tanpa toggle), item stagger ──
 function CompareToggle({ primaryCta }: { primaryCta: string }) {
-  const [mode, setMode] = useState<'tanpa' | 'dengan'>('dengan')
-  const dengan = mode === 'dengan'
-  const items = dengan ? NEW_WAY : OLD_WAY
   return (
     <div>
-      <div className="flex justify-center mb-10">
-        <div className="relative inline-flex rounded-full bg-white/[0.05] border border-white/10 p-1">
-          <span className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ${dengan ? 'bg-primary/20 ring-1 ring-primary/40' : 'bg-red-500/15 ring-1 ring-red-500/30'}`} style={{ width: 'calc(50% - 4px)', left: dengan ? '50%' : '4px' }} />
-          <button onClick={() => setMode('tanpa')} className={`relative z-10 rounded-full px-6 py-2.5 text-sm font-bold transition-colors ${!dengan ? 'text-red-300' : 'text-white/40'}`}>Tanpa Datalitiq</button>
-          <button onClick={() => setMode('dengan')} className={`relative z-10 rounded-full px-6 py-2.5 text-sm font-bold transition-colors ${dengan ? 'text-primary' : 'text-white/40'}`}>Dengan Datalitiq</button>
-        </div>
-      </div>
-      <div className={`relative rounded-3xl p-[1px] transition-colors duration-500 ${dengan ? 'bg-gradient-to-br from-primary/60 via-primary/15 to-cyan-500/25' : 'bg-white/10'}`}>
-        <div className="rounded-3xl bg-[#0a1110] p-8 md:p-10">
-          <ul key={mode} className="space-y-5">
-            {items.map((x, i) => (
-              <li key={x} className="dtq-in flex items-center gap-4" style={{ animationDelay: `${i * 90}ms` }}>
-                <span className={`flex items-center justify-center w-9 h-9 rounded-xl shrink-0 ${dengan ? 'bg-primary/15' : 'bg-red-500/10'}`}>{dengan ? <Check size={16} className="text-primary" /> : <X size={16} className="text-red-400" />}</span>
-                <span className={`text-base ${dengan ? 'text-white/85' : 'text-white/50 line-through decoration-red-400/40'}`}>{x}</span>
+      <div className="grid md:grid-cols-2 gap-6 items-stretch">
+        {/* Tanpa Datalitiq */}
+        <div className="rounded-3xl border border-white/10 bg-white/[0.015] p-8 md:p-9">
+          <p className="inline-flex items-center gap-2 rounded-full bg-red-500/10 ring-1 ring-red-500/25 px-3.5 py-1.5 text-xs font-bold text-red-300 mb-7"><X size={13} /> Tanpa Datalitiq</p>
+          <ul className="space-y-5">
+            {OLD_WAY.map((x, i) => (
+              <li key={x} className="dtq-in flex items-center gap-4" style={{ animationDelay: `${i * 110}ms` }}>
+                <span className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0 bg-red-500/10"><X size={16} className="text-red-400" /></span>
+                <span className="text-base text-white/50 line-through decoration-red-400/40">{x}</span>
               </li>
             ))}
           </ul>
-          <div key={`cta-${mode}`} className="dtq-in mt-9 pt-7 border-t border-white/[0.06] flex items-center justify-between gap-4 flex-wrap" style={{ animationDelay: '360ms' }}>
-            <p className={`text-sm font-semibold ${dengan ? 'text-primary' : 'text-white/40'}`}>{dengan ? 'Tenang. Terukur. Berbasis data.' : 'Melelahkan — dan tetap menebak.'}</p>
-            {dengan && <Link href={primaryCta} className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">Coba Sekarang <ArrowRight size={14} /></Link>}
+          <p className="mt-8 pt-6 border-t border-white/[0.06] text-sm font-semibold text-white/40">Melelahkan — dan tetap menebak.</p>
+        </div>
+        {/* Dengan Datalitiq */}
+        <div className="relative rounded-3xl p-[1px] bg-gradient-to-br from-primary/60 via-primary/15 to-cyan-500/25">
+          <div className="h-full rounded-3xl bg-[#0a1110] p-8 md:p-9 flex flex-col">
+            <p className="inline-flex self-start items-center gap-2 rounded-full bg-primary/12 ring-1 ring-primary/30 px-3.5 py-1.5 text-xs font-bold text-primary mb-7"><Check size={13} /> Dengan Datalitiq</p>
+            <ul className="space-y-5">
+              {NEW_WAY.map((x, i) => (
+                <li key={x} className="dtq-in flex items-center gap-4" style={{ animationDelay: `${120 + i * 110}ms` }}>
+                  <span className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0 bg-primary/15"><Check size={16} className="text-primary" /></span>
+                  <span className="text-base text-white/85">{x}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-auto pt-8 flex items-center justify-between gap-4 flex-wrap border-t border-white/[0.06] mt-8">
+              <p className="text-sm font-semibold text-primary">Tenang. Terukur. Berbasis data.</p>
+              <Link href={primaryCta} className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">Coba Sekarang <ArrowRight size={14} /></Link>
+            </div>
           </div>
         </div>
       </div>
@@ -370,33 +385,68 @@ function HowItWorks() {
   )
 }
 
-// ── Fitur: explorer interaktif (klik item → visual + deskripsi berganti) ──
-function FeatureExplorer() {
+// ── Fitur: showcase gaya SaaS (semua fitur tampil + panel screenshot besar,
+//    panah & counter, auto-play). Gambar per fitur di-upload dari halaman Admin;
+//    bila belum ada, pakai visual dummy. ──
+function FeatureShowcase({ images }: { images: Record<string, string> }) {
   const [active, setActive] = useState(0)
+  const [paused, setPaused] = useState(false)
   const f = FEATURES_X[active]
+  const img = images[f.visual]
+  useEffect(() => {
+    if (paused) return
+    const id = setInterval(() => setActive(a => (a + 1) % FEATURES_X.length), 4200)
+    return () => clearInterval(id)
+  }, [paused])
+  const go = (d: number) => setActive(a => (a + d + FEATURES_X.length) % FEATURES_X.length)
   return (
-    <div className="grid lg:grid-cols-[0.95fr_1.05fr] gap-6 lg:gap-10 items-stretch">
-      <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 content-start">
-        {FEATURES_X.map((x, i) => {
-          const on = i === active
-          return (
-            <button key={x.t} onClick={() => setActive(i)} className={`text-left rounded-2xl border p-4 lg:p-5 transition-all duration-300 ${on ? 'border-primary/35 bg-primary/[0.07] lg:translate-x-1.5' : 'border-white/[0.07] bg-white/[0.015] hover:border-white/15'}`}>
-              <div className="flex items-center gap-3">
-                <span className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-colors ${on ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/40'}`}><x.icon size={18} /></span>
-                <span className={`text-sm lg:text-base font-bold ${on ? 'text-white' : 'text-white/55'}`}>{x.t}</span>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-      <div className="relative rounded-3xl border border-white/10 bg-[#0a1210] p-8 md:p-10 flex flex-col justify-center overflow-hidden min-h-[380px]">
-        <div className="absolute -top-16 -right-14 w-56 h-56 rounded-full bg-primary/12 blur-3xl pointer-events-none" />
-        <div key={active} className="dtq-in relative">
-          <div className="flex items-center justify-center mb-8 min-h-[150px]">
-            {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
+    <div className="rounded-3xl border border-white/10 bg-white/[0.015] p-5 md:p-8" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      <div className="grid lg:grid-cols-[0.85fr_1.15fr] gap-6 lg:gap-10 items-stretch">
+        {/* Daftar fitur — SEMUA tampil dengan deskripsi (bukan accordion) */}
+        <div className="space-y-2.5">
+          {FEATURES_X.map((x, i) => {
+            const on = i === active
+            return (
+              <button key={x.t} onClick={() => setActive(i)} className={`w-full text-left rounded-2xl border p-4 transition-all duration-300 ${on ? 'border-primary/35 bg-primary/[0.07] shadow-lg shadow-primary/5' : 'border-transparent bg-transparent hover:bg-white/[0.03] opacity-55 hover:opacity-90'}`}>
+                <div className="flex items-start gap-3.5">
+                  <span className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-colors ${on ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/45'}`}><x.icon size={18} /></span>
+                  <div className="min-w-0">
+                    <p className={`text-base font-bold ${on ? 'text-white' : 'text-white/70'}`}>{x.t}</p>
+                    <p className={`text-sm mt-1 leading-relaxed ${on ? 'text-white/60' : 'text-white/40'}`}>{x.d}</p>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+        {/* Panel screenshot besar */}
+        <div className="relative rounded-2xl border border-white/10 bg-[#0a1210] overflow-hidden flex flex-col min-h-[400px]">
+          <div className="absolute -top-20 -right-16 w-64 h-64 rounded-full bg-primary/12 blur-3xl pointer-events-none" />
+          {/* kontrol: panah + counter */}
+          <div className="relative flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+            <span className="flex items-center gap-2 text-xs font-bold text-white/70"><f.icon size={14} className="text-primary" /> {f.t}</span>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => go(-1)} aria-label="Sebelumnya" className="flex items-center justify-center w-8 h-8 rounded-full border border-white/10 bg-white/[0.04] text-white/60 hover:text-white hover:border-white/25 transition-colors"><ChevronLeft size={15} /></button>
+              <span className="text-xs font-bold text-white/50 tabular-nums px-1.5">{active + 1}/{FEATURES_X.length}</span>
+              <button onClick={() => go(1)} aria-label="Berikutnya" className="flex items-center justify-center w-8 h-8 rounded-full border border-white/10 bg-white/[0.04] text-white/60 hover:text-white hover:border-white/25 transition-colors"><ChevronRight size={15} /></button>
+            </div>
           </div>
-          <h3 className="text-2xl font-black">{f.t}</h3>
-          <p className="text-base text-white/55 mt-3 leading-relaxed">{f.d}</p>
+          <div key={active} className="dtq-in relative flex-1 flex items-center justify-center p-6 md:p-8">
+            {img ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={img} alt={f.t} className="w-full h-auto max-h-[420px] object-contain rounded-xl border border-white/10 shadow-2xl shadow-black/50" />
+            ) : (
+              <div className="w-full max-w-md">
+                {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
+              </div>
+            )}
+          </div>
+          {/* progress dots */}
+          <div className="relative flex items-center justify-center gap-1.5 pb-4">
+            {FEATURES_X.map((_, i) => (
+              <button key={i} onClick={() => setActive(i)} aria-label={`Fitur ${i + 1}`} className={`h-1.5 rounded-full transition-all duration-300 ${i === active ? 'w-6 bg-primary' : 'w-1.5 bg-white/15 hover:bg-white/30'}`} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -419,10 +469,15 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export function TerminalLanding() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
+  const [featureImages, setFeatureImages] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const sb = createClient()
-    sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle().then(({ data }) => setLogoUrl((data?.logo_url as string | null) ?? null))
+    sb.from('app_config').select('logo_url, feature_images').eq('id', 1).maybeSingle().then(({ data }) => {
+      setLogoUrl((data?.logo_url as string | null) ?? null)
+      const fi = data?.feature_images
+      if (fi && typeof fi === 'object') setFeatureImages(fi as Record<string, string>)
+    })
     sb.auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
   }, [])
 
@@ -502,7 +557,8 @@ export function TerminalLanding() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           {STATS.map((s, i) => (
             <Reveal key={i} delay={i * 80}>
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 text-center h-full">
+              <div className="group rounded-2xl border border-white/8 bg-white/[0.02] p-6 text-center h-full hover:border-primary/25 transition-colors">
+                <span className="mx-auto mb-4 flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/10 ring-1 ring-primary/20 group-hover:bg-primary/15 transition-colors"><s.icon size={22} className="text-primary" /></span>
                 <p className="text-4xl font-black tracking-tight bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">{s.v}</p>
                 <p className="text-sm text-white/45 mt-2">{s.l}</p>
               </div>
@@ -511,12 +567,38 @@ export function TerminalLanding() {
         </div>
       </section>
 
-      {/* ── Sebelum & Sesudah (toggle interaktif) ── */}
-      <section className="max-w-3xl mx-auto px-6 py-20 md:py-24">
+      {/* ── Empati: pasar bergerak tiap hari, jangan baca sendirian (icon ilustrasi) ── */}
+      <section className="relative max-w-6xl mx-auto px-6 py-20 md:py-24">
+        <Reveal>
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-[1.1]">Pasar Bergerak Setiap Hari.<br />Jangan Membacanya Sendirian.</h2>
+            <p className="text-base text-white/45 mt-5 leading-relaxed">Harga, ekonomi global, posisi institusi, berita — semuanya bergerak bersamaan. Datalitiq memantau semua itu untukmu, lalu menyaringnya jadi satu arah yang jelas.</p>
+          </div>
+        </Reveal>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+          {WATCHERS.map((w, i) => (
+            <Reveal key={w.t} delay={i * 90}>
+              <div className="group relative h-full rounded-3xl border border-white/[0.07] bg-white/[0.015] p-6 md:p-7 overflow-hidden hover:border-primary/25 transition-colors">
+                <div className="absolute -top-10 -right-8 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ background: w.glow }} />
+                {/* icon ilustrasi beranimasi */}
+                <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-white/[0.06] to-transparent ring-1 ring-white/10 mb-5">
+                  <span className="absolute inset-0 rounded-2xl ring-1 ring-primary/20 dtq-ripple" style={{ animationDelay: `${i * 400}ms` }} />
+                  <w.icon size={26} className="relative text-primary dtq-bob" style={{ animationDelay: `${i * 300}ms` }} />
+                </div>
+                <p className="text-base font-black">{w.t}</p>
+                <p className="text-sm text-white/50 mt-1.5 leading-relaxed">{w.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Rasakan Bedanya (dua sisi tampil sekaligus) ── */}
+      <section className="max-w-5xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight">Rasakan Bedanya.</h2>
-            <p className="text-base text-white/45 mt-4">Klik untuk membandingkan.</p>
+            <p className="text-base text-white/45 mt-4">Cara lama yang melelahkan vs cara baru yang menjelaskan.</p>
           </div>
         </Reveal>
         <Reveal delay={100}><CompareToggle primaryCta={primaryCta} /></Reveal>
@@ -542,10 +624,10 @@ export function TerminalLanding() {
         <Reveal>
           <div className="text-center max-w-xl mx-auto mb-14">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Institusi Punya.</h2>
-            <p className="text-base text-white/45 mt-4">Klik untuk menjelajah.</p>
+            <p className="text-base text-white/45 mt-4">Enam alat analisa, dalam satu layar.</p>
           </div>
         </Reveal>
-        <Reveal delay={100}><FeatureExplorer /></Reveal>
+        <Reveal delay={100}><FeatureShowcase images={featureImages} /></Reveal>
       </section>
 
       {/* ── Testimoni ── */}
@@ -628,7 +710,7 @@ export function TerminalLanding() {
         <Reveal>
           <div className="relative rounded-3xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/15 via-[#0a1110] to-[#0a1110] p-10 md:p-16 text-center">
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
-            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Pasar Bergerak Setiap Hari.<br className="hidden md:block" /> Jangan Membacanya Sendirian.</h2>
+            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Besok Pagi, Buka Pasar<br className="hidden md:block" /> dengan Bias yang Jelas.</h2>
             <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">Mulai hari ini seharga ≈ Rp6 ribu/hari — tanpa kontrak, berhenti kapan saja. Satu keputusan yang lebih jelas sudah sepadan.</p>
             <Link href={primaryCta} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? 'Buka Terminal' : `Mulai Sekarang — ${rp(TERMINAL_PRICE)}/bln`} <ArrowRight size={16} />
@@ -683,7 +765,11 @@ export function TerminalLanding() {
         .dtq-reject { animation: dtq-reject-kf 1.6s ease-out both; }
         @keyframes dtq-progress-kf { from { width: 0 } to { width: 100% } }
         .dtq-progress { animation: dtq-progress-kf 3.5s linear both; }
-        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress { animation: none } }
+        @keyframes dtq-bob-kf { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-5px) } }
+        .dtq-bob { animation: dtq-bob-kf 3s ease-in-out infinite; }
+        @keyframes dtq-ripple-kf { 0% { transform: scale(1); opacity: .6 } 100% { transform: scale(1.35); opacity: 0 } }
+        .dtq-ripple { animation: dtq-ripple-kf 2.8s ease-out infinite; }
+        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress, .dtq-bob, .dtq-ripple { animation: none } }
       `}</style>
     </div>
   )

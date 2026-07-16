@@ -75,6 +75,93 @@ function LogoManager() {
   )
 }
 
+// ── Gambar fitur homepage (section "Satu Terminal. Semua yang Institusi Punya.") ──
+// Disimpan di app_config.feature_images (jsonb: { key: url }), upload ke bucket yang sama.
+const FEATURE_SLOTS: { key: string; label: string }[] = [
+  { key: 'gauge', label: 'Bias Harian Jelas' },
+  { key: 'decision', label: 'Keputusan AI' },
+  { key: 'macro', label: 'Makro Real-Time' },
+  { key: 'sentiment', label: 'Posisi Institusi' },
+  { key: 'chat', label: 'Tanya AI' },
+  { key: 'notif', label: 'Alert Telegram' },
+]
+function FeatureImagesManager() {
+  const [images, setImages] = useState<Record<string, string>>({})
+  const [busyKey, setBusyKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    createClient().from('app_config').select('feature_images').eq('id', 1).maybeSingle()
+      .then(({ data }) => { const fi = data?.feature_images; if (fi && typeof fi === 'object') setImages(fi as Record<string, string>) })
+  }, [])
+
+  async function save(next: Record<string, string>) {
+    setImages(next)
+    const { error } = await createClient().from('app_config')
+      .upsert({ id: 1, feature_images: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) toast.error('Gagal menyimpan: ' + error.message)
+  }
+
+  async function handleUpload(key: string, file: File) {
+    if (file.size > 1_500_000) { toast.error('Ukuran file maksimal 1,5 MB'); return }
+    setBusyKey(key)
+    try {
+      const sb = createClient()
+      const ext = file.name.split('.').pop() || 'png'
+      const path = `landing/feature-${key}-${Date.now()}.${ext}`
+      const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+      if (error) { toast.error('Upload gagal: ' + error.message); return }
+      const { data } = sb.storage.from('trade-screenshots').getPublicUrl(path)
+      await save({ ...images, [key]: data.publicUrl })
+      toast.success(`Gambar "${FEATURE_SLOTS.find(s => s.key === key)?.label}" tersimpan`)
+    } catch { toast.error('Upload gagal') } finally { setBusyKey(null) }
+  }
+
+  function remove(key: string) {
+    const next = { ...images }; delete next[key]
+    save(next); toast.success('Gambar dihapus')
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ImageIcon size={15} className="text-primary" /> Gambar Fitur Homepage (Showcase)</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {FEATURE_SLOTS.map(s => (
+            <div key={s.key} className="rounded-xl border border-border/50 bg-muted/20 p-3">
+              <p className="text-xs font-bold mb-2">{s.label}</p>
+              <div className="flex items-center justify-center h-24 rounded-lg border border-border/40 bg-black/20 overflow-hidden mb-2">
+                {images[s.key]
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={images[s.key]} alt={s.label} className="w-full h-full object-cover" />
+                  : <span className="text-[11px] text-muted-foreground">Belum ada — pakai dummy</span>}
+              </div>
+              <div className="flex gap-1.5">
+                <label className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/15 text-primary px-2 py-1.5 text-xs font-semibold cursor-pointer transition-opacity ${busyKey === s.key ? 'opacity-60 pointer-events-none' : 'hover:bg-primary/25'}`}>
+                  {busyKey === s.key ? <><Loader2 size={12} className="animate-spin" /> Upload…</> : <><Upload size={12} /> Upload</>}
+                  <input type="file" accept="image/png,image/webp,image/jpeg" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(s.key, f) }} />
+                </label>
+                {images[s.key] && (
+                  <button onClick={() => remove(s.key)} className="inline-flex items-center justify-center rounded-lg border border-border/50 px-2 text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={13} /></button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Panduan Ukuran Gambar</p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
+            <li><strong>Ukuran ideal: 1280 × 800 px</strong> (rasio 16:10) — screenshot area dashboard terminal.</li>
+            <li><strong>Format:</strong> PNG atau WebP (disarankan WebP agar ringan).</li>
+            <li><strong>File maksimal:</strong> 1,5 MB per gambar.</li>
+            <li>Gambar ditampilkan utuh (object-contain) di panel showcase homepage — hindari teks terlalu kecil.</li>
+            <li>Slot yang kosong otomatis memakai ilustrasi dummy bawaan.</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 type AdminUser = { id: string; email: string; created_at: string }
 
 type UserRow = {
@@ -171,6 +258,7 @@ export default function AdminPage() {
 
       {/* Logo / branding */}
       <LogoManager />
+      <FeatureImagesManager />
 
       {error && (
         <Card className="border-red-500/30 bg-red-500/5">

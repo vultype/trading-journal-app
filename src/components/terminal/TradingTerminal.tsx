@@ -14,7 +14,7 @@ import {
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
-  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus,
+  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
 import { AiLoading } from './AiLoading'
@@ -503,21 +503,26 @@ function HeatCell({ state, text }: { state: 'bullish' | 'bearish' | 'netral'; te
 // Meter risk-on/off yang mudah dibaca: bar terisi = proporsi ke sisi risk-off (dukung emas)
 // vs risk-on (tekan emas), dengan label & % besar. riskOn: -1 (risk-off) .. +1 (risk-on).
 function RiskMeter({ riskOn }: { riskOn: number }) {
-  const offPct = clamp(Math.round(50 - riskOn * 50), 0, 100)  // % ke arah risk-off (bullish emas)
-  const onPct = 100 - offPct
+  // Gauge modern: track gradient risk-off (kiri, hijau/bullish emas) → risk-on (kanan, merah),
+  // marker menunjukkan posisi sekarang. pos 0..100 (0 = ekstrem risk-off).
+  const pos = clamp(Math.round(50 + riskOn * 50), 2, 98)
+  const zona = riskOn < -0.35 ? 'Risk-Off Kuat' : riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.35 ? 'Risk-On Kuat' : riskOn > 0.1 ? 'Risk-On' : 'Seimbang'
+  const zc = riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'
   return (
     <div>
-      <div className="relative h-9 rounded-lg overflow-hidden flex bg-red-500/15 ring-1 ring-white/5">
-        <div className="h-full bg-gradient-to-r from-emerald-500/70 to-emerald-400/70 flex items-center pl-2.5 transition-all" style={{ width: `${offPct}%` }}>
-          {offPct >= 26 && <span className="text-xs font-black text-white leading-none">🛡️ {offPct}%</span>}
-        </div>
-        <div className="flex-1 flex items-center justify-end pr-2.5">
-          {onPct >= 26 && <span className="text-xs font-black text-red-200 leading-none">{onPct}% 📈</span>}
-        </div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] text-white/45">Posisi sentimen sekarang</span>
+        <span className={`text-sm font-black ${zc}`}>{zona}</span>
       </div>
-      <div className="flex justify-between text-[9px] font-semibold mt-1.5">
-        <span className="text-emerald-400">◀ RISK-OFF · emas naik</span>
-        <span className="text-red-400">RISK-ON · emas turun ▶</span>
+      <div className="relative h-3 rounded-full ring-1 ring-white/10" style={{ background: 'linear-gradient(90deg, #10b981 0%, #34d399 30%, #6b7280 50%, #f87171 70%, #ef4444 100%)' }}>
+        <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-700" style={{ left: `${pos}%` }}>
+          <span className="block w-5 h-5 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] ring-4 ring-black/50" />
+        </span>
+      </div>
+      <div className="flex justify-between text-[10px] font-semibold mt-2">
+        <span className="text-emerald-400">🛡️ Risk-Off · emas naik</span>
+        <span className="text-white/30">netral</span>
+        <span className="text-red-400">Risk-On · emas turun 📈</span>
       </div>
     </div>
   )
@@ -530,7 +535,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string }[
   { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa' },
   { id: 'makro', label: 'Makro', icon: Landmark, group: 'Analisa' },
   { id: 'sentimen', label: 'Sentimen', icon: Users, group: 'Analisa' },
-  { id: 'berita', label: 'Berita AI', icon: Newspaper, group: 'Analisa' },
+  { id: 'berita', label: 'Analisa News', icon: Newspaper, group: 'Analisa' },
   { id: 'status', label: 'Status Server', icon: Server, group: 'Sistem' },
   { id: 'panduan', label: 'Panduan', icon: BookOpen, group: 'Sistem' },
 ]
@@ -555,6 +560,7 @@ export function TradingTerminal() {
   const [chartFull, setChartFull] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [showPrompt, setShowPrompt] = useState(false)  // form konteks AI tersembunyi secara default
+  const [aiFull, setAiFull] = useState(true)           // toggle output AI: Lengkap vs Ringkas
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -1182,6 +1188,97 @@ export function TradingTerminal() {
       ) : <div className="flex items-center justify-center py-6 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat perak…</div>}
     </Panel>
   )
+  // ── Kesimpulan MAKRO → XAU/USD: verdict + pendorong utama, dihitung dari data FRED + dolar live ──
+  const makroDrivers = (() => {
+    const out: { l: string; arah: 'bullish' | 'bearish' | 'netral'; d: string }[] = []
+    const dLive = cross.uup?.changePct
+    if (dLive != null) out.push({ l: 'Dolar (live)', arah: dLive > 0.05 ? 'bearish' : dLive < -0.05 ? 'bullish' : 'netral', d: `UUP ${dLive >= 0 ? '+' : ''}${dLive.toFixed(2)}% hari ini` })
+    const dirOf = (k: string, invert = true) => { const p = macro?.[k]; if (!p) return null; const up = p.value > p.prior; return { up, arah: (invert ? (up ? 'bearish' : 'bullish') : (up ? 'bullish' : 'bearish')) as 'bullish' | 'bearish' } }
+    const y = dirOf('us10y'); if (y && macro?.us10y) out.push({ l: 'Yield 10Y', arah: y.arah, d: `${macro.us10y.value}% (${y.up ? 'naik' : 'turun'})` })
+    const r = dirOf('realyield'); if (r && macro?.realyield) out.push({ l: 'Real Yield', arah: r.arah, d: `${macro.realyield.value}% (${r.up ? 'naik' : 'turun'})` })
+    const c = dirOf('cpi', false); if (c && macro?.cpi) out.push({ l: 'Inflasi CPI', arah: c.up ? 'bullish' : 'bearish', d: `${macro.cpi.value}% YoY (${c.up ? 'naik' : 'mereda'})` })
+    if (macro?.fedfunds) out.push({ l: 'Fed Funds', arah: 'netral', d: `${macro.fedfunds.value}% — arah kebijakan jadi kunci` })
+    return out
+  })()
+  const makroVerdict = sc.macro > 15 ? { t: 'Bullish untuk Emas', c: '#34d399' } : sc.macro < -15 ? { t: 'Bearish untuk Emas', c: '#f87171' } : { t: 'Netral untuk Emas', c: '#9ca3af' }
+  const MakroKesimpulanPanel = (
+    <Panel title="Kesimpulan Makro → XAU/USD" icon={Lightbulb} accent={makroVerdict.c} info="Sintesis otomatis seluruh data makro (dolar live, yield, inflasi, Fed) menjadi satu kesimpulan dampak ke emas. Skor dari pilar Makro di Signal Meter.">
+      <div className="flex items-center gap-4 mb-4">
+        <div className="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" /><circle cx="18" cy="18" r="15" fill="none" stroke={makroVerdict.c} strokeWidth="3.5" strokeDasharray={`${Math.abs(sc.macro) / 100 * 94} 94`} strokeLinecap="round" /></svg>
+          <span className="absolute inset-0 flex items-center justify-center text-sm font-black tabular-nums" style={{ color: makroVerdict.c }}>{Math.round(Math.abs(sc.macro))}</span>
+        </div>
+        <div>
+          <p className="text-xl font-black leading-none" style={{ color: makroVerdict.c }}>{makroVerdict.t}</p>
+          <p className="text-[11px] text-white/45 mt-1.5">Skor pilar makro {sc.macro >= 0 ? '+' : ''}{Math.round(sc.macro)} dari −100…+100</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {makroDrivers.map(d => (
+          <div key={d.l} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">
+            <span className="text-[11px] text-white/70">{d.l}</span>
+            <span className="flex items-center gap-2"><span className="text-[10px] text-white/40 tabular-nums">{d.d}</span><span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${d.arah === 'bullish' ? 'bg-emerald-500/15 text-emerald-400' : d.arah === 'bearish' ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/50'}`}>{d.arah}</span></span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-white/40 leading-snug mt-3 pt-3 border-t border-white/5">{sc.macro > 15 ? 'Kondisi makro condong menopang emas — dolar/yield melunak. Sinyal beli teknikal dapat angin dari makro.' : sc.macro < -15 ? 'Kondisi makro menekan emas — dolar/yield menguat. Hati-hati sinyal beli yang melawan arus makro.' : 'Makro belum memihak — biarkan teknikal & sesi yang menentukan, ukuran posisi konservatif.'}</p>
+    </Panel>
+  )
+  // ── Kesimpulan SENTIMEN → XAU/USD: risk-on/off + posisi COT ──
+  const sentiVerdict = sc.senti > 15 ? { t: 'Bullish untuk Emas', c: '#34d399' } : sc.senti < -15 ? { t: 'Bearish untuk Emas', c: '#f87171' } : { t: 'Netral untuk Emas', c: '#9ca3af' }
+  const SentimenKesimpulanPanel = (
+    <Panel title="Kesimpulan Sentimen → XAU/USD" icon={Lightbulb} accent={sentiVerdict.c} info="Sintesis otomatis sentimen pasar (risk-on/off dari VIX/saham/BTC + posisi institusi COT) menjadi satu kesimpulan dampak ke emas.">
+      <div className="flex items-center gap-4 mb-4">
+        <div className="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" /><circle cx="18" cy="18" r="15" fill="none" stroke={sentiVerdict.c} strokeWidth="3.5" strokeDasharray={`${Math.abs(sc.senti) / 100 * 94} 94`} strokeLinecap="round" /></svg>
+          <span className="absolute inset-0 flex items-center justify-center text-sm font-black tabular-nums" style={{ color: sentiVerdict.c }}>{Math.round(Math.abs(sc.senti))}</span>
+        </div>
+        <div>
+          <p className="text-xl font-black leading-none" style={{ color: sentiVerdict.c }}>{sentiVerdict.t}</p>
+          <p className="text-[11px] text-white/45 mt-1.5">Skor pilar sentimen {sc.senti >= 0 ? '+' : ''}{Math.round(sc.senti)} dari −100…+100</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2"><span className="text-[11px] text-white/70">Mood pasar</span><span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${riskOn < -0.1 ? 'bg-emerald-500/15 text-emerald-400' : riskOn > 0.1 ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/50'}`}>{riskOn < -0.1 ? 'Risk-Off → dukung emas' : riskOn > 0.1 ? 'Risk-On → tekan emas' : 'Seimbang'}</span></div>
+        {cot && <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2"><span className="text-[11px] text-white/70">Institusi (COT)</span><span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${cot.funds.net >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>net {cot.funds.net >= 0 ? 'LONG' : 'SHORT'} {kfmt(cot.funds.net)} ({cot.funds.deltaNet >= 0 ? '+' : ''}{kfmt(cot.funds.deltaNet)} minggu ini)</span></div>}
+        {cot && <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2"><span className="text-[11px] text-white/70">Retail (kontrarian)</span><span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-white/10 text-white/50">net {cot.retail.net >= 0 ? 'long' : 'short'} {kfmt(cot.retail.net)}</span></div>}
+        {cross.vixy && <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2"><span className="text-[11px] text-white/70">VIX (rasa takut)</span><span className={`text-[10px] font-bold tabular-nums ${cross.vixy.changePct > 0 ? 'text-emerald-400' : 'text-white/50'}`}>{cross.vixy.changePct >= 0 ? '+' : ''}{cross.vixy.changePct.toFixed(2)}% {cross.vixy.changePct > 2 ? '— ketakutan naik, dukung emas' : ''}</span></div>}
+      </div>
+      <p className="text-[10px] text-white/40 leading-snug mt-3 pt-3 border-t border-white/5">{sc.senti > 15 ? 'Sentimen mendukung emas — pasar defensif / institusi menambah long. Searah dengan sinyal beli.' : sc.senti < -15 ? 'Sentimen menekan emas — selera risiko tinggi. Sinyal beli butuh konfirmasi ekstra.' : 'Sentimen netral — bukan pendorong utama hari ini.'}</p>
+    </Panel>
+  )
+  // ── Chart Sentimen (baru): diverging bar — tiap faktor mendorong emas ke bullish/bearish ──
+  const sentiFactors: { l: string; push: number; note: string }[] = (() => {
+    const cl = (n: number) => Math.max(-100, Math.min(100, n))
+    const out: { l: string; push: number; note: string }[] = []
+    out.push({ l: 'Mood Pasar', push: cl(-riskOn * 55), note: riskOn < -0.1 ? 'risk-off' : riskOn > 0.1 ? 'risk-on' : 'seimbang' })
+    if (cross.vixy) out.push({ l: 'VIX (takut)', push: cl(cross.vixy.changePct * 14), note: `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(1)}%` })
+    if (cot) out.push({ l: 'Institusi (COT)', push: cl(cot.funds.net >= 0 ? 45 + Math.sign(cot.funds.deltaNet) * 15 : -45 + Math.sign(cot.funds.deltaNet) * 15), note: `net ${cot.funds.net >= 0 ? 'long' : 'short'}` })
+    if (cross.spy) out.push({ l: 'Saham (S&P)', push: cl(-cross.spy.changePct * 18), note: `${cross.spy.changePct >= 0 ? '+' : ''}${cross.spy.changePct.toFixed(1)}%` })
+    if (goldSilver != null) out.push({ l: 'Emas/Perak', push: cl((goldSilver - 80) * 3), note: goldSilver.toFixed(1) })
+    return out
+  })()
+  const SentimenChartPanel = (
+    <Panel title="Peta Sentimen → Emas" icon={BarChart3} info="Tiap faktor sentimen didorong ke kanan (mendukung emas / bullish) atau ke kiri (menekan emas / bearish). Panjang bar = kekuatan dorongan. Garis tengah = netral.">
+      <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider mb-2"><span className="text-red-400/70">← Tekan emas</span><span className="text-white/30">netral</span><span className="text-emerald-400/70">Dukung emas →</span></div>
+      <div className="space-y-2">
+        {sentiFactors.map(f => {
+          const bull = f.push >= 0, w = Math.min(50, Math.abs(f.push) / 2)
+          return (
+            <div key={f.l} className="flex items-center gap-2">
+              <span className="w-24 shrink-0 text-[10px] text-white/60 truncate">{f.l}</span>
+              <div className="relative flex-1 h-4 rounded bg-white/[0.03]">
+                <span className="absolute top-0 bottom-0 left-1/2 w-px bg-white/15" />
+                <span className={`absolute top-0.5 bottom-0.5 rounded ${bull ? 'bg-emerald-400/70' : 'bg-red-400/70'}`} style={{ left: bull ? '50%' : `${50 - w}%`, width: `${w}%` }} />
+              </div>
+              <span className="w-14 shrink-0 text-right text-[9px] text-white/40 tabular-nums">{f.note}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-[10px] text-white/40 leading-snug mt-3 pt-3 border-t border-white/5">Skor sentimen komposit <span className="font-bold" style={{ color: sentiVerdict.c }}>{sc.senti >= 0 ? '+' : ''}{Math.round(sc.senti)}</span> → {sentiVerdict.t.toLowerCase()}.</p>
+    </Panel>
+  )
   const AiPanel = (
     <div className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-[#0b100e] to-[#0b100e] p-4">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1223,6 +1320,26 @@ export function TradingTerminal() {
               <div className="text-center shrink-0"><p className="text-[9px] uppercase tracking-wider text-white/35">Keyakinan</p><p className={`text-base font-black ${a.conviction === 'Tinggi' ? 'text-emerald-400' : a.conviction === 'Rendah' ? 'text-red-400' : 'text-amber-400'}`}>{a.conviction}</p><p className="text-[9px] text-white/40 tabular-nums">{a.confidence}%</p></div>
             </div>
             <p className="text-[11px] text-white/60 leading-snug">{a.executive}</p>
+            {/* Fokus scalping: alignment M5 · M15 · H1 (dari data live terminal) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Timeframe Scalping</p>
+                <button onClick={() => setAiFull(v => !v)} className="flex items-center gap-1 text-[10px] font-semibold text-white/45 hover:text-white transition-colors">{aiFull ? <>Ringkas <ChevronUp size={12} /></> : <>Lengkap <ChevronDown size={12} /></>}</button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['M5', 'M15', 'H1'] as const).map(tfk => {
+                  const b = feed.tf[tfk].bias.label
+                  const tone = /bull/i.test(b) ? 'text-emerald-400 border-emerald-500/25 bg-emerald-500/[0.07]' : /bear/i.test(b) ? 'text-red-400 border-red-500/25 bg-red-500/[0.07]' : 'text-white/55 border-white/10 bg-white/[0.03]'
+                  return (
+                    <div key={tfk} className={`rounded-lg border px-2.5 py-2 ${tone}`}>
+                      <p className="text-[9px] uppercase tracking-wider text-white/40 leading-none">{tfk}</p>
+                      <p className="text-[12px] font-black mt-1 leading-none">{b}</p>
+                      <p className="text-[8px] text-white/35 mt-1 tabular-nums">RSI {Math.round(feed.tf[tfk].rsi)} · {feed.tf[tfk].macd.state}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
             {/* confluence checklist */}
             {a.confluence.length > 0 && (
               <div>
@@ -1233,6 +1350,7 @@ export function TradingTerminal() {
                 })}</div>
               </div>
             )}
+            {aiFull && <>
             {/* 3 seksi */}
             <div className="grid md:grid-cols-3 gap-2.5">{[{ t: 'Teknikal', ic: Activity, v: a.technical }, { t: 'Makro', ic: Landmark, v: a.macro }, { t: 'Sentimen', ic: Users, v: a.sentiment }].map(s => (
               <div key={s.t} className="rounded-xl bg-white/[0.03] border border-white/5 p-2.5"><p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary/80 mb-1"><s.ic size={11} /> {s.t}</p><p className="text-[11px] text-white/65 leading-relaxed">{s.v}</p></div>))}
@@ -1256,6 +1374,7 @@ export function TradingTerminal() {
               {a.risks.length > 0 && <div><p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-amber-400/70 mb-1"><ShieldAlert size={11} /> Risiko</p><ul className="space-y-0.5">{a.risks.map((r, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-amber-400/70">⚠</span>{r}</li>)}</ul></div>}
               {a.watch.length > 0 && <div><p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1"><Eye size={11} /> Dipantau</p><ul className="space-y-0.5">{a.watch.map((w, i) => <li key={i} className="text-[11px] text-white/60 leading-snug flex gap-1.5"><span className="text-primary">→</span>{w}</li>)}</ul></div>}
             </div>
+            </>}
             <p className="text-[8px] text-white/25 text-right">Diolah Datalitiq AI dari data terminal real · {new Date(a.fetchedAt).toLocaleTimeString('id-ID')}. Bukan nasihat keuangan.</p>
           </div>
         )
@@ -1359,8 +1478,16 @@ export function TradingTerminal() {
             {tab === 'makro' && <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
                 suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
+              {/* Statistik makro kunci */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatTile icon={Landmark} label="Dolar (Live)" value={cross.uup ? <span className={cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup.changePct < -0.05 ? 'text-emerald-400' : 'text-white/70'}>{cross.uup.changePct >= 0 ? '+' : ''}{cross.uup.changePct.toFixed(2)}%</span> : '—'} sub={cross.uup ? (cross.uup.changePct > 0.05 ? 'menguat → tekan emas' : cross.uup.changePct < -0.05 ? 'melemah → dukung emas' : 'datar') : 'memuat'} tone={cross.uup ? (cross.uup.changePct > 0.05 ? 'bear' : cross.uup.changePct < -0.05 ? 'bull' : 'neutral') : 'neutral'} info="Proxy UUP real-time. Dolar & emas biasanya berlawanan arah." />
+                <StatTile icon={GitBranch} label="Yield 10Y" value={macro?.us10y ? `${macro.us10y.value}%` : '—'} sub={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'naik → tekan emas' : 'turun → dukung emas') : 'memuat'} tone={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'bear' : 'bull') : 'neutral'} info="Yield Treasury 10 tahun. Naik = biaya peluang memegang emas naik." />
+                <StatTile icon={Flame} label="Inflasi CPI" value={macro?.cpi ? `${macro.cpi.value}%` : '—'} sub={macro?.cpi ? `YoY · prior ${macro.cpi.prior}%` : 'memuat'} tone={macro?.cpi ? (macro.cpi.value > macro.cpi.prior ? 'bull' : 'neutral') : 'neutral'} info="Inflasi tinggi = emas sebagai lindung nilai makin menarik (jangka menengah)." />
+                <StatTile icon={Scale} label="Fed Funds" value={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} sub="suku bunga acuan" tone="neutral" info="Ekspektasi pemangkasan = bullish emas; ditahan tinggi = bearish." />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MakroKesimpulanPanel}{RiskSentimentPanel}</div>
               {CrossPanel}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{RiskSentimentPanel}</div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
               {InflasiPanel}
               {CalendarPanel}
             </div>}
@@ -1368,11 +1495,19 @@ export function TradingTerminal() {
             {tab === 'sentimen' && <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
                 suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
+              {/* Statistik sentimen kunci */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatTile icon={Scale} label="Mood Pasar" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Seimbang'}</span>} sub={riskOn < -0.1 ? 'defensif → dukung emas' : riskOn > 0.1 ? 'agresif → tekan emas' : 'tanpa arah'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq & BTC real-time." />
+                <StatTile icon={Users} label="Institusi (COT)" value={cot ? <span className={cot.funds.net >= 0 ? 'text-emerald-400' : 'text-red-400'}>{cot.funds.net >= 0 ? 'Net Long' : 'Net Short'}</span> : '—'} sub={cot ? `${kfmt(cot.funds.net)} · Δ ${kfmt(cot.funds.deltaNet)}/mgg` : 'memuat'} tone={cot ? (cot.funds.net >= 0 ? 'bull' : 'bear') : 'neutral'} info="Posisi bersih dana besar di futures emas (CFTC, mingguan)." />
+                <StatTile icon={Users} label="Retail" value={cot ? <span className="text-white/75">{cot.retail.net >= 0 ? 'Net Long' : 'Net Short'}</span> : '—'} sub={cot ? `${kfmt(cot.retail.net)} — sering kontrarian` : 'memuat'} tone="neutral" info="Trader kecil sering berada di sisi yang salah pada titik ekstrem." />
+                <StatTile icon={Activity} label="VIX (Takut)" value={cross.vixy ? `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(1)}%` : '—'} sub={cross.vixy ? (cross.vixy.changePct > 2 ? 'ketakutan melonjak' : cross.vixy.changePct > 0 ? 'was-was' : 'tenang') : 'memuat'} tone={cross.vixy ? (cross.vixy.changePct > 2 ? 'bull' : 'neutral') : 'neutral'} info="VIX naik = pasar takut → aliran ke aset aman (emas)." />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{SentimenKesimpulanPanel}{SentimenChartPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
                 {CotPanel}
-                <div className="space-y-4">{RiskSentimentPanel}{GoldSilverPanel}</div>
+                <div className="space-y-4">{RiskSentimentPanel}{GoldSilverPanel}{BiasPanel}</div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{NewsPanel}{BiasPanel}</div>
+              {NewsPanel}
             </div>}
 
             {tab === 'berita' && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4"><TerminalNewsAnalysis snapshot={snapshot} /></div>}
@@ -1415,56 +1550,67 @@ function PanduanContent() {
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-transparent p-4">
-        <h2 className="text-base font-black flex items-center gap-2 mb-1"><BookOpen size={18} className="text-primary" /> Panduan Membaca Terminal (untuk Pemula)</h2>
-        <p className="text-[12px] text-white/60">XAU/USD = harga emas dalam dolar AS. Emas cenderung <b className="text-emerald-400">naik (bullish)</b> saat dolar & suku bunga melemah, inflasi mereda, atau pasar takut (risk-off); dan <b className="text-red-400">turun (bearish)</b> saat sebaliknya. Terminal ini menyatukan banyak data untuk membantumu menilai arah itu.</p>
+        <h2 className="text-base font-black flex items-center gap-2 mb-1"><BookOpen size={18} className="text-primary" /> Panduan Terminal Scalping XAU/USD</h2>
+        <p className="text-[12px] text-white/60">Terminal ini dirancang untuk <b className="text-primary">scalping emas</b> — fokus di timeframe kecil <b>M5, M15, H1</b>. XAU/USD = harga emas dalam dolar AS. Emas cenderung <b className="text-emerald-400">naik (bullish)</b> saat dolar & suku bunga melemah, inflasi mereda, atau pasar takut (risk-off); dan <b className="text-red-400">turun (bearish)</b> saat sebaliknya. Semua data disatukan agar kamu selalu punya <b>satu arah bias yang jelas</b>.</p>
       </div>
       <div className="grid md:grid-cols-2 gap-3">
         <GuideCard title="Istilah Dasar" icon={Info}>
-          <p>• <b className="text-emerald-400">Bullish</b> = perkiraan harga naik. <b className="text-red-400">Bearish</b> = perkiraan turun. <b>Netral</b> = belum jelas.</p>
+          <p>• <b className="text-emerald-400">Bullish</b> = perkiraan harga naik. <b className="text-red-400">Bearish</b> = perkiraan turun. <b>Netral</b> = seimbang.</p>
           <p>• <b>Support (S)</b> = level bawah tempat harga sering memantul naik. <b>Resistance (R)</b> = level atas tempat harga sering tertahan.</p>
-          <p>• <b>Timeframe</b>: M5 = 5 menit, M15 = 15 menit, H1 = 1 jam. TF besar (H1) lebih kuat pengaruhnya.</p>
+          <p>• <b>Timeframe scalping</b>: M5 (5 menit) & M15 (15 menit) = tempat entry/exit. H1 (1 jam) = konteks arah intraday. H4/Daily hanya angin latar, bukan penghalang setup scalping.</p>
         </GuideCard>
         <GuideCard title="Signal Meter & Bias/Confidence" icon={Compass}>
           <p>Jarum meter ke <b className="text-emerald-400">kanan = bullish</b>, ke <b className="text-red-400">kiri = bearish</b>. Ini rangkuman dari 3 pilar:</p>
           <p>• <b>Makro</b> (dolar/yield/inflasi/Fed), <b>Teknikal</b> (chart), <b>Sentimen</b> (berita & pasar).</p>
-          <p>• <b>Confidence</b> = seberapa sepakat ketiga pilar. Makin tinggi (&gt;66%) = sinyal makin bisa dipercaya. Rendah = pilar bertentangan, hati-hati.</p>
+          <p>• <b>Confidence</b> = seberapa sepakat ketiga pilar. Makin tinggi (&gt;66%) = sinyal makin bisa dipercaya. Rendah = pilar bertentangan, kecilkan lot.</p>
+        </GuideCard>
+        <GuideCard title="Arah & Ringkasan per Sesi" icon={Clock}>
+          <p>Di tab <b>Ringkasan</b> ada panel <b>Asia · London · New York</b> (jam UTC) yang <b>reset tiap hari</b>.</p>
+          <p>• Tiap sesi menampilkan status (berlangsung/selesai/belum), arah (bullish/bearish/flat), poin & range, serta open→harga sekarang.</p>
+          <p>• Berguna untuk scalping: tahu sesi mana yang sedang bergerak & searah bias-mu.</p>
         </GuideCard>
         <GuideCard title="Teknikal (tab Teknikal)" icon={Activity}>
           <p>• <b>Chart</b> TradingView: bisa di-zoom/drag, klik "Perbesar" untuk layar penuh.</p>
-          <p>• <b>Konfluensi MTF</b>: kalau M5/M15/H1 sama-sama bullish = tren searah (lebih kuat).</p>
+          <p>• <b>Konfluensi M5/M15/H1</b>: kalau ketiganya searah = momentum scalping lebih kuat.</p>
           <p>• <b>RSI</b>: &gt;70 jenuh beli (rawan turun), &lt;30 jenuh jual (rawan naik).</p>
-          <p>• <b>ADX</b> (Kekuatan Tren): &gt;25 tren kuat (sinyal lebih valid), &lt;20 lemah/sideways (rawan tipu-tipu). <b>+DI vs -DI</b> = arah tren.</p>
-          <p>• <b>ATR/Volatilitas</b>: besar pergerakan harga. Rendah = pasar sepi.</p>
+          <p>• <b>ADX</b> (Kekuatan Tren): &gt;25 tren kuat, &lt;20 sideways (rawan tipu-tipu). <b>+DI vs -DI</b> = arah.</p>
+          <p>• <b>ATR/Volatilitas</b>: besar pergerakan — patokan jarak SL/TP scalping.</p>
         </GuideCard>
         <GuideCard title="Makro (tab Makro)" icon={Landmark}>
+          <p>• <b>Kesimpulan Makro → XAU/USD</b>: kartu ringkas — makro sedang dukung atau tekan emas + pendorong utamanya.</p>
           <p>• <b>Indeks Dolar & US10Y (yield)</b>: naik → tekan emas; turun → dukung emas.</p>
-          <p>• <b>CPI / Core PCE</b> (inflasi): turun → peluang Fed pangkas bunga → bullish emas.</p>
+          <p>• <b>CPI / Core PCE</b> (inflasi): mereda → peluang Fed pangkas bunga → bullish emas.</p>
           <p>• <b>Fed Funds Rate</b>: suku bunga acuan. Turun = bullish emas.</p>
-          <p>• <b>VIX</b> (indeks ketakutan): naik = pasar takut = emas jadi tempat aman (bullish).</p>
-          <p>• <b>Kalender Ekonomi</b>: hindari buka posisi tepat sebelum rilis data high-impact (harga bisa liar).</p>
+          <p>• <b>Kalender Ekonomi</b>: rilis high-impact = volatilitas tinggi. Bukan larangan — pakai tab <b className="text-primary">Analisa News</b> untuk menyiasatinya.</p>
         </GuideCard>
-        <GuideCard title="Sentimen & COT (tab Sentimen)" icon={Users}>
-          <p>• <b>COT</b> (mingguan dari CFTC): posisi para pelaku pasar. <b className="text-emerald-400">Hijau=long</b>, <b className="text-red-400">merah=short</b>.</p>
-          <p>• <b>Funds/Institusi</b> & <b>Commercials</b> = "smart money". <b>Retail</b> = trader kecil, sering salah di titik ekstrem (sinyal kontrarian).</p>
+        <GuideCard title="Sentimen (tab Sentimen)" icon={Users}>
+          <p>• <b>Kesimpulan Sentimen → XAU/USD</b> + <b>Peta Sentimen</b>: bar tiap faktor (mood pasar, VIX, COT, saham) mendorong emas bullish/bearish.</p>
+          <p>• <b>COT</b> (mingguan, CFTC): <b>Funds/Institusi</b> = smart money; <b>Retail</b> sering salah di titik ekstrem (kontrarian).</p>
           <p>• Kalau institusi & retail berlawanan → cenderung ikuti institusi.</p>
-          <p>• <b>Berita</b>: headline terbaru; analisa sentimennya ada di Analisa AI.</p>
         </GuideCard>
-        <GuideCard title="Analisa AI & Cara Pakai" icon={Brain}>
-          <p>Di tab <b>Ringkasan</b>, klik <b className="text-primary">Jalankan Analisa AI</b>. Datalitiq AI membaca SEMUA data + berita lalu memberi:</p>
-          <p>• <b>Keputusan</b> (Beli/Jual/Tunggu) + alasan + tingkat keyakinan.</p>
-          <p>• <b>Peta faktor</b> (mana yang bullish/bearish), rencana (entry/stop/target), level kunci, skenario, & risiko.</p>
-          <p className="text-amber-400/80">⚠ Ini alat bantu, <b>bukan nasihat keuangan</b>. Selalu pakai stop loss & kelola risiko. Keputusan akhir tetap di tanganmu.</p>
+        <GuideCard title="Analisa AI (tab Ringkasan)" icon={Brain}>
+          <p>Klik <b className="text-primary">Jalankan Analisa AI</b> — Datalitiq AI membaca SEMUA data + berita lalu memberi:</p>
+          <p>• <b>Satu keputusan & arah</b> (Beli/Jual/Tunggu) + alasan + keyakinan. Selalu ada 1 arah bias, tidak menghindar.</p>
+          <p>• <b>Strip M5/M15/H1</b> untuk cek keselarasan scalping; toggle <b>Ringkas/Lengkap</b> untuk detail.</p>
+          <p>• <b>Tambah konteks</b> untuk menyesuaikan (mis. "scalping sesi London, fokus level entry").</p>
+        </GuideCard>
+        <GuideCard title="Analisa News (tab Analisa News)" icon={Newspaper}>
+          <p>Untuk menyiasati rilis berita — <b>bukan menghindarinya</b>.</p>
+          <p>• Pilih event (CPI, NFP, FOMC…), isi angka <b>Actual · Forecast · Previous</b> ala forexfactory.</p>
+          <p>• AI memberi <b>prediksi arah emas</b> + rekomendasi pre-news (Long/Short/Tunggu), skenario reaksi + probabilitas, dan level kunci.</p>
+          <p className="text-amber-400/80">⚠ Masuk sebelum berita = risiko tinggi (whipsaw). Pakai SL rapat / lot kecil.</p>
         </GuideCard>
       </div>
       <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e] p-4">
-        <h3 className="flex items-center gap-2 text-sm font-black mb-2"><CheckCircle2 size={15} className="text-primary" /> Alur Baca yang Disarankan</h3>
+        <h3 className="flex items-center gap-2 text-sm font-black mb-2"><CheckCircle2 size={15} className="text-primary" /> Alur Scalping yang Disarankan</h3>
         <ol className="text-[12px] text-white/65 leading-relaxed space-y-1 list-decimal list-inside">
-          <li>Buka tab <b>Ringkasan</b> → lihat Signal Meter & Confidence (arah + seberapa yakin).</li>
-          <li>Klik <b>Jalankan Analisa AI</b> untuk pandangan menyeluruh & keputusan.</li>
-          <li>Cek <b>Teknikal</b> (tren/ADX kuat?) & <b>Makro</b> (dolar/yield mendukung?).</li>
-          <li>Cek <b>Sentimen</b> (institusi & berita sejalan?).</li>
-          <li>Kalau semua searah & confidence tinggi → sinyal lebih kuat. Selalu pasang stop loss.</li>
+          <li>Buka <b>Ringkasan</b> → lihat Signal Meter, Confidence & panel <b>per Sesi</b> (sesi mana yang aktif?).</li>
+          <li>Klik <b>Jalankan Analisa AI</b> → dapat 1 arah bias + strip M5/M15/H1.</li>
+          <li>Konfirmasi di <b>Teknikal</b> (M5/M15/H1 searah? ADX kuat?) & cek kartu <b>Kesimpulan Makro/Sentimen</b>.</li>
+          <li>Kalau ada rilis besar dekat → mampir <b>Analisa News</b> untuk rencananya.</li>
+          <li>Eksekusi dengan <b>SL selalu terpasang</b> & jarak sesuai ATR. Keputusan akhir di tanganmu.</li>
         </ol>
+        <p className="text-[11px] text-amber-400/80 mt-2">⚠ Terminal ini alat bantu analisa, <b>bukan nasihat keuangan</b>. Kelola risiko dengan disiplin.</p>
       </div>
     </div>
   )
