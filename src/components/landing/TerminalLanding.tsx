@@ -5,10 +5,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
-  Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star, Quote,
-  Compass, Landmark, Newspaper, Bell, Target, MessageSquare, TrendingUp,
+  Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star,
+  Compass, Landmark, Newspaper, Bell, Target, MessageSquare,
   BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe,
-  X, Zap,
+  X,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -21,48 +21,41 @@ const DATA_SOURCES = ['Twelve Data', 'FRED (The Fed)', 'CFTC', 'TradingView']
 
 // Angka nyata dari sistem yang berjalan — bukan klaim marketing.
 const STATS = [
-  { v: '8 detik', l: 'Harga emas diperbarui — nyaris real-time' },
-  { v: '10.000+', l: 'Pembaruan data pasar setiap hari' },
-  { v: '12+', l: 'Indikator ekonomi resmi AS dipantau' },
-  { v: '3 → 1', l: 'Teknikal, makro & sentimen jadi satu kesimpulan' },
+  { v: '8 dtk', l: 'Update harga' },
+  { v: '12+', l: 'Indikator makro resmi' },
+  { v: '24/7', l: 'Pemantauan pasar' },
+  { v: '1', l: 'Bias harian yang jelas' },
 ]
-// Perbandingan cara lama vs dengan Datalitiq (section konversi)
+// Sebelum & Sesudah — copy pendek untuk toggle interaktif
 const OLD_WAY = [
-  '5–6 layar terbuka: chart, berita, kalender ekonomi, grup sinyal',
-  'Berjam-jam menyusun analisa sebelum berani entry',
-  'Sinyal saling bertentangan — akhirnya balik ke feeling',
-  'FOMO masuk saat berita, tanpa paham konteksnya',
-  'Tidak ada yang mengingatkan saat kondisi pasar berubah',
+  '5–6 layar terbuka sekaligus',
+  'Berjam-jam menyusun analisa',
+  'Sinyal bertentangan → balik ke feeling',
+  'FOMO saat berita, tanpa konteks',
 ]
 const NEW_WAY = [
-  'Satu layar: arah pasar, tingkat keyakinan & alasannya',
-  'Kesimpulan siap dalam hitungan detik, diperbarui otomatis',
-  'Tiga sisi analisa ditimbang objektif oleh AI — bukan emosi',
-  'Dampak berita & data ekonomi ke emas dijelaskan langsung',
-  'Notifikasi otomatis saat pasar mulai bergerak signifikan',
+  'Satu layar, bias harian jelas',
+  'Kesimpulan siap dalam hitungan detik',
+  'Makro + teknikal + sentimen ditimbang AI',
+  'News guard: tahan entry saat rilis besar',
 ]
 
-const PROBLEMS = [
-  { icon: Layers, t: 'Terlalu Banyak Layar, Terlalu Sedikit Kejelasan', d: 'Chart di satu tab, berita di tab lain, kalkulasi manual di tab ketiga. Semakin banyak yang dibuka, semakin sulit melihat gambaran besarnya.', tags: ['Informasi berserakan', 'Waktu habis menyusun'] },
-  { icon: Compass, t: 'Sinyal yang Saling Bertentangan', d: 'Harga menunjukkan potensi naik, tapi kondisi ekonomi mengarah sebaliknya. Tanpa cara menimbang keduanya, keputusan kembali jadi tebakan.', tags: ['Analisa terpisah-pisah', 'Tak ada kesimpulan tunggal'] },
-  { icon: Brain, t: 'Emosi Mengambil Alih Saat Ragu', d: 'Saat tidak yakin, keputusan jadi reaktif — masuk terlalu cepat, keluar terlalu panik. Bukan kurang disiplin, tapi tak ada pegangan yang jelas.', tags: ['Keputusan reaktif', 'Sulit konsisten'] },
+// Cara Kerja — stepper interaktif dengan visual animasi per langkah
+const STEPS: { icon: React.ElementType; t: string; d: string }[] = [
+  { icon: Globe, t: 'Pantau', d: 'Harga, makro & sentimen dipantau real-time dari sumber institusi.' },
+  { icon: Layers, t: 'Timbang', d: 'Tiga pilar analisa ditimbang bersamaan oleh AI — objektif, tanpa emosi.' },
+  { icon: ShieldCheck, t: 'Saring', d: 'Sinyal yang melawan tren besar atau dekat rilis berita, disaring keluar.' },
+  { icon: Target, t: 'Simpulkan', d: 'Satu bias harian yang jelas: arah, keyakinan, dan alasannya.' },
 ]
 
-const STEPS = [
-  { icon: Globe, t: 'Memantau Pasar Real-Time', d: 'Pergerakan harga, kondisi ekonomi global, dan sentimen pasar dipantau terus-menerus sepanjang hari.' },
-  { icon: Layers, t: 'Menimbang Tiga Sisi Sekaligus', d: 'Arah harga, kondisi makro (bank sentral, nilai tukar, suku bunga), dan sentimen pelaku pasar — ditimbang bersamaan, bukan terpisah.' },
-  { icon: ShieldCheck, t: 'Menyaring Arah yang Valid', d: 'Sinyal jangka pendek dibandingkan dengan tren besar, supaya kesimpulan tidak melawan arus utama pasar.' },
-  { icon: Target, t: 'Menyampaikan Kesimpulan Jelas', d: 'Hasilnya bukan data mentah, tapi kesimpulan yang langsung dipahami: arah pasar, tingkat keyakinan, dan alasannya.' },
-]
-
-// Fitur dengan penjelasan lengkap (section zigzag)
-const FEATURE_ROWS: { icon: React.ElementType; kicker: string; t: string; d: string; bullets: string[]; visual: string }[] = [
-  { icon: Brain, kicker: 'Keputusan AI', t: 'Satu Kesimpulan Jelas, Bukan Puluhan Angka', d: 'Setiap saat, AI menimbang seluruh kondisi pasar lalu menyimpulkannya jadi satu keputusan yang bisa langsung Anda pahami: beli, jual, atau tunggu — lengkap dengan tingkat keyakinan dan alasan di baliknya.', bullets: ['Arah + tingkat keyakinan dalam satu tampilan', 'Alasan transparan, bukan kotak hitam', 'Rencana masuk, batas risiko & target disertakan'], visual: 'decision' },
-  { icon: Compass, kicker: 'Kondisi Pasar', t: 'Tahu Kapan Pasar Layak Ditradingkan', d: 'Tidak semua jam layak untuk masuk pasar. Terminal membaca kondisi pasar secara langsung — sedang bergerak searah, sedang ragu, atau sedang diam — supaya Anda tahu kapan agresif dan kapan menahan diri.', bullets: ['Status pasar real-time: trending, konfirmasi, atau ranging', 'Peringatan dini saat arah mulai berbalik', 'Ukuran volatilitas: kapan pergerakan cukup besar untuk masuk'], visual: 'gauge' },
-  { icon: Landmark, kicker: 'Ekonomi Global', t: 'Paham Kenapa Emas Bergerak, Bukan Cuma Ke Mana', d: 'Harga emas digerakkan kebijakan bank sentral, nilai dolar, dan data ekonomi besar. Semua itu dipantau dari sumber resmi dan dijelaskan dampaknya ke emas — dalam bahasa yang manusiawi.', bullets: ['12+ indikator ekonomi resmi AS dipantau otomatis', 'Dampak tiap rilis data dijelaskan: dukung atau tekan emas', 'Nada kebijakan The Fed dibaca dari data & pernyataan resmi'], visual: 'macro' },
-  { icon: Newspaper, kicker: 'Sentimen & Posisi Institusi', t: 'Lihat Apa yang Dilakukan Uang Besar', d: 'Pergerakan besar dimulai dari institusi. Terminal membaca posisi dana besar vs trader ritel setiap minggu, plus sentimen berita terkini — supaya Anda tidak berdiri di sisi yang salah.', bullets: ['Posisi institusi global, diperbarui mingguan (sumber resmi)', 'Berita emas & dolar dirangkum dampaknya oleh AI', 'Indikator “pasar takut vs serakah” yang mudah dibaca'], visual: 'sentiment' },
-  { icon: MessageSquare, kicker: 'Tanya AI', t: 'Analisa Sesuai Situasi Anda', d: 'Setiap trader punya konteks berbeda. Ajukan pertanyaan spesifik — “layak masuk sekarang?”, “level aman di mana?” — dan AI menjawab berdasarkan data pasar saat itu juga, bukan template.', bullets: ['Jawaban berbasis data live, bukan jawaban umum', 'Bisa fokus ke sesi, level, atau rilis berita tertentu', 'Tersedia di setiap halaman analisa'], visual: 'chat' },
-  { icon: Bell, kicker: 'Notifikasi', t: 'Pasar Dipantau, Anda Tidak Harus Standby', d: 'Sistem memeriksa kondisi pasar setiap beberapa menit, sepanjang hari. Saat pasar mulai bergerak searah dengan keyakinan tinggi, notifikasi masuk ke Telegram Anda — bukan spam, hanya saat kondisi berubah.', bullets: ['Notifikasi saat tren baru terkonfirmasi + % keyakinan', 'Sinyal “layak dicermati” saat semua kondisi selaras', 'Anti-spam: hanya saat kondisi benar-benar berubah'], visual: 'notif' },
+// Fitur — explorer interaktif (klik untuk ganti), teks singkat
+const FEATURES_X: { icon: React.ElementType; t: string; d: string; visual: string }[] = [
+  { icon: Compass, t: 'Bias Harian Jelas', d: 'Buka terminal, langsung tahu arah hari ini dan seberapa yakin sistem terhadapnya.', visual: 'gauge' },
+  { icon: Brain, t: 'Keputusan AI', d: 'AI menimbang semua data jadi satu keputusan — beli, jual, atau tunggu — beserta alasannya.', visual: 'decision' },
+  { icon: Landmark, t: 'Makro Real-Time', d: 'Dolar, yield & kebijakan Fed dari sumber resmi, diterjemahkan dampaknya ke emas.', visual: 'macro' },
+  { icon: Newspaper, t: 'Posisi Institusi', d: 'Lihat ke mana uang besar bergerak setiap minggu — jangan berdiri di sisi yang salah.', visual: 'sentiment' },
+  { icon: MessageSquare, t: 'Tanya AI', d: 'Ajukan pertanyaan spesifik, dijawab dari data pasar saat itu juga.', visual: 'chat' },
+  { icon: Bell, t: 'Alert Telegram', d: 'Pasar dipantau untukmu — notifikasi hanya saat kondisi benar-benar berubah.', visual: 'notif' },
 ]
 
 const BONUS = [
@@ -107,10 +100,18 @@ function Reveal({ children, delay = 0, className = '' }: { children: React.React
   )
 }
 
-// ── Hero chart: chart emas animasi (garis menggambar sendiri + harga berdetak) ──
+// ── Hero chart: chart emas animasi (garis menggambar sendiri + harga berdetak)
+//    + tab insight interaktif (Teknikal/Makro/Sentimen) ──
+const HERO_TABS = [
+  { id: 'teknikal', label: 'Teknikal', chip: 'Bullish · 74%', chipCls: 'text-emerald-400', text: 'Tren naik terkonfirmasi di M15 & H1 — bias harian Bullish, tunggu pullback untuk entry.' },
+  { id: 'makro', label: 'Makro', chip: 'Mendukung', chipCls: 'text-emerald-400', text: 'Dolar & yield melemah pasca rilis inflasi — angin makro berpihak ke emas.' },
+  { id: 'sentimen', label: 'Sentimen', chip: 'Risk-Off', chipCls: 'text-amber-400', text: 'Institusi menambah posisi long minggu ini; pasar cenderung mencari aset aman.' },
+] as const
 function HeroChart() {
   const [price, setPrice] = useState(4032.4)
   const [up, setUp] = useState(true)
+  const [tab, setTab] = useState<(typeof HERO_TABS)[number]['id']>('teknikal')
+  const active = HERO_TABS.find(t => t.id === tab)!
   useEffect(() => {
     const id = setInterval(() => {
       setPrice(p => { const d = (Math.random() - 0.48) * 0.9; setUp(d >= 0); return +(p + d).toFixed(1) })
@@ -150,12 +151,16 @@ function HeroChart() {
             <span className="rounded bg-emerald-500/90 px-1.5 py-0.5 text-[9px] font-black text-[#062016] tabular-nums">{price.toFixed(1)}</span>
           </div>
         </div>
-        <div className="mt-3 rounded-xl bg-gradient-to-br from-primary/12 to-transparent border border-primary/20 p-3 flex items-start gap-2.5">
-          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/20 shrink-0"><Brain size={14} className="text-primary" /></span>
-          <div>
-            <p className="text-[10px] font-bold text-white/85">Datalitiq AI · Kesimpulan <span className="ml-1 text-emerald-400">Bias Bullish · 74%</span></p>
-            <p className="text-[10px] text-white/55 leading-relaxed">Tren naik didukung dolar melemah. Cari peluang beli di area pullback; hindari melawan arah utama.</p>
+        {/* Tab insight interaktif — klik untuk lihat 3 sisi analisa */}
+        <div className="mt-3 rounded-xl bg-gradient-to-br from-primary/12 to-transparent border border-primary/20 p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/20 shrink-0"><Brain size={12} className="text-primary" /></span>
+            {HERO_TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition-all ${tab === t.id ? 'bg-primary/25 text-primary' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>{t.label}</button>
+            ))}
+            <span className={`ml-auto text-[10px] font-black ${active.chipCls}`} key={`chip-${tab}`}>{active.chip}</span>
           </div>
+          <p key={tab} className="dtq-in text-[11px] text-white/60 leading-relaxed">{active.text}</p>
         </div>
       </div>
       <style>{`
@@ -171,23 +176,6 @@ function HeroChart() {
   )
 }
 
-// ── Bingkai visual fitur (dipakai section fitur zigzag) ──
-function FeatureFrame({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.05] to-transparent p-5 hover:border-primary/30 transition-colors">
-      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.028) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
-      <div className="absolute -top-12 -right-10 w-40 h-40 rounded-full bg-primary/15 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-      <div className="relative">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/12 ring-1 ring-primary/25"><Icon size={14} className="text-primary" /></span>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/55">{title}</span>
-          <span className="ml-auto flex items-center gap-1 text-[8px] font-bold text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dtq-pulse" /> LIVE</span>
-        </div>
-        <div className="flex items-center justify-center min-h-[130px]">{children}</div>
-      </div>
-    </div>
-  )
-}
 function MGauge() {
   return (
     <svg viewBox="0 0 160 94" className="w-full max-w-[220px]">
@@ -244,6 +232,177 @@ function MNotif() {
   )
 }
 
+// ── Sebelum & Sesudah: toggle interaktif dengan thumb geser + konten stagger ──
+function CompareToggle({ primaryCta }: { primaryCta: string }) {
+  const [mode, setMode] = useState<'tanpa' | 'dengan'>('dengan')
+  const dengan = mode === 'dengan'
+  const items = dengan ? NEW_WAY : OLD_WAY
+  return (
+    <div>
+      <div className="flex justify-center mb-10">
+        <div className="relative inline-flex rounded-full bg-white/[0.05] border border-white/10 p-1">
+          <span className={`absolute top-1 bottom-1 rounded-full transition-all duration-300 ${dengan ? 'bg-primary/20 ring-1 ring-primary/40' : 'bg-red-500/15 ring-1 ring-red-500/30'}`} style={{ width: 'calc(50% - 4px)', left: dengan ? '50%' : '4px' }} />
+          <button onClick={() => setMode('tanpa')} className={`relative z-10 rounded-full px-6 py-2.5 text-sm font-bold transition-colors ${!dengan ? 'text-red-300' : 'text-white/40'}`}>Tanpa Datalitiq</button>
+          <button onClick={() => setMode('dengan')} className={`relative z-10 rounded-full px-6 py-2.5 text-sm font-bold transition-colors ${dengan ? 'text-primary' : 'text-white/40'}`}>Dengan Datalitiq</button>
+        </div>
+      </div>
+      <div className={`relative rounded-3xl p-[1px] transition-colors duration-500 ${dengan ? 'bg-gradient-to-br from-primary/60 via-primary/15 to-cyan-500/25' : 'bg-white/10'}`}>
+        <div className="rounded-3xl bg-[#0a1110] p-8 md:p-10">
+          <ul key={mode} className="space-y-5">
+            {items.map((x, i) => (
+              <li key={x} className="dtq-in flex items-center gap-4" style={{ animationDelay: `${i * 90}ms` }}>
+                <span className={`flex items-center justify-center w-9 h-9 rounded-xl shrink-0 ${dengan ? 'bg-primary/15' : 'bg-red-500/10'}`}>{dengan ? <Check size={16} className="text-primary" /> : <X size={16} className="text-red-400" />}</span>
+                <span className={`text-base ${dengan ? 'text-white/85' : 'text-white/50 line-through decoration-red-400/40'}`}>{x}</span>
+              </li>
+            ))}
+          </ul>
+          <div key={`cta-${mode}`} className="dtq-in mt-9 pt-7 border-t border-white/[0.06] flex items-center justify-between gap-4 flex-wrap" style={{ animationDelay: '360ms' }}>
+            <p className={`text-sm font-semibold ${dengan ? 'text-primary' : 'text-white/40'}`}>{dengan ? 'Tenang. Terukur. Berbasis data.' : 'Melelahkan — dan tetap menebak.'}</p>
+            {dengan && <Link href={primaryCta} className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">Coba Sekarang <ArrowRight size={14} /></Link>}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Cara Kerja: stepper auto-play + panggung visual animasi per langkah ──
+function VisPantau() {
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <div className="relative w-44 h-44">
+        <div className="absolute inset-0 rounded-full border border-primary/20" />
+        <div className="absolute inset-7 rounded-full border border-primary/15" />
+        <div className="absolute inset-14 rounded-full border border-primary/10" />
+        <div className="absolute inset-0 rounded-full dtq-sweep" style={{ background: 'conic-gradient(from 0deg, rgba(52,211,153,0.35), transparent 75deg)' }} />
+        <span className="absolute top-7 right-10 w-2 h-2 rounded-full bg-emerald-400 dtq-blink" />
+        <span className="absolute bottom-11 left-9 w-2 h-2 rounded-full bg-cyan-400 dtq-blink" style={{ animationDelay: '.6s' }} />
+        <span className="absolute top-16 left-14 w-2 h-2 rounded-full bg-amber-400 dtq-blink" style={{ animationDelay: '1.1s' }} />
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">{['Harga live', 'Makro AS', 'Sentimen pasar'].map(t => <span key={t} className="rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-xs text-white/55">{t}</span>)}</div>
+    </div>
+  )
+}
+function VisTimbang() {
+  const bars = [{ l: 'Teknikal', h: 78, c: 'bg-emerald-400/80' }, { l: 'Makro', h: 62, c: 'bg-cyan-400/80' }, { l: 'Sentimen', h: 45, c: 'bg-amber-400/80' }]
+  return (
+    <div className="flex flex-col items-center gap-7">
+      <div className="flex items-end gap-8">
+        {bars.map((b, i) => (
+          <div key={b.l} className="flex flex-col items-center gap-2.5">
+            <div className="w-14 h-32 rounded-lg bg-white/5 flex items-end overflow-hidden">
+              <span className={`block w-full rounded-t ${b.c} dtq-grow`} style={{ height: `${b.h}%`, animationDelay: `${i * 180}ms` }} />
+            </div>
+            <span className="text-xs text-white/50">{b.l}</span>
+          </div>
+        ))}
+      </div>
+      <div className="dtq-in flex items-center gap-2 text-sm font-bold text-primary" style={{ animationDelay: '680ms' }}><ArrowRight size={15} /> Ditimbang jadi satu skor</div>
+    </div>
+  )
+}
+function VisSaring() {
+  return (
+    <div className="flex flex-col items-center gap-5 w-full">
+      <div className="w-full space-y-3">
+        <div className="dtq-in flex items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3.5"><span className="text-sm text-white/80">Sinyal searah tren besar</span><Check size={16} className="text-emerald-400" /></div>
+        <div className="dtq-reject flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3.5" style={{ animationDelay: '450ms' }}><span className="text-sm text-white/50 line-through">Sinyal melawan tren H4/Daily</span><X size={16} className="text-red-400" /></div>
+        <div className="dtq-reject flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3.5" style={{ animationDelay: '850ms' }}><span className="text-sm text-white/50 line-through">Entry 20 menit sebelum CPI</span><X size={16} className="text-red-400" /></div>
+      </div>
+      <div className="dtq-in flex items-center gap-2 text-sm font-bold text-primary" style={{ animationDelay: '1250ms' }}><ShieldCheck size={16} /> Hanya sinyal sehat yang lolos</div>
+    </div>
+  )
+}
+function VisSimpulkan() {
+  return (
+    <div className="dtq-pop rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/10 to-transparent p-7">
+      <p className="text-[11px] uppercase tracking-widest text-white/40 mb-3">Bias harian · XAU/USD</p>
+      <div className="flex items-center gap-5">
+        <div className="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" /><circle cx="18" cy="18" r="15" fill="none" stroke="#34d399" strokeWidth="3.5" strokeDasharray="70 94" strokeLinecap="round" /></svg>
+          <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-emerald-400">74%</span>
+        </div>
+        <div>
+          <p className="text-2xl font-black text-emerald-400 leading-none">Bias Bullish</p>
+          <p className="dtq-in text-sm text-white/55 mt-2.5 leading-relaxed" style={{ animationDelay: '380ms' }}>Tren naik + makro mendukung. Tunggu pullback, lalu entry beli.</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+function HowItWorks() {
+  const [step, setStep] = useState(0)
+  const [paused, setPaused] = useState(false)
+  useEffect(() => {
+    if (paused) return
+    const id = setInterval(() => setStep(s => (s + 1) % STEPS.length), 3500)
+    return () => clearInterval(id)
+  }, [paused])
+  return (
+    <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-6 lg:gap-10 items-stretch" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      <div className="space-y-3">
+        {STEPS.map((s, i) => {
+          const on = i === step
+          return (
+            <button key={s.t} onClick={() => setStep(i)} className={`w-full text-left rounded-2xl border p-5 transition-all ${on ? 'border-primary/30 bg-primary/[0.06]' : 'border-white/[0.07] bg-white/[0.015] hover:border-white/15'}`}>
+              <div className="flex items-center gap-3.5">
+                <span className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-colors ${on ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/40'}`}><s.icon size={18} /></span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-base font-bold ${on ? 'text-white' : 'text-white/55'}`}>{s.t}</p>
+                  {on && <p className="dtq-in text-sm text-white/55 mt-1.5 leading-relaxed">{s.d}</p>}
+                </div>
+              </div>
+              {on && !paused && <div className="mt-4 h-0.5 rounded-full bg-white/5 overflow-hidden"><span key={step} className="block h-full bg-primary/70 dtq-progress" /></div>}
+            </button>
+          )
+        })}
+      </div>
+      <div className="relative rounded-3xl border border-white/10 bg-[#0a1210] overflow-hidden min-h-[340px] flex items-center justify-center p-8 md:p-10">
+        <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+        <div key={step} className="dtq-in relative w-full max-w-sm">
+          {step === 0 && <VisPantau />}
+          {step === 1 && <VisTimbang />}
+          {step === 2 && <VisSaring />}
+          {step === 3 && <VisSimpulkan />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Fitur: explorer interaktif (klik item → visual + deskripsi berganti) ──
+function FeatureExplorer() {
+  const [active, setActive] = useState(0)
+  const f = FEATURES_X[active]
+  return (
+    <div className="grid lg:grid-cols-[0.95fr_1.05fr] gap-6 lg:gap-10 items-stretch">
+      <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 content-start">
+        {FEATURES_X.map((x, i) => {
+          const on = i === active
+          return (
+            <button key={x.t} onClick={() => setActive(i)} className={`text-left rounded-2xl border p-4 lg:p-5 transition-all duration-300 ${on ? 'border-primary/35 bg-primary/[0.07] lg:translate-x-1.5' : 'border-white/[0.07] bg-white/[0.015] hover:border-white/15'}`}>
+              <div className="flex items-center gap-3">
+                <span className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-colors ${on ? 'bg-primary/20 text-primary' : 'bg-white/5 text-white/40'}`}><x.icon size={18} /></span>
+                <span className={`text-sm lg:text-base font-bold ${on ? 'text-white' : 'text-white/55'}`}>{x.t}</span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <div className="relative rounded-3xl border border-white/10 bg-[#0a1210] p-8 md:p-10 flex flex-col justify-center overflow-hidden min-h-[380px]">
+        <div className="absolute -top-16 -right-14 w-56 h-56 rounded-full bg-primary/12 blur-3xl pointer-events-none" />
+        <div key={active} className="dtq-in relative">
+          <div className="flex items-center justify-center mb-8 min-h-[150px]">
+            {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
+          </div>
+          <h3 className="text-2xl font-black">{f.t}</h3>
+          <p className="text-base text-white/55 mt-3 leading-relaxed">{f.d}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
   return (
@@ -294,46 +453,33 @@ export function TerminalLanding() {
         </div>
       </header>
 
-      {/* ── Hero ── */}
-      <section className="relative">
+      {/* ── Hero — minimal, angle: trading dengan data ── */}
+      <section className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none opacity-50" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '56px 56px', WebkitMaskImage: 'radial-gradient(ellipse 85% 65% at 50% 0%, #000 40%, transparent 100%)', maskImage: 'radial-gradient(ellipse 85% 65% at 50% 0%, #000 40%, transparent 100%)' }} />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[560px] bg-primary/15 blur-[150px] rounded-full pointer-events-none dtq-pulse" />
         <div className="absolute top-40 right-0 w-72 h-72 bg-cyan-500/10 blur-[120px] rounded-full pointer-events-none" />
-        <div className="relative max-w-6xl mx-auto px-5 pt-16 pb-20 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="relative max-w-6xl mx-auto px-6 pt-20 md:pt-28 pb-24 md:pb-28 grid lg:grid-cols-2 gap-14 lg:gap-16 items-center">
           <Reveal>
-            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/25 px-3 py-1 text-xs font-semibold text-primary mb-6">
-              <Sparkles size={13} /> AI Market Intelligence · Analisa XAU/USD
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/25 px-3.5 py-1.5 text-xs font-semibold text-primary mb-8">
+              <Sparkles size={13} /> Terminal kelas institusi · untuk trader retail
             </span>
-            <h1 className="text-4xl md:text-[3.4rem] font-black tracking-tight leading-[1.05]">
-              Berhenti Trading Pakai Feeling.<br />
-              <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Mulai Trading dengan Data yang Mudah Dipahami.</span>
+            <h1 className="text-5xl md:text-6xl font-black tracking-tight leading-[1.04]">
+              Trading dengan <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Data</span>.
+              <br />Bukan Feeling.
             </h1>
-            <p className="text-base text-white/60 mt-5 leading-relaxed max-w-lg">
-              Datalitiq AI membaca ribuan titik data — harga, ekonomi global, sentimen pasar — lalu menyimpulkannya untuk Anda: <span className="text-white/85 font-semibold">arah pasar, tingkat keyakinan, dan alasannya.</span> Dipahami dalam 5 detik, bukan 5 jam.
+            <p className="text-lg text-white/55 mt-7 leading-relaxed max-w-md">
+              Data makro real-time & bias harian XAU/USD yang jelas — dalam satu terminal.
             </p>
-            <div className="flex flex-wrap items-center gap-3 mt-7">
-              <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
+            <div className="flex flex-wrap items-center gap-3 mt-10">
+              <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-7 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
                 {loggedIn ? 'Buka Terminal' : `Mulai — ${rp(TERMINAL_PRICE)}/bln`} <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
-              <a href="#cara-kerja" className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors">Lihat Cara Kerja</a>
+              <a href="#cara-kerja" className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-7 py-3.5 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors">Cara Kerja</a>
             </div>
-            <div className="flex flex-wrap gap-2 mt-5">
-              {[{ icon: Zap, t: 'Harga di-update tiap 8 detik' }, { icon: Landmark, t: '12+ indikator ekonomi resmi' }, { icon: Globe, t: 'Posisi institusi global mingguan' }].map(c => (
-                <span key={c.t} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold text-white/60"><c.icon size={11} className="text-primary" /> {c.t}</span>
-              ))}
-            </div>
-            <p className="text-xs text-white/40 mt-4 flex items-center gap-1.5"><ShieldCheck size={13} className="text-primary" /> Data real-time · Bukan sinyal otomatis · Keputusan tetap di tangan Anda</p>
+            <p className="text-xs text-white/35 mt-8 flex items-center gap-1.5"><ShieldCheck size={13} className="text-primary/70" /> Bukan sinyal otomatis — keputusan tetap di tangan Anda</p>
           </Reveal>
-          <Reveal delay={150} className="lg:pl-6">
-            <div className="relative">
-              <HeroChart />
-              <div className="absolute -left-4 top-14 hidden sm:flex items-center gap-2 rounded-xl bg-[#0d1614] ring-1 ring-emerald-500/30 px-3 py-2 shadow-xl dtq-float">
-                <TrendingUp size={15} className="text-emerald-400" /><span className="text-xs font-semibold">Arah + alasan jelas</span>
-              </div>
-              <div className="absolute -right-3 bottom-16 hidden sm:flex items-center gap-2 rounded-xl bg-[#0d1614] ring-1 ring-primary/30 px-3 py-2 shadow-xl dtq-float2">
-                <Brain size={15} className="text-primary" /><span className="text-xs font-semibold">Ditemani AI</span>
-              </div>
-            </div>
+          <Reveal delay={150} className="lg:pl-4">
+            <HeroChart />
           </Reveal>
         </div>
       </section>
@@ -352,146 +498,58 @@ export function TerminalLanding() {
       </section>
 
       {/* ── Stats ── */}
-      <section className="max-w-5xl mx-auto px-5 py-14">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <section className="max-w-5xl mx-auto px-6 py-20 md:py-24">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           {STATS.map((s, i) => (
             <Reveal key={i} delay={i * 80}>
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5 text-center h-full">
-                <p className="text-3xl font-black tracking-tight bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">{s.v}</p>
-                <p className="text-xs text-white/45 mt-1">{s.l}</p>
+              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 text-center h-full">
+                <p className="text-4xl font-black tracking-tight bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">{s.v}</p>
+                <p className="text-sm text-white/45 mt-2">{s.l}</p>
               </div>
             </Reveal>
           ))}
         </div>
-        <Reveal><p className="text-center text-[10px] text-white/30 mt-4">Angka nyata dari sistem yang berjalan — kecepatan refresh & cakupan sumber data aktual, bukan klaim marketing.</p></Reveal>
       </section>
 
-      {/* ── Problem ── */}
-      <section className="max-w-6xl mx-auto px-5 py-16">
+      {/* ── Sebelum & Sesudah (toggle interaktif) ── */}
+      <section className="max-w-3xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">Masalahnya Bukan Kurang Data.<br className="hidden md:block" /> Tapi Tak Ada Waktu Membacanya Semua.</h2>
-            <p className="text-sm text-white/50 mt-3">Market bergerak karena ratusan faktor sekaligus. Membacanya sendirian, secara manual, adalah alasan utama keputusan trading meleset.</p>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Rasakan Bedanya.</h2>
+            <p className="text-base text-white/45 mt-4">Klik untuk membandingkan.</p>
           </div>
         </Reveal>
-        <div className="grid md:grid-cols-3 gap-5">
-          {PROBLEMS.map((it, i) => (
-            <Reveal key={i} delay={i * 120}>
-              <div className="h-full rounded-2xl border border-white/8 bg-white/[0.02] p-6 hover:border-primary/25 transition-colors">
-                <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/12 ring-1 ring-primary/20 mb-4"><it.icon size={20} className="text-primary" /></span>
-                <p className="text-base font-bold text-white mb-2">{it.t}</p>
-                <p className="text-sm text-white/55 leading-relaxed mb-4">{it.d}</p>
-                <div className="flex flex-wrap gap-1.5">{it.tags.map(tag => <span key={tag} className="text-[10px] font-semibold text-primary/80 bg-primary/10 rounded-full px-2 py-0.5">{tag}</span>)}</div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-        <Reveal delay={150}>
-          <div className="mt-8 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/8 to-transparent p-6 text-center">
-            <Quote size={20} className="text-primary/60 mx-auto mb-2" />
-            <p className="text-base md:text-lg font-semibold text-white/90 max-w-3xl mx-auto leading-relaxed">Trader yang unggul bukan yang punya lebih banyak informasi — tapi yang punya cara paling jelas untuk menyederhanakannya.</p>
-          </div>
-        </Reveal>
+        <Reveal delay={100}><CompareToggle primaryCta={primaryCta} /></Reveal>
       </section>
 
-      {/* ── Perbandingan (konversi) ── */}
-      <section className="max-w-5xl mx-auto px-5 py-16">
+      {/* ── Cara Kerja (stepper interaktif, auto-play) ── */}
+      <section id="cara-kerja" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-10">
-            <span className="text-xs font-bold uppercase tracking-widest text-primary">Sebelum & Sesudah</span>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Cara Lama Melelahkan.<br className="hidden md:block" /> Cara Baru Menjelaskan.</h2>
+          <div className="text-center max-w-xl mx-auto mb-14">
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Dari Ribuan Data,<br />Jadi Satu Bias Harian.</h2>
           </div>
         </Reveal>
-        <div className="grid md:grid-cols-2 gap-5">
-          <Reveal>
-            <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-7">
-              <p className="text-xs font-bold text-white/45 uppercase tracking-widest mb-5">Tanpa Datalitiq</p>
-              <ul className="space-y-3.5">
-                {OLD_WAY.map(x => <li key={x} className="flex items-start gap-2.5 text-sm text-white/55"><span className="shrink-0 mt-0.5 rounded-full bg-red-500/10 p-0.5"><X size={12} className="text-red-400" /></span>{x}</li>)}
-              </ul>
-            </div>
-          </Reveal>
-          <Reveal delay={100}>
-            <div className="relative h-full rounded-2xl p-[1px] bg-gradient-to-br from-primary/60 via-primary/15 to-cyan-500/25">
-              <div className="h-full rounded-2xl bg-[#0a1110] p-7">
-                <p className="text-xs font-bold text-primary uppercase tracking-widest mb-5">Dengan Datalitiq</p>
-                <ul className="space-y-3.5">
-                  {NEW_WAY.map(x => <li key={x} className="flex items-start gap-2.5 text-sm text-white/85"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>{x}</li>)}
-                </ul>
-              </div>
-            </div>
-          </Reveal>
-        </div>
+        <Reveal delay={100}><HowItWorks /></Reveal>
         <Reveal delay={120}>
-          <div className="text-center mt-8">
-            <Link href={primaryCta} className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/25">Coba Cara Baru — {rp(TERMINAL_PRICE)}/bln <ArrowRight size={15} /></Link>
-          </div>
-        </Reveal>
-      </section>
-
-      {/* ── Cara Kerja ── */}
-      <section id="cara-kerja" className="max-w-6xl mx-auto px-5 py-16">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <span className="text-xs font-bold uppercase tracking-widest text-primary">Cara Kerja</span>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Satu Sistem yang Membaca Semuanya, untuk Anda</h2>
-            <p className="text-sm text-white/50 mt-3">Menggantikan proses manual yang memakan waktu — bukan dengan menambah data, tapi menyederhanakannya.</p>
-          </div>
-        </Reveal>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {STEPS.map((s, i) => (
-            <Reveal key={i} delay={i * 100}>
-              <div className="relative h-full rounded-2xl border border-white/8 bg-white/[0.02] p-6">
-                <span className="absolute top-5 right-5 text-3xl font-black text-white/[0.05] select-none">{i + 1}</span>
-                <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/12 ring-1 ring-primary/20 mb-4"><s.icon size={20} className="text-primary" /></span>
-                <p className="text-base font-bold mb-1.5">{s.t}</p>
-                <p className="text-sm text-white/55 leading-relaxed">{s.d}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-        <Reveal delay={120}>
-          <p className="text-center text-sm text-white/60 mt-8 max-w-2xl mx-auto">
-            <span className="text-primary font-semibold">Datalitiq AI adalah asisten analisa</span> — bukan robot yang bertransaksi otomatis. Keputusan akhir, kapan pun, tetap di tangan Anda.
+          <p className="text-center text-sm text-white/45 mt-12 max-w-xl mx-auto">
+            <span className="text-primary font-semibold">Asisten analisa</span> — bukan robot auto-trading. Keputusan akhir tetap di tangan Anda.
           </p>
         </Reveal>
       </section>
 
-      {/* ── Fitur (zigzag dengan penjelasan lengkap) ── */}
-      <section id="fitur" className="max-w-6xl mx-auto px-5 py-16">
+      {/* ── Fitur (explorer interaktif) ── */}
+      <section id="fitur" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-xs font-bold uppercase tracking-widest text-primary">Fitur</span>
-            <h2 className="text-2xl md:text-4xl font-black tracking-tight mt-2">Semua yang Anda Butuh untuk Membaca Pasar dengan Jelas</h2>
-            <p className="text-sm text-white/50 mt-3">Rumit di belakang layar. Sederhana di depan mata Anda.</p>
+          <div className="text-center max-w-xl mx-auto mb-14">
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Institusi Punya.</h2>
+            <p className="text-base text-white/45 mt-4">Klik untuk menjelajah.</p>
           </div>
         </Reveal>
-        <div className="space-y-14">
-          {FEATURE_ROWS.map((f, i) => (
-            <Reveal key={f.t}>
-              <div className={`grid lg:grid-cols-2 gap-8 lg:gap-12 items-center ${i % 2 ? 'lg:[direction:rtl]' : ''}`}>
-                <div className="lg:[direction:ltr]">
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 rounded-full px-2.5 py-1 mb-4"><f.icon size={11} /> {f.kicker}</span>
-                  <h3 className="text-xl md:text-2xl font-black tracking-tight leading-tight">{f.t}</h3>
-                  <p className="text-sm text-white/60 mt-3 leading-relaxed">{f.d}</p>
-                  <ul className="mt-4 space-y-2">
-                    {f.bullets.map(b => <li key={b} className="flex items-start gap-2.5 text-sm text-white/75"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>{b}</li>)}
-                  </ul>
-                </div>
-                <div className="lg:[direction:ltr]">
-                  <FeatureFrame icon={f.icon} title={f.kicker}>
-                    {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
-                  </FeatureFrame>
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-        <Reveal><p className="text-center text-[10px] text-white/30 mt-8">Ilustrasi tampilan · data aktual real-time saat berlangganan.</p></Reveal>
+        <Reveal delay={100}><FeatureExplorer /></Reveal>
       </section>
 
       {/* ── Testimoni ── */}
-      <section id="testimoni" className="max-w-6xl mx-auto px-5 py-16">
+      <section id="testimoni" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
           <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">Testimoni</span>
@@ -515,7 +573,7 @@ export function TerminalLanding() {
       </section>
 
       {/* ── Harga ── */}
-      <section id="harga" className="max-w-5xl mx-auto px-5 py-16">
+      <section id="harga" className="max-w-5xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
           <div className="text-center mb-12">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">Harga</span>
@@ -560,7 +618,7 @@ export function TerminalLanding() {
       </section>
 
       {/* ── FAQ ── */}
-      <section id="faq" className="max-w-3xl mx-auto px-5 py-16">
+      <section id="faq" className="max-w-3xl mx-auto px-6 py-20 md:py-24">
         <Reveal><h2 className="text-2xl md:text-3xl font-black tracking-tight text-center mb-10">Pertanyaan yang Sering Ditanya</h2></Reveal>
         <div className="space-y-3">{FAQS.map((f, i) => <FaqItem key={i} q={f.q} a={f.a} />)}</div>
       </section>
@@ -611,7 +669,21 @@ export function TerminalLanding() {
         .dtq-float2 { animation: dtq-float 4.5s ease-in-out infinite 0.8s; }
         @keyframes dtq-pulse { 0%,100% { opacity: .6 } 50% { opacity: 1 } }
         .dtq-pulse { animation: dtq-pulse 5s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse { animation: none } }
+        @keyframes dtq-in-kf { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+        .dtq-in { animation: dtq-in-kf .5s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes dtq-pop-kf { from { opacity: 0; transform: scale(.92) } to { opacity: 1; transform: scale(1) } }
+        .dtq-pop { animation: dtq-pop-kf .55s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes dtq-sweep-kf { to { transform: rotate(360deg) } }
+        .dtq-sweep { animation: dtq-sweep-kf 2.6s linear infinite; }
+        @keyframes dtq-blink-kf { 0%,100% { opacity: .2 } 50% { opacity: 1 } }
+        .dtq-blink { animation: dtq-blink-kf 1.6s ease-in-out infinite; }
+        @keyframes dtq-grow-kf { from { transform: scaleY(0) } }
+        .dtq-grow { transform-origin: bottom; animation: dtq-grow-kf .7s cubic-bezier(.2,.8,.2,1) both; }
+        @keyframes dtq-reject-kf { 0% { opacity: 0; transform: translateY(8px) } 40% { opacity: 1; transform: none } 100% { opacity: .38; transform: none } }
+        .dtq-reject { animation: dtq-reject-kf 1.6s ease-out both; }
+        @keyframes dtq-progress-kf { from { width: 0 } to { width: 100% } }
+        .dtq-progress { animation: dtq-progress-kf 3.5s linear both; }
+        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress { animation: none } }
       `}</style>
     </div>
   )
