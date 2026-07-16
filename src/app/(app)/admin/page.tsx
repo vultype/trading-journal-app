@@ -161,10 +161,10 @@ function FeatureImagesManager() {
         <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
           <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Panduan Ukuran Gambar</p>
           <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
-            <li><strong>Ukuran ideal: 1280 × 800 px</strong> (rasio 16:10) — screenshot area dashboard terminal.</li>
+            <li><strong>Ukuran ideal: 1280 × 800 px</strong> (rasio landscape 16:10) — screenshot area dashboard terminal.</li>
             <li><strong>Format:</strong> PNG atau WebP (disarankan WebP agar ringan).</li>
             <li><strong>File maksimal:</strong> 1,5 MB per gambar.</li>
-            <li>Gambar ditampilkan utuh (object-contain) di panel showcase homepage — hindari teks terlalu kecil.</li>
+            <li>Panel showcase mengikuti rasio 16:10 dan gambar ditampilkan <strong>penuh mengisi frame</strong> (crop-to-fill) — pakai rasio 16:10 persis agar tidak terpotong, dan letakkan bagian penting dashboard di tengah gambar.</li>
             <li>Slot yang kosong otomatis memakai ilustrasi dummy bawaan.</li>
           </ul>
         </div>

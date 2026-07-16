@@ -401,7 +401,7 @@ function FeatureShowcase({ images }: { images: Record<string, string> }) {
   const go = (d: number) => setActive(a => (a + d + FEATURES_X.length) % FEATURES_X.length)
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.015] p-5 md:p-8" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      <div className="grid lg:grid-cols-[0.85fr_1.15fr] gap-6 lg:gap-10 items-stretch">
+      <div className="grid lg:grid-cols-[0.7fr_1.3fr] gap-6 lg:gap-10 items-start">
         {/* Daftar fitur — SEMUA tampil dengan deskripsi (bukan accordion) */}
         <div className="space-y-2.5">
           {FEATURES_X.map((x, i) => {
@@ -419,8 +419,8 @@ function FeatureShowcase({ images }: { images: Record<string, string> }) {
             )
           })}
         </div>
-        {/* Panel screenshot besar */}
-        <div className="relative rounded-2xl border border-white/10 bg-[#0a1210] overflow-hidden flex flex-col min-h-[400px]">
+        {/* Panel screenshot — full-bleed landscape 16:10, gambar mengisi penuh frame */}
+        <div className="relative rounded-2xl border border-white/10 bg-[#0a1210] overflow-hidden">
           <div className="absolute -top-20 -right-16 w-64 h-64 rounded-full bg-primary/12 blur-3xl pointer-events-none" />
           {/* kontrol: panah + counter */}
           <div className="relative flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
@@ -431,18 +431,21 @@ function FeatureShowcase({ images }: { images: Record<string, string> }) {
               <button onClick={() => go(1)} aria-label="Berikutnya" className="flex items-center justify-center w-8 h-8 rounded-full border border-white/10 bg-white/[0.04] text-white/60 hover:text-white hover:border-white/25 transition-colors"><ChevronRight size={15} /></button>
             </div>
           </div>
-          <div key={active} className="dtq-in relative flex-1 flex items-center justify-center p-6 md:p-8">
+          {/* Frame landscape 16:10 — gambar full-bleed, tanpa padding */}
+          <div key={active} className="dtq-in relative w-full aspect-[16/10]">
             {img ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={img} alt={f.t} className="w-full h-auto max-h-[420px] object-contain rounded-xl border border-white/10 shadow-2xl shadow-black/50" />
+              <img src={img} alt={f.t} className="absolute inset-0 w-full h-full object-cover" />
             ) : (
-              <div className="w-full max-w-md">
-                {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
+              <div className="absolute inset-0 flex items-center justify-center p-6 md:p-10">
+                <div className="w-full max-w-md">
+                  {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
+                </div>
               </div>
             )}
           </div>
           {/* progress dots */}
-          <div className="relative flex items-center justify-center gap-1.5 pb-4">
+          <div className="relative flex items-center justify-center gap-1.5 py-4 border-t border-white/[0.06]">
             {FEATURES_X.map((_, i) => (
               <button key={i} onClick={() => setActive(i)} aria-label={`Fitur ${i + 1}`} className={`h-1.5 rounded-full transition-all duration-300 ${i === active ? 'w-6 bg-primary' : 'w-1.5 bg-white/15 hover:bg-white/30'}`} />
             ))}
