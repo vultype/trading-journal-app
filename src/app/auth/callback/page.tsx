@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase'
 import { Loader2, AlertCircle } from 'lucide-react'
 
 function nextTarget(raw: string | null) {
-  return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/dashboard'
+  return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/hub'
 }
 
 function CallbackInner() {

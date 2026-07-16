@@ -27,9 +27,9 @@ export default function LoginPage() {
   // Tujuan redirect setelah login (mis. dari tombol checkout di homepage).
   // Hanya izinkan path relatif (diawali '/') untuk mencegah open-redirect.
   function nextTarget() {
-    if (typeof window === 'undefined') return '/dashboard'
+    if (typeof window === 'undefined') return '/hub'
     const n = new URLSearchParams(window.location.search).get('next')
-    return n && n.startsWith('/') && !n.startsWith('//') ? n : '/dashboard'
+    return n && n.startsWith('/') && !n.startsWith('//') ? n : '/hub'
   }
 
   async function loginWithGoogle() {

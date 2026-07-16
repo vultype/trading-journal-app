@@ -37,6 +37,7 @@ const settings: NavItem   = { href: '/settings',     label: 'Setting',   icon: S
 const panduan: NavItem    = { href: '/panduan',      label: 'Panduan',   icon: HelpCircle }
 const adminItem: NavItem  = { href: '/admin',        label: 'Admin',     icon: Shield }
 const terminalItem: NavItem = { href: '/terminal',   label: 'Terminal XAU', icon: Radio }
+const hubItem: NavItem    = { href: '/hub',          label: 'Ganti Tools', icon: Grid2x2 }
 
 // Menu yang tetap terbuka sebelum user mencatat trade pertama
 export const ALWAYS_UNLOCKED = ['/dashboard', '/panduan']
@@ -44,8 +45,9 @@ export const ALWAYS_UNLOCKED = ['/dashboard', '/panduan']
 function useGroups(): NavGroup[] {
   const { isAdmin } = useStore()
   const account: NavItem[] = [subscription, billing, settings, ...(isAdmin ? [adminItem] : [])]
-  const tools: NavItem[] = [simulator, ...(isAdmin ? [terminalItem] : [])]
+  const tools: NavItem[] = [terminalItem, simulator]
   return [
+    { label: 'Menu',            items: [hubItem] },
     { label: 'Ringkasan',       items: [dashboard] },
     { label: 'Trading',         items: [trades, finance] },
     { label: 'Jurnal & Analisa', items: [analisis, journal] },

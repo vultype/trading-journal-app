@@ -1267,7 +1267,7 @@ export function TradingTerminal() {
         {/* Sidebar (md+) */}
         <aside className="hidden md:flex flex-col w-52 shrink-0 h-screen sticky top-0 border-r border-white/[0.06] bg-[#080d0b]">
           <div className="h-14 flex items-center gap-2 px-4 border-b border-white/[0.06] shrink-0">
-            <Link href="/dashboard" className="text-white/50 hover:text-white shrink-0" title="Kembali ke dashboard"><ArrowLeft size={17} /></Link>
+            <Link href="/hub" className="text-white/50 hover:text-white shrink-0" title="Ganti tools"><ArrowLeft size={17} /></Link>
             <span className="font-black tracking-tight">Datalitiq</span>
             <span className="ml-auto text-[8px] font-bold uppercase tracking-wider text-primary/70">XAU</span>
           </div>
@@ -1300,7 +1300,7 @@ export function TradingTerminal() {
         <div className="flex-1 min-w-0">
           <header className="sticky top-0 z-30 bg-[#060a09]/95 backdrop-blur border-b border-white/[0.06]">
             <div className="px-4 h-14 flex items-center gap-3 sm:gap-4">
-              <Link href="/dashboard" className="md:hidden text-white/50 hover:text-white shrink-0"><ArrowLeft size={18} /></Link>
+              <Link href="/hub" className="md:hidden text-white/50 hover:text-white shrink-0"><ArrowLeft size={18} /></Link>
               <div className="flex items-center gap-2 shrink-0"><span className="font-black tracking-tight">XAU/USD</span><span className={`hidden sm:inline text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 ${live.status === 'live' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>{live.status === 'live' ? 'Data Real' : 'Menyegarkan…'}</span></div>
               <div className="flex items-baseline gap-2"><span className={`text-2xl font-black tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{f2(feed.price)}</span><span className={`text-xs font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{feed.changePct.toFixed(2)}%</span></div>
               <div className="hidden md:flex items-center gap-4 text-[11px] text-white/50 tabular-nums"><span>H <b className="text-emerald-400/80">{f2(feed.dayHigh)}</b></span><span>L <b className="text-red-400/80">{f2(feed.dayLow)}</b></span></div>
