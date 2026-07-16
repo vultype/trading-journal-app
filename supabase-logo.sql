@@ -13,11 +13,14 @@ create table if not exists app_config (
 insert into app_config (id) values (1) on conflict (id) do nothing;
 
 -- Gambar fitur showcase homepage (jsonb: { "gauge": "url", "decision": "url", ... })
--- Untuk instalasi lama yang tabelnya sudah ada tanpa kolom ini:
-alter table app_config add column if not exists feature_images jsonb not null default '{}'::jsonb;
+-- Untuk instalasi lama yang tabelnya sudah ada tanpa kolom ini.
+-- Catatan: pakai dollar-quoting ($$...$$) alih-alih tanda kutip satu ('') karena
+-- banyak editor teks/chat mengubah ' jadi tanda kutip miring (‘ ’) saat di-copy-paste,
+-- yang bikin Postgres error "syntax error at or near...". $$ tidak kena masalah itu.
+alter table app_config add column if not exists feature_images jsonb not null default $${}$$::jsonb;
 
 -- Logo broker/partner untuk slider "Dipakai trader dari berbagai broker" (jsonb array of url)
-alter table app_config add column if not exists client_logos jsonb not null default '[]'::jsonb;
+alter table app_config add column if not exists client_logos jsonb not null default $$[]$$::jsonb;
 
 alter table app_config enable row level security;
 

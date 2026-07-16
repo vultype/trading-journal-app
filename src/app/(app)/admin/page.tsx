@@ -133,7 +133,8 @@ function FeatureImagesManager() {
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
             <p className="font-bold text-amber-500 mb-1.5">⚠ Kolom database belum ada — upload belum bisa disimpan</p>
             <p className="text-muted-foreground mb-2">Jalankan SQL ini sekali di <strong>Supabase → SQL Editor</strong>, lalu refresh halaman:</p>
-            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists feature_images jsonb not null default {'\''}{'{}'}{'\''}::jsonb;</code>
+            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists feature_images jsonb not null default $${'{'}{'}'}$$::jsonb;</code>
+            <p className="text-[11px] text-muted-foreground mt-2">Jika sebelumnya error saat menjalankan SQL: kemungkinan tanda kutip berubah jadi kutip miring (‘ ’) saat disalin. Ketik ulang manual atau salin persis dari kotak di atas.</p>
           </div>
         )}
         {/* Hero image — dashboard besar di homepage */}
@@ -240,7 +241,8 @@ function ClientLogosManager() {
         {needsMigration && (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
             <p className="font-bold text-amber-500 mb-1.5">⚠ Kolom database belum ada — jalankan SQL ini di Supabase → SQL Editor, lalu refresh:</p>
-            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists client_logos jsonb not null default {'\''}[]{'\''}::jsonb;</code>
+            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists client_logos jsonb not null default $$[]$$::jsonb;</code>
+            <p className="text-[11px] text-muted-foreground mt-2">Jika sebelumnya error saat menjalankan SQL: kemungkinan tanda kutip (') berubah jadi kutip miring (‘ ’) saat disalin. Ketik ulang manual atau salin persis dari kotak di atas.</p>
           </div>
         )}
         {logos.length > 0 && (

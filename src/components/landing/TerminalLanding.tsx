@@ -668,15 +668,19 @@ export function TerminalLanding() {
 
   useEffect(() => {
     const sb = createClient()
-    sb.from('app_config').select('logo_url, feature_images, client_logos').eq('id', 1).maybeSingle().then(({ data, error }) => {
+    // Setiap kolom di-select TERPISAH agar satu kolom yang belum ada (mis. migrasi
+    // client_logos belum jalan) tidak ikut menggagalkan kolom lain (logo_url, feature_images).
+    sb.from('app_config').select('logo_url, feature_images').eq('id', 1).maybeSingle().then(({ data, error }) => {
       if (error) {
-        // Kolom baru (feature_images/client_logos) mungkin belum ada — jangan ikut mematikan logo
         sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle().then(({ data: d2 }) => setLogoUrl((d2?.logo_url as string | null) ?? null))
         return
       }
       setLogoUrl((data?.logo_url as string | null) ?? null)
       const fi = data?.feature_images
       if (fi && typeof fi === 'object') setFeatureImages(fi as Record<string, string>)
+    })
+    sb.from('app_config').select('client_logos').eq('id', 1).maybeSingle().then(({ data, error }) => {
+      if (error) return // kolom client_logos belum ada — slider pakai fallback teks, tidak masalah
       const cl = data?.client_logos
       if (Array.isArray(cl)) setClientLogos(cl.filter((x): x is string => typeof x === 'string'))
     })
