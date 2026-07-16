@@ -1,5 +1,7 @@
 // Harga & paket langganan (dipakai subscription, checkout, billing)
-export const BASE = { standar: 59000, pro: 129000, terminal: 179000 } as const
+// ⚠️ SEMENTARA: terminal diturunkan ke Rp5.000 untuk uji coba live DOKU (uang asli, nominal kecil).
+// KEMBALIKAN ke 179000 setelah selesai testing.
+export const BASE = { standar: 59000, pro: 129000, terminal: 5000 } as const
 
 export type PlanId = 'standar' | 'pro' | 'terminal'
 
