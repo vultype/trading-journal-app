@@ -599,7 +599,11 @@ export function TradingTerminal() {
   if (macro?.dollar && macro?.us10y) { const dUp = macro.dollar.value > macro.dollar.prior, yUp = macro.us10y.value > macro.us10y.prior; kLines.push(`Makro: dolar ${dUp ? 'menguat' : 'melemah'}, yield 10Y ${yUp ? 'naik' : 'turun'} → ${(!dUp && !yUp) ? 'mendukung emas' : (dUp && yUp) ? 'menekan emas' : 'campur'}.`) }
   if (cot) kLines.push(`COT: institusi ${cot.funds.net >= 0 ? 'net long' : 'net short'}, retail ${cot.retail.net >= 0 ? 'net long' : 'net short'}${cot.funds.net * cot.retail.net < 0 ? ' — berlawanan' : ''}.`)
   if (ai.data) kLines.push(`Analisa AI: ${ai.data.verdict} — ${ai.data.headline}`); else kLines.push('Jalankan "Analisa AI" untuk pandangan menyeluruh.')
-  const kAction = sc.confidence < 40 ? 'Sinyal lemah/campur — tunggu konfirmasi arah.' : dir === 'BULLISH' ? 'Bias BULLISH. Cari pullback ke VWAP/EMA21 untuk entry beli.' : dir === 'BEARISH' ? 'Bias BEARISH. Cari retest ke VWAP/EMA21 untuk entry jual.' : 'Netral — tunggu arah dominan.'
+  // Zona entry = HARGA konkret (rata-rata sesi & EMA21 M15), bukan nama indikator.
+  const e21M15 = feed.tf.M15.ema21[feed.tf.M15.ema21.length - 1]
+  const pbLo = Math.min(e21M15, feed.tf.M15.vwap), pbHi = Math.max(e21M15, feed.tf.M15.vwap)
+  const pbZone = pbHi - pbLo < 1 ? `$${f2((pbLo + pbHi) / 2)}` : `$${f2(pbLo)}–$${f2(pbHi)}`
+  const kAction = sc.confidence < 40 ? 'Sinyal lemah/campur — tunggu konfirmasi arah.' : dir === 'BULLISH' ? `Bias BULLISH. Tunggu pullback ke area ${pbZone}, konfirmasi, baru entry beli.` : dir === 'BEARISH' ? `Bias BEARISH. Tunggu retest ke area ${pbZone}, konfirmasi, baru entry jual.` : 'Netral — tunggu arah dominan.'
   const kRisk = volLabel === 'Rendah' ? 'Volatilitas rendah — sinyal kurang reliabel, hindari over-trading.' : adx < 20 ? 'Tren lemah (ADX < 20) — pasar cenderung sideways, hati-hati whipsaw.' : !ai.data ? 'Jalankan Analisa AI & pantau rilis data ekonomi.' : 'Pantau rilis data ekonomi & pergerakan DXY/yield.'
 
   const snapshot = {
@@ -877,7 +881,7 @@ export function TradingTerminal() {
           </div>
           <div>
             <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 mb-1">Kesimpulan Saat Ini</p>
-            <p className="text-2xl font-black leading-none" style={{ color: heroClr }}>{dir === 'BULLISH' ? 'Bias BELI' : dir === 'BEARISH' ? 'Bias JUAL' : 'TUNGGU'}</p>
+            <p className="text-2xl font-black leading-none" style={{ color: heroClr }}>{dir === 'BULLISH' ? 'Bias Bullish' : dir === 'BEARISH' ? 'Bias Bearish' : 'Netral — Tunggu'}</p>
             <p className="text-[10px] text-white/45 mt-1.5 tabular-nums">Skor {sc.overall > 0 ? '+' : ''}{Math.round(sc.overall)} · {meterZone(sc.overall).name}</p>
           </div>
         </div>

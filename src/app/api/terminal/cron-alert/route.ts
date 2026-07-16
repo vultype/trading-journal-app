@@ -41,7 +41,7 @@ async function fetchCross(): Promise<{ spy: CrossQuote; qqq: CrossQuote; vixy: C
 const dirWord = (d: string) => d === 'BULLISH' ? 'BELI (naik)' : d === 'BEARISH' ? 'JUAL (turun)' : 'Netral'
 const emoji = (d: string) => d === 'BULLISH' ? '🟢' : d === 'BEARISH' ? '🔴' : '⚪️'
 
-function fmtTrending(o: { price: number; conf: number; dir: string; adx: number; desc: string; conflu: string }): string {
+function fmtTrending(o: { price: number; conf: number; dir: string; adx: number; desc: string; conflu: string; zone: string }): string {
   return [
     `${emoji(o.dir)} <b>TRENDING terbentuk — XAU/USD</b>`,
     ``,
@@ -50,8 +50,9 @@ function fmtTrending(o: { price: number; conf: number; dir: string; adx: number;
     `Confidence: <b>${o.conf}%</b>`,
     `ADX: <b>${o.adx.toFixed(0)}</b> (${adxLabel(o.adx)}) · ${o.desc}`,
     `Konfluensi 3 TF: ${o.conflu}`,
+    `Area pullback: <b>${o.zone}</b>`,
     ``,
-    `<i>Pasar mulai bergerak searah. Cari entry pullback ke VWAP/EMA21. Selalu pasang stop.</i>`,
+    `<i>Pasar mulai bergerak searah. Tunggu harga kembali ke area pullback di atas, konfirmasi, baru entry. Selalu pasang stop.</i>`,
   ].join('\n')
 }
 
@@ -140,7 +141,11 @@ export async function GET(req: Request) {
 
     // 4a) Notif TRENDING — rising edge + cooldown
     if (trending && !prev.trendingActive && (now - (prev.lastTrendingAt ?? 0) > TRENDING_COOLDOWN)) {
-      const r = await sendTelegram(fmtTrending({ price, conf: sc.confidence, dir: sc.label, adx, desc: regime.desc, conflu: `${conf.bulls} bull / ${conf.bears} bear (${conf.strength})` }))
+      // Zona pullback = HARGA konkret (EMA21 & rata-rata sesi M15), bukan nama indikator
+      const e21 = tf.M15.ema21[tf.M15.ema21.length - 1]
+      const zLo = Math.min(e21, tf.M15.vwap), zHi = Math.max(e21, tf.M15.vwap)
+      const zone = zHi - zLo < 1 ? `$${((zLo + zHi) / 2).toFixed(2)}` : `$${zLo.toFixed(2)}–$${zHi.toFixed(2)}`
+      const r = await sendTelegram(fmtTrending({ price, conf: sc.confidence, dir: sc.label, adx, desc: regime.desc, conflu: `${conf.bulls} bull / ${conf.bears} bear (${conf.strength})`, zone }))
       if (r.ok) { sent.push('trending'); next.lastTrendingAt = now }
     }
     next.trendingActive = trending

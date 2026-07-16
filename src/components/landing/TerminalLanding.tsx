@@ -153,7 +153,7 @@ function HeroChart() {
         <div className="mt-3 rounded-xl bg-gradient-to-br from-primary/12 to-transparent border border-primary/20 p-3 flex items-start gap-2.5">
           <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary/20 shrink-0"><Brain size={14} className="text-primary" /></span>
           <div>
-            <p className="text-[10px] font-bold text-white/85">Datalitiq AI · Kesimpulan <span className="ml-1 text-emerald-400">Bias BELI · 74%</span></p>
+            <p className="text-[10px] font-bold text-white/85">Datalitiq AI · Kesimpulan <span className="ml-1 text-emerald-400">Bias Bullish · 74%</span></p>
             <p className="text-[10px] text-white/55 leading-relaxed">Tren naik didukung dolar melemah. Cari peluang beli di area pullback; hindari melawan arah utama.</p>
           </div>
         </div>
@@ -207,7 +207,7 @@ function MDecision() {
         <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-emerald-400">74%</span>
       </div>
       <div className="space-y-2 flex-1">
-        <span className="inline-flex text-[10px] font-black text-emerald-400 bg-emerald-500/10 rounded px-2 py-0.5">BIAS BELI</span>
+        <span className="inline-flex text-[10px] font-black text-emerald-400 bg-emerald-500/10 rounded px-2 py-0.5">BIAS BULLISH</span>
         <div className="h-1.5 w-full rounded bg-emerald-400/70" />
         <div className="h-1.5 w-3/4 rounded bg-white/15" />
         <div className="h-1.5 w-2/3 rounded bg-white/10" />
