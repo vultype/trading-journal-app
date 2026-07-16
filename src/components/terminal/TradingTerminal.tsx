@@ -673,6 +673,14 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   const macroTechReady = macroTech.uup && macroTech.ief
   const fastMacro = macroTechReady ? macroCandleBlend(macroTech.uup!, macroTech.ief!) : null
   const macroM15 = macroTechReady ? macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15) : null
+  // Ringkasan makro per-candle (M5/M15/H1) untuk diumpankan ke Analisa AI.
+  const macroCandleSnap = macroTechReady ? {
+    M5: macroCandleImpact(macroTech.uup!.M5, macroTech.ief!.M5),
+    M15: macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15),
+    H1: macroCandleImpact(macroTech.uup!.H1, macroTech.ief!.H1),
+    blend: fastMacro,
+    conflict: macroM15?.conflict ?? false,
+  } : null
   const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null, fastMacro)
   const conf = confluence(feed.tf)
   const dir = sc.label
@@ -761,6 +769,15 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
     candlesM15: feed.tf.M15.candles.slice(-20).map(c => `${c.o.toFixed(1)}/${c.h.toFixed(1)}/${c.l.toFixed(1)}/${c.c.toFixed(1)}`),
     pivots: pivotsLive ? { P: +pivotsLive.P.toFixed(2), R1: +pivotsLive.R1.toFixed(2), R2: +pivotsLive.R2.toFixed(2), S1: +pivotsLive.S1.toFixed(2), S2: +pivotsLive.S2.toFixed(2) } : null,
     macro: macro ? Object.fromEntries(Object.entries(macro).map(([k, v]) => [k, { value: v.value, prior: v.prior }])) : null,
+    // Makro PER-CANDLE (proxy UUP=dolar, IEF=yield 10Y terbalik): dampak-ke-emas -100..100 per TF.
+    // Sebanding horizon waktunya dgn teknikal M5/M15/H1. conflict = dolar & yield bertentangan → potensi ranging.
+    macroCandle: macroCandleSnap ? {
+      M5: { dolar: Math.round(macroCandleSnap.M5.dollarImpact), yield: Math.round(macroCandleSnap.M5.yieldImpact) },
+      M15: { dolar: Math.round(macroCandleSnap.M15.dollarImpact), yield: Math.round(macroCandleSnap.M15.yieldImpact) },
+      H1: { dolar: Math.round(macroCandleSnap.H1.dollarImpact), yield: Math.round(macroCandleSnap.H1.yieldImpact) },
+      blend: macroCandleSnap.blend ? { dolar: Math.round(macroCandleSnap.blend.dollarImpact), yield: Math.round(macroCandleSnap.blend.yieldImpact) } : null,
+      conflict: macroCandleSnap.conflict,
+    } : null,
     cot: cot ? { date: cot.date, funds: { net: cot.funds.net, deltaNet: cot.funds.deltaNet }, commercials: { net: cot.commercials.net }, retail: { net: cot.retail.net, deltaNet: cot.retail.deltaNet } } : null,
     btc: cross.btc ? { price: Math.round(cross.btc.price), changePct: +cross.btc.changePct.toFixed(2) } : null,
     riskAssets: { spy: cross.spy ? +cross.spy.changePct.toFixed(2) : null, qqq: cross.qqq ? +cross.qqq.changePct.toFixed(2) : null, vix: cross.vixy ? +cross.vixy.changePct.toFixed(2) : null, dollarRealtime: cross.uup ? +cross.uup.changePct.toFixed(2) : null },
