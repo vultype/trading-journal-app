@@ -44,10 +44,12 @@ function SyncErrorBanner() {
 
 // Halaman yang TIDAK boleh dihalangi wizard jurnal — alur langganan/pembayaran/akun
 // (mis. user Terminal baru yang mau langganan tak perlu isi setup jurnal dulu).
-const WIZARD_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings', '/simulator']
+// Catatan: /checkout kini standalone (src/app/checkout, di luar grup (app)) jadi
+// tidak pernah lewat layout ini — tidak perlu masuk daftar exempt di bawah.
+const WIZARD_EXEMPT = ['/subscription', '/billing', '/settings', '/simulator']
 // Halaman yang boleh diakses tier Gratis (untuk upgrade & kelola akun). Selain ini,
 // seluruh tools jurnal/simulator = bonus khusus Pro → Gratis diarahkan ke /upgrade.
-const PRO_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings']
+const PRO_EXEMPT = ['/subscription', '/billing', '/settings']
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { loading, userId, isAdmin, settings } = useStore()
