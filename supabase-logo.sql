@@ -16,6 +16,9 @@ insert into app_config (id) values (1) on conflict (id) do nothing;
 -- Untuk instalasi lama yang tabelnya sudah ada tanpa kolom ini:
 alter table app_config add column if not exists feature_images jsonb not null default '{}'::jsonb;
 
+-- Logo broker/partner untuk slider "Dipakai trader dari berbagai broker" (jsonb array of url)
+alter table app_config add column if not exists client_logos jsonb not null default '[]'::jsonb;
+
 alter table app_config enable row level security;
 
 -- Semua orang boleh baca (termasuk halaman login yang belum login)

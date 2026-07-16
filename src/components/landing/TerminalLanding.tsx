@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
-  Sparkles, Brain, ArrowRight, ChevronDown, ChevronUp, ShieldCheck, Check, Star,
+  Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star,
   Compass, Landmark, Newspaper, Bell, Target, MessageSquare,
   BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe,
   X, Zap, Radio, TrendingUp, BarChart3,
@@ -385,63 +385,71 @@ function HowItWorks() {
   )
 }
 
-// ── Fitur: showcase gaya SaaS (semua fitur tampil + panel screenshot besar,
-//    panah & counter, auto-play). Gambar per fitur di-upload dari halaman Admin;
-//    bila belum ada, pakai visual dummy. ──
-function FeatureShowcase({ images }: { images: Record<string, string> }) {
-  const [active, setActive] = useState(0)
-  const [paused, setPaused] = useState(false)
-  const f = FEATURES_X[active]
-  const img = images[f.visual]
-  useEffect(() => {
-    if (paused) return
-    const id = setInterval(() => setActive(a => (a + 1) % FEATURES_X.length), 4200)
-    return () => clearInterval(id)
-  }, [paused])
-  const go = (d: number) => setActive(a => (a + d + FEATURES_X.length) % FEATURES_X.length)
+// ── Fitur: BENTO GRID (mix full-width + wide + normal). Kartu besar menampilkan
+//    gambar upload admin (fallback visual dummy); kartu biasa ikon + teks. ──
+function BentoVisual({ visual }: { visual: string }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.015] p-4 md:p-6" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      {/* Judul + penjelasan fitur aktif (di atas image) */}
-      <div className="flex items-center justify-center gap-3 text-center min-h-[58px] mb-4 px-2">
-        <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/15 ring-1 ring-primary/25 text-primary shrink-0"><f.icon size={20} /></span>
-        <div key={`hdr-${active}`} className="dtq-in text-left">
-          <p className="text-lg font-black leading-tight">{f.t}</p>
-          <p className="text-sm text-white/55 leading-snug">{f.d}</p>
-        </div>
+    <div className="w-full max-w-sm">
+      {visual === 'decision' ? <MDecision /> : visual === 'gauge' ? <MGauge /> : visual === 'macro' ? <MMacro /> : visual === 'sentiment' ? <MSentiment /> : visual === 'chat' ? <MChat /> : <MNotif />}
+    </div>
+  )
+}
+function BentoImageCard({ f, img, className = '' }: { f: typeof FEATURES_X[number]; img?: string; className?: string }) {
+  return (
+    <div className={`group relative rounded-3xl border border-white/10 bg-[#0a1210] overflow-hidden hover:border-primary/30 transition-colors ${className}`}>
+      <div className="absolute -top-16 -right-14 w-56 h-56 rounded-full bg-primary/12 blur-3xl pointer-events-none opacity-70 group-hover:opacity-100 transition-opacity" />
+      {/* area gambar */}
+      <div className="relative w-full aspect-[16/9] overflow-hidden border-b border-white/[0.06]">
+        {img
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={img} alt={f.t} className="absolute inset-0 w-full h-full object-cover" />
+          : <div className="absolute inset-0 flex items-center justify-center p-6">{<BentoVisual visual={f.visual} />}</div>}
       </div>
-      {/* Image besar sebagai fokus + slider ATAS-BAWAH di kanan */}
-      <div className="flex items-stretch gap-3 md:gap-4">
-        <div className="relative flex-1 min-w-0 rounded-2xl border border-white/10 bg-[#0a1210] overflow-hidden">
-          <div className="absolute -top-20 -right-16 w-64 h-64 rounded-full bg-primary/12 blur-3xl pointer-events-none" />
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02]">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400/50" /><span className="w-2.5 h-2.5 rounded-full bg-amber-400/50" /><span className="w-2.5 h-2.5 rounded-full bg-emerald-400/50" />
-            <span className="ml-2 text-[10px] text-white/30 font-medium truncate">datalitiq.com/terminal · {f.t}</span>
+      {/* teks */}
+      <div className="relative p-5 md:p-6">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 rounded-full px-2.5 py-1 mb-3"><f.icon size={11} /> Fitur</span>
+        <p className="text-lg font-black">{f.t}</p>
+        <p className="text-sm text-white/55 mt-1.5 leading-relaxed">{f.d}</p>
+      </div>
+    </div>
+  )
+}
+function BentoTextCard({ f }: { f: typeof FEATURES_X[number] }) {
+  return (
+    <div className="group relative h-full rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6 overflow-hidden hover:border-primary/30 transition-colors">
+      <div className="absolute -top-12 -right-10 w-32 h-32 rounded-full bg-primary/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+      <span className="relative flex items-center justify-center w-11 h-11 rounded-xl bg-primary/12 ring-1 ring-primary/20 text-primary mb-4"><f.icon size={20} /></span>
+      <p className="relative text-base font-black">{f.t}</p>
+      <p className="relative text-sm text-white/55 mt-1.5 leading-relaxed">{f.d}</p>
+    </div>
+  )
+}
+function FeatureBento({ images }: { images: Record<string, string> }) {
+  const F = Object.fromEntries(FEATURES_X.map(f => [f.visual, f])) as Record<string, typeof FEATURES_X[number]>
+  return (
+    <div className="grid md:grid-cols-3 gap-4 auto-rows-auto">
+      {/* Baris 1: kartu lebar (image) + kartu biasa */}
+      <BentoImageCard f={F.gauge} img={images['gauge']} className="md:col-span-2" />
+      <BentoTextCard f={F.decision} />
+      {/* Baris 2: 3 kartu biasa */}
+      <BentoTextCard f={F.macro} />
+      <BentoTextCard f={F.sentiment} />
+      <BentoTextCard f={F.chat} />
+      {/* Baris 3: kartu FULL-WIDTH (image di samping teks) */}
+      <div className="md:col-span-3 group relative rounded-3xl border border-white/10 bg-[#0a1210] overflow-hidden hover:border-primary/30 transition-colors">
+        <div className="absolute -top-16 -left-14 w-64 h-64 rounded-full bg-primary/12 blur-3xl pointer-events-none opacity-70 group-hover:opacity-100 transition-opacity" />
+        <div className="grid md:grid-cols-2 items-stretch">
+          <div className="relative p-6 md:p-9 flex flex-col justify-center">
+            <span className="inline-flex self-start items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 rounded-full px-2.5 py-1 mb-4"><F.notif.icon size={11} /> Fitur</span>
+            <p className="text-2xl md:text-3xl font-black tracking-tight">{F.notif.t}</p>
+            <p className="text-sm md:text-base text-white/55 mt-3 leading-relaxed max-w-md">{F.notif.d} Sistem memeriksa kondisi pasar setiap beberapa menit — kamu hanya diberi tahu saat benar-benar penting.</p>
           </div>
-          {/* Frame 16:10 — transisi geser vertikal */}
-          <div className="relative w-full aspect-[16/10] overflow-hidden">
-            <div key={active} className="dtq-slide-up absolute inset-0">
-              {img ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={img} alt={f.t} className="absolute inset-0 w-full h-full object-cover" />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center p-6 md:p-10">
-                  <div className="w-full max-w-md">
-                    {f.visual === 'decision' ? <MDecision /> : f.visual === 'gauge' ? <MGauge /> : f.visual === 'macro' ? <MMacro /> : f.visual === 'sentiment' ? <MSentiment /> : f.visual === 'chat' ? <MChat /> : <MNotif />}
-                  </div>
-                </div>
-              )}
-            </div>
+          <div className="relative min-h-[220px] border-t md:border-t-0 md:border-l border-white/[0.06] overflow-hidden">
+            {images['notif']
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={images['notif']} alt={F.notif.t} className="absolute inset-0 w-full h-full object-cover" />
+              : <div className="absolute inset-0 flex items-center justify-center p-8"><div className="w-full max-w-xs"><MNotif /></div></div>}
           </div>
-        </div>
-        {/* Rail slider vertikal: panah atas · dots · panah bawah */}
-        <div className="flex flex-col items-center justify-center gap-3 shrink-0">
-          <button onClick={() => go(-1)} aria-label="Sebelumnya" className="flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-white/60 hover:text-white hover:border-primary/40 hover:bg-primary/10 transition-colors"><ChevronUp size={16} /></button>
-          <div className="flex flex-col items-center gap-1.5 py-1">
-            {FEATURES_X.map((_, i) => (
-              <button key={i} onClick={() => setActive(i)} aria-label={`Fitur ${i + 1}`} className={`w-1.5 rounded-full transition-all duration-300 ${i === active ? 'h-6 bg-primary' : 'h-1.5 bg-white/15 hover:bg-white/30'}`} />
-            ))}
-          </div>
-          <button onClick={() => go(1)} aria-label="Berikutnya" className="flex items-center justify-center w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-white/60 hover:text-white hover:border-primary/40 hover:bg-primary/10 transition-colors"><ChevronDown size={16} /></button>
         </div>
       </div>
     </div>
@@ -656,18 +664,21 @@ export function TerminalLanding() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
   const [featureImages, setFeatureImages] = useState<Record<string, string>>({})
+  const [clientLogos, setClientLogos] = useState<string[]>([])
 
   useEffect(() => {
     const sb = createClient()
-    sb.from('app_config').select('logo_url, feature_images').eq('id', 1).maybeSingle().then(({ data, error }) => {
+    sb.from('app_config').select('logo_url, feature_images, client_logos').eq('id', 1).maybeSingle().then(({ data, error }) => {
       if (error) {
-        // Kolom feature_images mungkin belum ada (instalasi lama) — jangan ikut mematikan logo
+        // Kolom baru (feature_images/client_logos) mungkin belum ada — jangan ikut mematikan logo
         sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle().then(({ data: d2 }) => setLogoUrl((d2?.logo_url as string | null) ?? null))
         return
       }
       setLogoUrl((data?.logo_url as string | null) ?? null)
       const fi = data?.feature_images
       if (fi && typeof fi === 'object') setFeatureImages(fi as Record<string, string>)
+      const cl = data?.client_logos
+      if (Array.isArray(cl)) setClientLogos(cl.filter((x): x is string => typeof x === 'string'))
     })
     sb.auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
   }, [])
@@ -733,12 +744,6 @@ export function TerminalLanding() {
             Hanya bagian ATAS gambar yang tampil; sisanya tertutup section logo di depan. */}
         <Reveal delay={150}>
           <div className={`relative max-w-6xl mx-auto px-6 mt-14 md:mt-20 ${heroImage ? '' : 'pb-28 md:pb-36'}`}>
-            {/* Light futuristic di belakang gambar */}
-            <div className="absolute -z-10 inset-0 pointer-events-none overflow-visible">
-              <div className="absolute left-1/4 top-8 w-80 h-80 bg-primary/25 blur-[120px] rounded-full dtq-pulse" />
-              <div className="absolute right-1/4 top-16 w-80 h-80 bg-cyan-500/18 blur-[130px] rounded-full dtq-pulse" style={{ animationDelay: '1.2s' }} />
-              <div className="absolute left-1/2 -translate-x-1/2 top-0 w-[70%] h-40 dtq-sweep" style={{ background: 'conic-gradient(from 180deg at 50% 0%, transparent, rgba(52,211,153,0.12), transparent 120deg)', transformOrigin: '50% 0%' }} />
-            </div>
             {heroImage ? (
               <div className="relative rounded-t-2xl border border-white/10 border-b-0 bg-[#0a1210] overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/5">
                 {/* chrome bar */}
@@ -766,9 +771,18 @@ export function TerminalLanding() {
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
         <p className="relative text-center text-xs text-white/30 mb-4 pt-4 uppercase tracking-widest">Dipakai trader dari berbagai broker & platform</p>
         <div className="relative">
-          <div className="flex gap-12 w-max dtq-marquee">
-            {[...CLIENTS, ...CLIENTS].map((b, i) => <span key={i} className="text-sm font-bold text-white/25 whitespace-nowrap">{b}</span>)}
-          </div>
+          {clientLogos.length > 0 ? (
+            <div className="flex items-center gap-14 w-max dtq-marquee">
+              {[...clientLogos, ...clientLogos].map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={src} alt="broker" className="h-7 md:h-8 w-auto object-contain opacity-40 hover:opacity-80 transition-opacity grayscale hover:grayscale-0" />
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-12 w-max dtq-marquee">
+              {[...CLIENTS, ...CLIENTS].map((b, i) => <span key={i} className="text-sm font-bold text-white/25 whitespace-nowrap">{b}</span>)}
+            </div>
+          )}
           <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#060a09] to-transparent" />
           <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#060a09] to-transparent" />
         </div>
@@ -849,12 +863,12 @@ export function TerminalLanding() {
       {/* ── Fitur (explorer interaktif) ── */}
       <section id="fitur" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
         <Reveal>
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Dulu Hanya Dimiliki Meja Trading Institusi.</h2>
-            <p className="text-base text-white/50 mt-4 max-w-2xl mx-auto leading-relaxed">Dari data makro bank sentral, posisi uang besar (COT), sentimen berita, sampai keputusan AI berbasis price action — enam alat analisa kelas institusi, kini menyatu dalam satu layar untuk trader retail.</p>
+          <div className="text-center max-w-xl mx-auto mb-14">
+            <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Institusi Punya.</h2>
+            <p className="text-base text-white/45 mt-4">Enam alat analisa, dalam satu layar.</p>
           </div>
         </Reveal>
-        <Reveal delay={100}><FeatureShowcase images={featureImages} /></Reveal>
+        <Reveal delay={100}><FeatureBento images={featureImages} /></Reveal>
       </section>
 
       {/* ── Data-Driven (konsol data futuristik) ── */}
