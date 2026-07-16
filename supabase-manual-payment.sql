@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════════
---  PEMBAYARAN MANUAL (transfer bank) — invoice resmi + bukti transfer + Moota
+--  PEMBAYARAN MANUAL (transfer bank) — invoice resmi + bukti transfer
 --  Jalankan di: Supabase Dashboard > SQL Editor > New Query > Run
 --  Prasyarat: tabel payment_orders sudah ada (supabase-checkout.sql)
 -- ════════════════════════════════════════════════════════════════════════
