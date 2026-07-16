@@ -108,9 +108,16 @@ export default function HubPage() {
               ))}
             </div>
             <div className="mt-auto pt-6">
-              <Link href="/jurnal" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
-                Buka Jurnal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-              </Link>
+              {terminalAccess ? (
+                <Link href="/jurnal" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
+                  Buka Jurnal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+              ) : (
+                <div className="space-y-2">
+                  <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary/15 text-primary rounded-xl px-5 py-3 text-sm font-semibold hover:bg-primary/25 transition-colors"><Lock size={14} /> Khusus Pro — Upgrade</Link>
+                  <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Tools bonus hanya untuk pelanggan Pro</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -125,9 +132,16 @@ export default function HubPage() {
               ))}
             </div>
             <div className="mt-auto pt-6">
-              <Link href="/simulator" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
-                Buka Simulator <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-              </Link>
+              {terminalAccess ? (
+                <Link href="/simulator" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
+                  Buka Simulator <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+              ) : (
+                <div className="space-y-2">
+                  <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary/15 text-primary rounded-xl px-5 py-3 text-sm font-semibold hover:bg-primary/25 transition-colors"><Lock size={14} /> Khusus Pro — Upgrade</Link>
+                  <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Tools bonus hanya untuk pelanggan Pro</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

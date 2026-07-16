@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
+import { createClient } from '@/lib/supabase'
 import { Sidebar, BottomNav } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { SetupWizard } from '@/components/onboarding/SetupWizard'
@@ -44,17 +45,35 @@ function SyncErrorBanner() {
 // Halaman yang TIDAK boleh dihalangi wizard jurnal — alur langganan/pembayaran/akun
 // (mis. user Terminal baru yang mau langganan tak perlu isi setup jurnal dulu).
 const WIZARD_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings', '/simulator']
+// Halaman yang boleh diakses tier Gratis (untuk upgrade & kelola akun). Selain ini,
+// seluruh tools jurnal/simulator = bonus khusus Pro → Gratis diarahkan ke /upgrade.
+const PRO_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings']
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { loading, userId, settings } = useStore()
+  const { loading, userId, isAdmin, settings } = useStore()
   const router = useRouter()
   const pathname = usePathname()
+  const [access, setAccess] = useState<'checking' | 'pro' | 'free'>('checking')
 
   useEffect(() => {
     if (!loading && !userId) router.replace('/login')
   }, [loading, userId, router])
 
-  if (loading) {
+  // Cek status Pro (admin ATAU langganan terminal aktif) sekali saat user diketahui.
+  useEffect(() => {
+    if (!userId) return
+    if (isAdmin) { setAccess('pro'); return }
+    createClient().from('payment_orders').select('id').eq('user_id', userId).eq('plan', 'terminal').eq('status', 'aktif').limit(1)
+      .then(({ data }) => setAccess(data && data.length ? 'pro' : 'free'))
+  }, [userId, isAdmin])
+
+  const proExempt = PRO_EXEMPT.some(p => pathname === p || pathname.startsWith(p + '/'))
+  // Gratis mengakses tools bonus → arahkan upgrade.
+  useEffect(() => {
+    if (access === 'free' && !proExempt) router.replace('/upgrade')
+  }, [access, proExempt, router])
+
+  if (loading || (access === 'checking' && !PRO_EXEMPT.some(p => pathname === p || pathname.startsWith(p + '/')))) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <div className="flex flex-col items-center gap-3">
@@ -66,6 +85,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
   }
 
   if (!userId) return null
+  // Blokir render tools bonus untuk Gratis (sementara redirect berjalan).
+  if (access === 'free' && !proExempt) return null
 
   // Onboarding: tampilkan wizard sampai user selesai setup — KECUALI di halaman
   // langganan/pembayaran/akun (biar user Terminal bisa langsung langganan).

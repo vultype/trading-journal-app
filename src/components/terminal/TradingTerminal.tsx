@@ -15,6 +15,7 @@ import {
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
   Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown,
+  Lock, Crown, Check,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
 import { AiLoading } from './AiLoading'
@@ -530,18 +531,62 @@ function RiskMeter({ riskOn }: { riskOn: number }) {
 
 // ─────────────────────────── TAB ───────────────────────────
 type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'sentimen' | 'berita' | 'status' | 'panduan'
-const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string }[] = [
+const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string; pro?: boolean }[] = [
   { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard, group: 'Analisa' },
-  { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa' },
-  { id: 'makro', label: 'Makro', icon: Landmark, group: 'Analisa' },
-  { id: 'sentimen', label: 'Sentimen', icon: Users, group: 'Analisa' },
-  { id: 'berita', label: 'Analisa News', icon: Newspaper, group: 'Analisa' },
+  { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa', pro: true },
+  { id: 'makro', label: 'Makro', icon: Landmark, group: 'Analisa', pro: true },
+  { id: 'sentimen', label: 'Sentimen', icon: Users, group: 'Analisa', pro: true },
+  { id: 'berita', label: 'Analisa News', icon: Newspaper, group: 'Analisa', pro: true },
   { id: 'status', label: 'Status Server', icon: Server, group: 'Sistem' },
   { id: 'panduan', label: 'Panduan', icon: BookOpen, group: 'Sistem' },
 ]
 
+// ─────────────────────────── GATE PRO/FREE ───────────────────────────
+// Bungkus panel bernilai: isinya di-blur & tak bisa diklik, di atasnya overlay
+// dengan nama kategori (label tetap kebaca) + CTA upgrade. Klik → /upgrade.
+function LockedWrap({ title, children, blur = 5 }: { title: string; children: React.ReactNode; blur?: number }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      <div className="pointer-events-none select-none saturate-[.6] opacity-60" style={{ filter: `blur(${blur}px)` }} aria-hidden>{children}</div>
+      <Link href="/upgrade" className="group absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-[#060a09]/45 to-[#060a09]/75 hover:from-[#060a09]/35 hover:to-[#060a09]/70 transition-colors">
+        <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 text-primary"><Lock size={17} /></span>
+        <p className="text-[13px] font-bold text-white/90 text-center px-4">{title}</p>
+        <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-bold group-hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"><Crown size={12} /> Buka dengan Pro</span>
+      </Link>
+    </div>
+  )
+}
+// Teaser satu halaman penuh untuk tab yang khusus Pro (Teknikal/Makro/Sentimen/News).
+function LockedTab({ icon: Icon, title, tagline, benefits }: { icon: React.ElementType; title: string; tagline: string; benefits: string[] }) {
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="relative rounded-3xl border border-primary/20 bg-gradient-to-b from-[#0b1512] to-[#0b100e] overflow-hidden p-8 md:p-12 text-center">
+        <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-80 h-80 bg-primary/12 blur-[110px] rounded-full pointer-events-none" />
+        <div className="relative">
+          <span className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/15 ring-1 ring-primary/30 text-primary mb-5"><Icon size={26} /></span>
+          <span className="ml-2 inline-flex items-center gap-1 align-middle text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 rounded-full px-2.5 py-1"><Crown size={11} /> Fitur Pro</span>
+          <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-4">{title}</h2>
+          <p className="text-sm text-white/55 mt-2.5 max-w-md mx-auto leading-relaxed">{tagline}</p>
+          <ul className="mt-6 space-y-2.5 text-left max-w-sm mx-auto">
+            {benefits.map(b => <li key={b} className="flex items-start gap-2.5 text-sm text-white/75"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>{b}</li>)}
+          </ul>
+          <Link href="/upgrade" className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-bold mt-8 hover:opacity-90 transition-all shadow-lg shadow-primary/25"><Crown size={15} /> Upgrade ke Pro</Link>
+          <p className="text-[11px] text-white/35 mt-3">Mulai Rp179.000/bln · buka semua analisa AI</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+const LOCKED_TAB_META: Record<string, { title: string; tagline: string; benefits: string[] }> = {
+  teknikal: { title: 'Analisa Teknikal AI', tagline: 'Datalitiq AI membaca chart, indikator & struktur multi-timeframe jadi arah + level entry/stop/target.', benefits: ['Konfluensi M5/M15/H1 + bias H4/Daily', 'Level entry, stop & target berupa angka', 'Sinyal reversal & zona penting otomatis'] },
+  makro: { title: 'Analisa Makro AI', tagline: 'Dampak dolar, yield, inflasi & kebijakan Fed ke XAU/USD — diterjemahkan jadi bias yang jelas.', benefits: ['12+ indikator ekonomi resmi (FRED)', 'Kesimpulan makro → arah emas', 'Kurva yield & real yield dijelaskan'] },
+  sentimen: { title: 'Analisa Sentimen AI', tagline: 'Posisi institusi (COT), risk-on/off, dan berita ditimbang jadi peta sentimen ke emas.', benefits: ['Posisi uang besar vs retail (COT mingguan)', 'Peta sentimen → dukung/tekan emas', 'Indikator takut-serakah (VIX)'] },
+  berita: { title: 'Analisa News AI', tagline: 'Prediksi arah emas sebelum rilis berita besar — skenario reaksi + level kunci, tanpa larangan.', benefits: ['Prediksi dampak CPI/NFP/FOMC ke emas', 'Skenario reaksi + probabilitas', 'Rekomendasi arah pre-news + peringatan'] },
+}
+
 // ─────────────────────────── PAGE ───────────────────────────
-export function TradingTerminal() {
+export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
+  const isPro = plan === 'pro'
   const now = useClock()
   const live = useLiveXauFeed()
   const cross = useCrossAsset()
@@ -1413,6 +1458,7 @@ export function TradingTerminal() {
                       <button key={t.id} onClick={() => setTab(t.id)} className={`relative w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${on ? 'text-white bg-gradient-to-r from-primary/20 to-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
                         {on && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary shadow-[0_0_8px_rgba(52,211,153,0.6)]" />}
                         <t.icon size={15} className={on ? 'text-primary' : ''} /> {t.label}
+                        {!isPro && t.pro && <Lock size={11} className="ml-auto text-primary/60" />}
                         {t.id === 'status' && <span className={`ml-auto h-1.5 w-1.5 rounded-full ${STAT_META[overall].dot}`} />}
                       </button>
                     )
@@ -1452,7 +1498,7 @@ export function TradingTerminal() {
               </div>
             )}
             {/* Layout gaya jurnal: kolom terbatas, irama vertikal seragam, baris = 1 pertanyaan */}
-            {tab === 'ringkasan' && <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+            {tab === 'ringkasan' && (isPro ? <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               {AiPanel}
               {DecisionHero}
               {InsightStrip}
@@ -1463,9 +1509,26 @@ export function TradingTerminal() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ZonaPanel}{ReversalPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MomentumPanel}{IndicatorMatrix}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{RiwayatPanel}{RiskSentimentPanel}</div>
-            </div>}
+            </div> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+              {/* FREE: harga live + info sesi tampil penuh; keputusan/sinyal di-blur */}
+              <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] to-transparent px-4 py-3">
+                <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 text-primary shrink-0"><Crown size={17} /></span>
+                <div className="flex-1 min-w-0"><p className="text-[13px] font-bold">Kamu di mode Gratis</p><p className="text-[11px] text-white/50 leading-snug">Harga & sesi live terbuka. Keputusan AI, Signal Meter & analisa lengkap khusus Pro.</p></div>
+                <Link href="/upgrade" className="shrink-0 inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-lg px-3.5 py-2 text-[11px] font-bold hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"><Crown size={12} /> Upgrade</Link>
+              </div>
+              <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={false} />
+              {SesiPanel}
+              <LockedWrap title="Analisa AI — Keputusan Beli/Jual/Tunggu" blur={6}>{AiPanel}</LockedWrap>
+              <LockedWrap title="Keputusan Akhir & Tingkat Keyakinan">{DecisionHero}</LockedWrap>
+              <LockedWrap title="Ringkasan Sinyal Pasar">{InsightStrip}</LockedWrap>
+              <LockedWrap title="Signal Meter & Detail 3 Pilar"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{SignalMeterPanel}{PilarPanel}</div></LockedWrap>
+              <LockedWrap title="Konfluensi Timeframe & Bias Besar"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{HtfBiasPanel}</div></LockedWrap>
+              <LockedWrap title="Zona Kunci & Sinyal Reversal"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ZonaPanel}{ReversalPanel}</div></LockedWrap>
+              <LockedWrap title="Momentum & Matriks Indikator"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MomentumPanel}{IndicatorMatrix}</div></LockedWrap>
+              <LockedWrap title="Riwayat Sinyal & Sentimen Risiko"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{RiwayatPanel}{RiskSentimentPanel}</div></LockedWrap>
+            </div>)}
 
-            {tab === 'teknikal' && <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+            {tab === 'teknikal' && (!isPro ? <LockedTab icon={Activity} {...LOCKED_TAB_META.teknikal} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Datalitiq AI baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
                 suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
@@ -1473,9 +1536,9 @@ export function TradingTerminal() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{HtfBiasPanel}{ReversalPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{OscillatorPanel}{MomentumPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ZonaPanel}{IndicatorMatrix}</div>
-            </div>}
+            </div>)}
 
-            {tab === 'makro' && <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+            {tab === 'makro' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
                 suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
               {/* Statistik makro kunci */}
@@ -1490,9 +1553,9 @@ export function TradingTerminal() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
               {InflasiPanel}
               {CalendarPanel}
-            </div>}
+            </div>)}
 
-            {tab === 'sentimen' && <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+            {tab === 'sentimen' && (!isPro ? <LockedTab icon={Users} {...LOCKED_TAB_META.sentimen} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
                 suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
               {/* Statistik sentimen kunci */}
@@ -1508,9 +1571,9 @@ export function TradingTerminal() {
                 <div className="space-y-4">{RiskSentimentPanel}{GoldSilverPanel}{BiasPanel}</div>
               </div>
               {NewsPanel}
-            </div>}
+            </div>)}
 
-            {tab === 'berita' && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4"><TerminalNewsAnalysis snapshot={snapshot} /></div>}
+            {tab === 'berita' && (!isPro ? <LockedTab icon={Newspaper} {...LOCKED_TAB_META.berita} /> : <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4"><TerminalNewsAnalysis snapshot={snapshot} /></div>)}
 
             {tab === 'status' && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4">{ServerStatusContent}</div>}
 
@@ -1526,7 +1589,8 @@ export function TradingTerminal() {
         {TABS.map(t => {
           const on = tab === t.id
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex flex-col items-center gap-0.5 px-3 py-2 shrink-0 ${on ? 'text-primary' : 'text-white/40'}`}>
+            <button key={t.id} onClick={() => setTab(t.id)} className={`relative flex flex-col items-center gap-0.5 px-3 py-2 shrink-0 ${on ? 'text-primary' : 'text-white/40'}`}>
+              {!isPro && t.pro && <Lock size={9} className="absolute top-1 right-1.5 text-primary/60" />}
               <t.icon size={16} />
               <span className="text-[8px] font-semibold whitespace-nowrap">{t.label}</span>
             </button>
