@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { StoreProvider, useStore } from '@/lib/store'
 import { Sidebar, BottomNav } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
@@ -41,9 +41,14 @@ function SyncErrorBanner() {
   )
 }
 
+// Halaman yang TIDAK boleh dihalangi wizard jurnal — alur langganan/pembayaran/akun
+// (mis. user Terminal baru yang mau langganan tak perlu isi setup jurnal dulu).
+const WIZARD_EXEMPT = ['/checkout', '/subscription', '/billing', '/settings']
+
 function AppContent({ children }: { children: React.ReactNode }) {
   const { loading, userId, settings } = useStore()
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     if (!loading && !userId) router.replace('/login')
@@ -62,8 +67,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   if (!userId) return null
 
-  // Onboarding: tampilkan wizard sampai user selesai setup
-  if (!settings.onboarded) return <SetupWizard />
+  // Onboarding: tampilkan wizard sampai user selesai setup — KECUALI di halaman
+  // langganan/pembayaran/akun (biar user Terminal bisa langsung langganan).
+  const exempt = WIZARD_EXEMPT.some(p => pathname === p || pathname.startsWith(p + '/'))
+  if (!settings.onboarded && !exempt) return <SetupWizard />
 
   return (
     <div className="flex h-full">

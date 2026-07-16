@@ -49,6 +49,12 @@ export function SetupWizard() {
     router.push('/jurnal')
   }
 
+  function skipWizard() {
+    // Lewati onboarding — user bisa setup akun kapan saja nanti dari Jurnal.
+    saveSettings({ onboarded: true })
+    router.push('/jurnal')
+  }
+
   const canNext =
     step === 0 ? name.trim().length > 0 :
     step === 1 ? broker.trim().length > 0 :
@@ -167,6 +173,10 @@ export function SetupWizard() {
 
           <p className="text-center text-[10px] text-muted-foreground">{t('Langkah')} {step + 1} / {TOTAL}</p>
         </div>
+
+        <button onClick={skipWizard} className="mx-auto mt-4 block text-xs text-muted-foreground hover:text-foreground transition-colors">
+          Lewati dulu — setup nanti
+        </button>
       </div>
     </div>
   )
