@@ -58,14 +58,6 @@ const FEATURES_X: { icon: React.ElementType; t: string; d: string; visual: strin
   { icon: Bell, t: 'Alert Telegram', d: 'Pasar dipantau untukmu — notifikasi hanya saat kondisi benar-benar berubah.', visual: 'notif' },
 ]
 
-// Apa yang Datalitiq pantau untukmu — icon ilustrasi section "Pasar Bergerak Setiap Hari"
-const WATCHERS: { icon: React.ElementType; t: string; d: string; glow: string }[] = [
-  { icon: Globe, t: 'Harga Real-Time', d: 'Pergerakan XAU/USD dipantau tiap detik, lintas sesi Asia–London–NY.', glow: 'rgba(52,211,153,0.25)' },
-  { icon: Landmark, t: 'Ekonomi Global', d: 'Dolar, yield, inflasi & kebijakan Fed dari sumber resmi.', glow: 'rgba(34,211,238,0.22)' },
-  { icon: Newspaper, t: 'Berita & Sentimen', d: 'Headline emas/dolar dan posisi institusi, dibaca dampaknya.', glow: 'rgba(251,191,36,0.2)' },
-  { icon: Bell, t: 'Perubahan Kondisi', d: 'Saat arah pasar berubah signifikan, kamu langsung diberi tahu.', glow: 'rgba(129,140,248,0.22)' },
-]
-
 const BONUS = [
   { icon: BookOpen, t: 'Jurnal Trading', d: 'Catat & evaluasi setiap trade.' },
   { icon: FlaskConical, t: 'Simulator Backtest', d: 'Uji strategi tanpa risiko.' },
@@ -474,11 +466,6 @@ const DD_METRICS = [
   { l: 'Tekanan Dolar', v: '−0.31%', s: 'dukung emas', up: true },
   { l: 'Sentimen Risiko', v: 'Risk-Off', s: 'defensif', up: true },
 ]
-const DD_POINTS: { icon: React.ElementType; t: string; d: string }[] = [
-  { icon: Zap, t: 'Scalping', d: 'Fokus M5/M15/H1 — momentum & level intraday yang bergerak cepat.' },
-  { icon: Compass, t: 'Intraday', d: 'Bias harian + sesi Asia/London/NY untuk timing entry sepanjang hari.' },
-  { icon: TrendingUp, t: 'Swing', d: 'Konteks H4/Daily, makro & posisi institusi untuk pandangan lebih panjang.' },
-]
 function DataDrivenSection({ primaryCta }: { primaryCta: string }) {
   return (
     <section className="relative overflow-hidden py-20 md:py-28">
@@ -525,20 +512,6 @@ function DataDrivenSection({ primaryCta }: { primaryCta: string }) {
             <div className="pointer-events-none absolute inset-x-0 top-0 h-16 dtq-scan" style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.12), transparent)' }} />
           </div>
         </Reveal>
-        {/* Gaya trading */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-8">
-          {DD_POINTS.map((p, i) => (
-            <Reveal key={p.t} delay={i * 90}>
-              <div className="group h-full rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 hover:border-primary/30 transition-colors">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/12 ring-1 ring-primary/20 text-primary"><p.icon size={18} /></span>
-                  <p className="text-base font-black">{p.t}</p>
-                </div>
-                <p className="text-sm text-white/55 leading-relaxed">{p.d}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
         <Reveal delay={120}>
           <div className="text-center mt-10">
             <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-lg shadow-primary/25">Trading dengan Data Sekarang <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></Link>
@@ -660,11 +633,162 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   )
 }
 
+// ── Section: pasar bergerak (noise → sinyal), versi imersif & berbeda ──
+function MarketNoiseSection() {
+  // fragmen data acak yang "berisik" — melayang di latar
+  const noise = ['XAU 4032.4', 'DXY 104.2 ▼', 'US10Y 4.58%', 'CPI 3.4%', 'FOMC 02:00', 'VIX +1.4%', 'COT net-long', 'Powell: hawkish?', 'NFP 187K', 'Real Yield 2.1%', 'Gold/Silver 88', 'BTC 68.2K ▲', 'RSI 71', 'ADX 27', 'Breakout?', 'Fake move', 'Sesi London', 'Spread melebar']
+  return (
+    <section className="relative overflow-hidden py-24 md:py-32">
+      {/* latar berisik: dua baris fragmen drifting berlawanan arah, sangat samar */}
+      <div className="absolute inset-0 pointer-events-none select-none" aria-hidden style={{ WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 30%, #000 90%)', maskImage: 'radial-gradient(ellipse 80% 70% at 50% 50%, transparent 30%, #000 90%)' }}>
+        <div className="absolute top-[12%] left-0 flex gap-8 w-max dtq-driftx text-white/[0.08] text-lg font-bold whitespace-nowrap">{[...noise, ...noise].map((n, i) => <span key={i}>{n}</span>)}</div>
+        <div className="absolute top-[34%] left-0 flex gap-10 w-max dtq-driftx text-white/[0.06] text-base font-bold whitespace-nowrap" style={{ animationDuration: '46s' }}>{[...noise.slice().reverse(), ...noise.slice().reverse()].map((n, i) => <span key={i}>{n}</span>)}</div>
+        <div className="absolute bottom-[14%] left-0 flex gap-8 w-max dtq-driftx text-white/[0.07] text-lg font-bold whitespace-nowrap" style={{ animationDuration: '40s' }}>{[...noise, ...noise].map((n, i) => <span key={i}>{n}</span>)}</div>
+      </div>
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-64 bg-primary/10 blur-[120px] rounded-full pointer-events-none dtq-pulse" />
+
+      <div className="relative max-w-3xl mx-auto px-6 text-center">
+        <Reveal>
+          <span className="inline-flex items-center gap-2 rounded-full bg-red-500/10 ring-1 ring-red-500/25 px-3.5 py-1.5 text-xs font-bold text-red-300 mb-6"><Radio size={13} /> Pasar emas tak pernah tidur</span>
+          <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.06]">Emas Bergerak Tiap Detik.<br />Jangan Membacanya Sendirian.</h2>
+          <p className="text-base md:text-lg text-white/55 mt-6 leading-relaxed">Harga, dolar, yield, berita Fed, posisi institusi — semua berteriak bersamaan. Sendirian, kamu tenggelam dalam kebisingan. Datalitiq menyaring semua itu jadi <span className="text-white/90 font-semibold">satu arah emas yang jelas.</span></p>
+        </Reveal>
+        {/* alur: banyak sumber → satu sinyal */}
+        <Reveal delay={120}>
+          <div className="mt-12 inline-flex flex-wrap items-center justify-center gap-2.5">
+            {['Harga', 'Makro', 'Sentimen', 'Berita'].map((s, i) => (
+              <span key={s} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3.5 py-1.5 text-xs font-semibold text-white/70">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary dtq-blink" style={{ animationDelay: `${i * 250}ms` }} /> {s}
+              </span>
+            ))}
+            <ArrowRight size={16} className="text-primary/70 mx-1" />
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-1.5 text-xs font-black shadow-lg shadow-primary/25"><Sparkles size={12} /> 1 Bias Emas Jelas</span>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+// ── Section: cocok untuk semua gaya trading (scalping/intraday/swing) — full animasi ──
+function ScalpingViz() {
+  const bars = [40, 68, 52, 82, 60, 90, 48, 74, 58]
+  return (
+    <div className="flex items-end justify-center gap-1.5 h-24">
+      {bars.map((h, i) => (
+        <span key={i} className={`w-2.5 rounded-sm dtq-candle ${i % 3 === 0 ? 'bg-red-400/70' : 'bg-emerald-400/80'}`} style={{ height: `${h}%`, animationDelay: `${i * 110}ms` }} />
+      ))}
+    </div>
+  )
+}
+function IntradayViz() {
+  const sesi = [{ l: 'Asia', w: 45, c: 'bg-sky-400/70' }, { l: 'London', w: 72, c: 'bg-emerald-400/80' }, { l: 'New York', w: 58, c: 'bg-amber-400/70' }]
+  return (
+    <div className="flex flex-col justify-center gap-2.5 h-24 w-full px-2">
+      {sesi.map((s, i) => (
+        <div key={s.l} className="flex items-center gap-2">
+          <span className="w-14 shrink-0 text-[10px] text-white/45 text-right">{s.l}</span>
+          <div className="flex-1 h-3 rounded-full bg-white/5 overflow-hidden">
+            <span className={`block h-full rounded-full dtq-fillbar ${s.c}`} style={{ ['--w' as string]: `${s.w}%`, animationDelay: `${i * 400}ms` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+function SwingViz() {
+  return (
+    <svg viewBox="0 0 200 96" className="w-full h-24" preserveAspectRatio="none">
+      <defs><linearGradient id="swfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity="0.25" /><stop offset="100%" stopColor="#34d399" stopOpacity="0" /></linearGradient></defs>
+      <path d="M4,84 L40,70 L72,76 L108,48 L140,58 L176,22 L196,30" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="340" className="dtq-drawloop" style={{ ['--len' as string]: '340' }} />
+      <path d="M4,84 L40,70 L72,76 L108,48 L140,58 L176,22 L196,30 L196,96 L4,96 Z" fill="url(#swfill)" opacity="0.7" />
+      <circle cx="176" cy="22" r="3.5" fill="#34d399" className="dtq-blink" />
+    </svg>
+  )
+}
+const TRADING_STYLES: { icon: React.ElementType; t: string; tf: string; d: string; viz: React.ReactNode }[] = [
+  { icon: Zap, t: 'Scalping', tf: 'M5 · M15', d: 'Momentum cepat, konfluensi M5/M15/H1, level entry rapat & alert real-time untuk masuk-keluar dalam menit.', viz: <ScalpingViz /> },
+  { icon: Compass, t: 'Intraday', tf: 'H1 · Sesi', d: 'Bias harian jelas + ringkasan arah tiap sesi Asia/London/NY untuk timing entry sepanjang hari.', viz: <IntradayViz /> },
+  { icon: TrendingUp, t: 'Swing', tf: 'H4 · Daily', d: 'Konteks tren besar, makro bank sentral & posisi institusi (COT) untuk menahan posisi berhari-hari.', viz: <SwingViz /> },
+]
+function TradingStylesSection({ primaryCta }: { primaryCta: string }) {
+  return (
+    <section className="relative overflow-hidden py-20 md:py-28">
+      <div className="absolute inset-0 pointer-events-none opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(52,211,153,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(52,211,153,0.05) 1px, transparent 1px)', backgroundSize: '40px 40px', WebkitMaskImage: 'radial-gradient(ellipse 65% 60% at 50% 40%, #000, transparent 100%)', maskImage: 'radial-gradient(ellipse 65% 60% at 50% 40%, #000, transparent 100%)' }} />
+      <div className="relative max-w-6xl mx-auto px-6">
+        <Reveal>
+          <div className="text-center max-w-2xl mx-auto mb-14">
+            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/30 px-3.5 py-1.5 text-xs font-bold text-primary mb-6"><Layers size={13} /> Semua Gaya Trading</span>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Scalping, Intraday, atau Swing —<br /><span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Emas Kamu, Cara Kamu.</span></h2>
+            <p className="text-base text-white/55 mt-5 leading-relaxed">Terminal menyesuaikan timeframe & kedalaman analisa dengan gaya trading emas-mu — bukan memaksamu ikut satu metode.</p>
+          </div>
+        </Reveal>
+        <div className="grid md:grid-cols-3 gap-5">
+          {TRADING_STYLES.map((s, i) => (
+            <Reveal key={s.t} delay={i * 120}>
+              <div className="group relative h-full rounded-3xl border border-white/[0.08] bg-gradient-to-b from-white/[0.03] to-transparent p-6 overflow-hidden hover:border-primary/30 transition-colors">
+                <div className="absolute -top-16 -right-14 w-56 h-56 rounded-full bg-primary/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                {/* panggung animasi */}
+                <div className="relative rounded-2xl border border-white/[0.06] bg-[#0a1210] mb-5 p-4 flex items-center justify-center min-h-[128px]">{s.viz}</div>
+                <div className="relative flex items-center gap-2.5 mb-2">
+                  <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/12 ring-1 ring-primary/20 text-primary"><s.icon size={18} /></span>
+                  <div><p className="text-lg font-black leading-none">{s.t}</p><p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mt-1">{s.tf}</p></div>
+                </div>
+                <p className="relative text-sm text-white/55 leading-relaxed">{s.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+        <Reveal delay={120}><div className="text-center mt-10"><Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-lg shadow-primary/25">Akses Terminal Sekarang <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></Link></div></Reveal>
+      </div>
+    </section>
+  )
+}
+
+// ── Section: bonus tools (jurnal, backtest, simulator, dll) — modern & informatif ──
+const BONUS_TOOLS: { icon: React.ElementType; t: string; d: string; points: string[] }[] = [
+  { icon: BookOpen, t: 'Jurnal Trading', d: 'Catat & evaluasi tiap trade emas dengan disiplin.', points: ['Datalitiq Score & equity curve', 'Insight AI: jam & sesi terbaikmu', 'Analisa win-rate & R:R otomatis'] },
+  { icon: FlaskConical, t: 'Backtest Tools', d: 'Uji strategi di data historis sebelum pakai uang asli.', points: ['Simulasi entry/exit historis', 'Ukur ekspektasi & drawdown', 'Validasi setup tanpa risiko'] },
+  { icon: Zap, t: 'Simulator', d: 'Latih eksekusi & psikologi tanpa menyentuh dana nyata.', points: ['Latihan real-time paper trading', 'Uji position sizing & risiko', 'Bangun jam terbang dengan aman'] },
+  { icon: Calculator, t: 'Risk Calculator', d: 'Hitung lot & risiko presisi sebelum entry.', points: ['Lot size dari % risiko', 'Kalkulasi R:R & target', 'Proyeksi profit/loss'] },
+]
+function BonusSection({ primaryCta }: { primaryCta: string }) {
+  return (
+    <section className="relative max-w-6xl mx-auto px-6 py-20 md:py-24">
+      <Reveal>
+        <div className="text-center max-w-2xl mx-auto mb-14">
+          <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/25 px-3.5 py-1.5 text-xs font-bold text-emerald-400 mb-6"><Sparkles size={13} /> Bonus · Gratis untuk pelanggan Terminal</span>
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-[1.08]">Bukan Cuma Terminal.<br />Satu Ekosistem Trading Lengkap.</h2>
+          <p className="text-base text-white/50 mt-5 leading-relaxed">Setiap langganan Terminal sudah termasuk perangkat pendukung untuk berkembang — tanpa biaya tambahan.</p>
+        </div>
+      </Reveal>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {BONUS_TOOLS.map((b, i) => (
+          <Reveal key={b.t} delay={i * 90}>
+            <div className="group relative h-full rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6 overflow-hidden hover:border-emerald-500/30 transition-colors">
+              <span className="absolute top-4 right-4 text-[9px] font-bold uppercase tracking-wide text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5">Gratis</span>
+              <div className="absolute -bottom-14 -left-10 w-40 h-40 rounded-full bg-emerald-500/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+              <span className="relative flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/12 ring-1 ring-primary/20 text-primary mb-4"><b.icon size={22} /></span>
+              <p className="relative text-base font-black">{b.t}</p>
+              <p className="relative text-sm text-white/50 mt-1.5 leading-relaxed">{b.d}</p>
+              <ul className="relative mt-4 space-y-1.5">
+                {b.points.map(p => <li key={p} className="flex items-start gap-2 text-[12px] text-white/60"><Check size={13} className="text-emerald-400 shrink-0 mt-0.5" />{p}</li>)}
+              </ul>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+      <Reveal delay={120}><p className="text-center text-sm text-white/45 mt-10">Semua tools ini <span className="text-emerald-400 font-semibold">otomatis terbuka</span> begitu langganan Terminal aktif. <Link href={primaryCta} className="text-primary font-semibold hover:underline">Akses sekarang →</Link></p></Reveal>
+    </section>
+  )
+}
+
 export function TerminalLanding() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
   const [featureImages, setFeatureImages] = useState<Record<string, string>>({})
   const [clientLogos, setClientLogos] = useState<string[]>([])
+  const [paymentLogos, setPaymentLogos] = useState<string[]>([])
 
   useEffect(() => {
     const sb = createClient()
@@ -684,6 +808,11 @@ export function TerminalLanding() {
       const cl = data?.client_logos
       if (Array.isArray(cl)) setClientLogos(cl.filter((x): x is string => typeof x === 'string'))
     })
+    sb.from('app_config').select('payment_logos').eq('id', 1).maybeSingle().then(({ data, error }) => {
+      if (error) return // kolom payment_logos belum ada — baris logo pembayaran disembunyikan
+      const pl = data?.payment_logos
+      if (Array.isArray(pl)) setPaymentLogos(pl.filter((x): x is string => typeof x === 'string'))
+    })
     sb.auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
   }, [])
 
@@ -698,7 +827,7 @@ export function TerminalLanding() {
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {logoUrl ? <BrandLogo url={logoUrl} /> : <span className="text-xl font-black tracking-tight">Datalitiq</span>}
-            <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-widest text-primary/80 bg-primary/10 rounded-full px-2 py-0.5">AI Terminal</span>
+            <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-widest text-primary/80 bg-primary/10 rounded-full px-2 py-0.5">Emas · XAU/USD</span>
           </div>
           <nav className="hidden md:flex items-center gap-7 text-sm text-white/60">
             <a href="#cara-kerja" className="hover:text-white transition-colors">Cara Kerja</a>
@@ -726,13 +855,13 @@ export function TerminalLanding() {
         <div className="relative max-w-4xl mx-auto px-6 pt-20 md:pt-28 text-center">
           <Reveal>
             <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/25 px-3.5 py-1.5 text-xs font-semibold text-primary mb-8">
-              <Sparkles size={13} /> Terminal kelas institusi · untuk trader retail
+              <Sparkles size={13} /> Khusus Emas · XAU/USD · Terminal kelas institusi
             </span>
             <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-[1.02]">
-              Trading dengan <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Data</span>.<br />Bukan Feeling.
+              Trading <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Emas</span> dengan Data.<br />Bukan Feeling.
             </h1>
             <p className="text-lg text-white/55 mt-7 leading-relaxed max-w-xl mx-auto">
-              Terminal analisa emas (XAU/USD) berbasis AI — data makro real-time, sentimen institusi, dan bias harian yang jelas, dalam satu layar.
+              Terminal AI yang <span className="text-white/80 font-semibold">100% fokus ke emas (XAU/USD)</span> — makro real-time, sentimen institusi & bias harian yang jelas, dalam satu layar. Satu instrumen, dianalisa sedalam mungkin.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 mt-10">
               <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-7 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
@@ -811,31 +940,8 @@ export function TerminalLanding() {
       {/* ── Premium AI: mesin analisa data futuristik ── */}
       <PremiumAiSection primaryCta={primaryCta} />
 
-      {/* ── Empati: pasar bergerak tiap hari, jangan baca sendirian (icon ilustrasi) ── */}
-      <section className="relative max-w-6xl mx-auto px-6 py-20 md:py-24">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto mb-14">
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight leading-[1.1]">Pasar Bergerak Setiap Hari.<br />Jangan Membacanya Sendirian.</h2>
-            <p className="text-base text-white/45 mt-5 leading-relaxed">Harga, ekonomi global, posisi institusi, berita — semuanya bergerak bersamaan. Datalitiq memantau semua itu untukmu, lalu menyaringnya jadi satu arah yang jelas.</p>
-          </div>
-        </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-          {WATCHERS.map((w, i) => (
-            <Reveal key={w.t} delay={i * 90}>
-              <div className="group relative h-full rounded-3xl border border-white/[0.07] bg-white/[0.015] p-6 md:p-7 overflow-hidden hover:border-primary/25 transition-colors">
-                <div className="absolute -top-10 -right-8 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{ background: w.glow }} />
-                {/* icon ilustrasi beranimasi */}
-                <div className="relative flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-white/[0.06] to-transparent ring-1 ring-white/10 mb-5">
-                  <span className="absolute inset-0 rounded-2xl ring-1 ring-primary/20 dtq-ripple" style={{ animationDelay: `${i * 400}ms` }} />
-                  <w.icon size={26} className="relative text-primary dtq-bob" style={{ animationDelay: `${i * 300}ms` }} />
-                </div>
-                <p className="text-base font-black">{w.t}</p>
-                <p className="text-sm text-white/50 mt-1.5 leading-relaxed">{w.d}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
+      {/* ── Pasar bergerak (noise → sinyal), imersif ── */}
+      <MarketNoiseSection />
 
       {/* ── Rasakan Bedanya (dua sisi tampil sekaligus) ── */}
       <section className="max-w-5xl mx-auto px-6 py-20 md:py-24">
@@ -877,6 +983,12 @@ export function TerminalLanding() {
 
       {/* ── Data-Driven (konsol data futuristik) ── */}
       <DataDrivenSection primaryCta={primaryCta} />
+
+      {/* ── Gaya trading (scalping/intraday/swing) full animasi ── */}
+      <TradingStylesSection primaryCta={primaryCta} />
+
+      {/* ── Bonus tools (jurnal, backtest, simulator, dll) ── */}
+      <BonusSection primaryCta={primaryCta} />
 
       {/* ── Testimoni ── */}
       <section id="testimoni" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
@@ -933,7 +1045,7 @@ export function TerminalLanding() {
                     <li key={f} className="flex items-start gap-2.5 text-sm"><span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span><span className="text-white/80">{f}</span></li>
                   ))}
                 </ul>
-                <Link href={checkoutHref} className="w-full text-center rounded-xl px-4 py-3.5 text-sm font-semibold bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:opacity-90 transition-opacity">Mulai Berlangganan</Link>
+                <Link href={checkoutHref} className="group w-full inline-flex items-center justify-center gap-2 text-center rounded-xl px-4 py-3.5 text-sm font-semibold bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:opacity-90 transition-opacity">Akses Terminal Sekarang <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></Link>
               </div>
             </div>
             {/* Bonus */}
@@ -951,7 +1063,20 @@ export function TerminalLanding() {
             </div>
           </div>
         </Reveal>
-        <Reveal><p className="text-center text-xs text-white/40 mt-6">Pembayaran via transfer bank · Akses aktif otomatis setelah verifikasi · Bisa berhenti kapan saja</p></Reveal>
+        {/* Metode pembayaran — logo bisa diupload dari admin */}
+        <Reveal>
+          <div className="mt-8 text-center">
+            {paymentLogos.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 mb-4">
+                {paymentLogos.map((src, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={src} alt="metode pembayaran" className="h-6 md:h-7 w-auto object-contain opacity-70 hover:opacity-100 transition-opacity" />
+                ))}
+              </div>
+            )}
+            <p className="inline-flex items-center gap-1.5 text-xs text-white/40"><ShieldCheck size={13} className="text-primary/70" /> Bayar aman via Kartu · QRIS · e-Wallet · Virtual Account · akses aktif otomatis</p>
+          </div>
+        </Reveal>
       </section>
 
       {/* ── FAQ ── */}
@@ -1034,7 +1159,15 @@ export function TerminalLanding() {
         .dtq-draw { animation: dtq-draw-kf 1.6s ease-out both; }
         @keyframes dtq-scan-kf { 0% { transform: translateY(-64px) } 100% { transform: translateY(360px) } }
         .dtq-scan { animation: dtq-scan-kf 4s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress, .dtq-bob, .dtq-ripple, .dtq-slide-up, .dtq-flow, .dtq-corepulse, .dtq-draw, .dtq-scan { animation: none } }
+        @keyframes dtq-candle-kf { 0%,100% { transform: scaleY(.45) } 50% { transform: scaleY(1) } }
+        .dtq-candle { transform-origin: bottom; animation: dtq-candle-kf 1.15s ease-in-out infinite; }
+        @keyframes dtq-fillbar-kf { 0% { width: 6% } 65%,100% { width: var(--w,60%) } }
+        .dtq-fillbar { animation: dtq-fillbar-kf 3.2s ease-in-out infinite; }
+        @keyframes dtq-drawloop-kf { 0% { stroke-dashoffset: var(--len,340) } 55%,100% { stroke-dashoffset: 0 } }
+        .dtq-drawloop { animation: dtq-drawloop-kf 3.4s ease-in-out infinite; }
+        @keyframes dtq-driftx-kf { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+        .dtq-driftx { animation: dtq-driftx-kf 34s linear infinite; }
+        @media (prefers-reduced-motion: reduce) { .dtq-marquee, .dtq-float, .dtq-float2, .dtq-pulse, .dtq-in, .dtq-pop, .dtq-sweep, .dtq-blink, .dtq-grow, .dtq-reject, .dtq-progress, .dtq-bob, .dtq-ripple, .dtq-slide-up, .dtq-flow, .dtq-corepulse, .dtq-draw, .dtq-scan, .dtq-candle, .dtq-fillbar, .dtq-drawloop, .dtq-driftx { animation: none } }
       `}</style>
     </div>
   )

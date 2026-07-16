@@ -276,6 +276,83 @@ function ClientLogosManager() {
   )
 }
 
+// ── Logo metode pembayaran (bank/QRIS/e-wallet) yang tampil di section HARGA ──
+function PaymentLogosManager() {
+  const [logos, setLogos] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+
+  useEffect(() => {
+    createClient().from('app_config').select('payment_logos').eq('id', 1).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { setNeedsMigration(true); return }
+        const pl = data?.payment_logos; if (Array.isArray(pl)) setLogos(pl.filter((x): x is string => typeof x === 'string'))
+      })
+  }, [])
+
+  async function save(next: string[]) {
+    setLogos(next)
+    const { error } = await createClient().from('app_config')
+      .upsert({ id: 1, payment_logos: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) { setNeedsMigration(true); toast.error('Gagal menyimpan: ' + error.message) }
+  }
+
+  async function handleUpload(files: FileList) {
+    setUploading(true)
+    try {
+      const sb = createClient()
+      const urls: string[] = []
+      for (const file of Array.from(files)) {
+        if (file.size > 500_000) { toast.error(`"${file.name}" > 500 KB, dilewati`); continue }
+        const ext = file.name.split('.').pop() || 'png'
+        const path = `landing/pay-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+        const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+        if (error) { toast.error('Upload gagal: ' + error.message); continue }
+        urls.push(sb.storage.from('trade-screenshots').getPublicUrl(path).data.publicUrl)
+      }
+      if (urls.length) { await save([...logos, ...urls]); toast.success(`${urls.length} logo pembayaran ditambahkan`) }
+    } catch { toast.error('Upload gagal') } finally { setUploading(false) }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ImageIcon size={15} className="text-primary" /> Logo Metode Pembayaran (Section Harga)</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        {needsMigration && (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <p className="font-bold text-amber-500 mb-1.5">⚠ Kolom database belum ada — jalankan SQL ini di Supabase → SQL Editor, lalu refresh:</p>
+            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists payment_logos jsonb not null default $$[]$$::jsonb;</code>
+          </div>
+        )}
+        {logos.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {logos.map((src, i) => (
+              <div key={i} className="relative group rounded-lg border border-border/50 bg-white/90 h-14 w-24 flex items-center justify-center overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={`pembayaran ${i + 1}`} className="max-h-9 max-w-[80px] object-contain" />
+                <button onClick={() => { save(logos.filter((_, j) => j !== i)); toast.success('Logo dihapus') }} className="absolute top-0.5 right-0.5 rounded-md bg-black/60 p-0.5 text-white/70 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"><Trash2 size={12} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className={`inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold cursor-pointer transition-opacity ${uploading ? 'opacity-60 pointer-events-none' : 'hover:opacity-90'}`}>
+          {uploading ? <><Loader2 size={15} className="animate-spin" /> Mengupload…</> : <><Upload size={15} /> Upload Logo Pembayaran (bisa banyak)</>}
+          <input type="file" accept="image/png,image/svg+xml,image/webp" multiple className="hidden" onChange={e => { if (e.target.files?.length) handleUpload(e.target.files) }} />
+        </label>
+        <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Panduan</p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
+            <li>Logo bank/QRIS/e-wallet (mis. BCA, Mandiri, QRIS, GoPay, OVO, Dana, Visa, Mastercard).</li>
+            <li><strong>Format:</strong> PNG/SVG/WebP — <strong>logo berwarna asli</strong> (ditampilkan apa adanya, tidak grayscale).</li>
+            <li><strong>Tinggi ideal: 40–60 px</strong>, background transparan. <strong>Maks 500 KB</strong> per logo.</li>
+            <li>Bila kosong, section harga hanya menampilkan teks metode pembayaran.</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -450,6 +527,7 @@ export default function AdminPage() {
       {/* Logo / branding */}
       <LogoManager />
       <ClientLogosManager />
+      <PaymentLogosManager />
       <FeatureImagesManager />
 
       {error && (

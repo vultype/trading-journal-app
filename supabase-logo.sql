@@ -22,6 +22,9 @@ alter table app_config add column if not exists feature_images jsonb not null de
 -- Logo broker/partner untuk slider "Dipakai trader dari berbagai broker" (jsonb array of url)
 alter table app_config add column if not exists client_logos jsonb not null default $$[]$$::jsonb;
 
+-- Logo metode pembayaran (bank/QRIS/e-wallet) yang tampil di section harga (jsonb array of url)
+alter table app_config add column if not exists payment_logos jsonb not null default $$[]$$::jsonb;
+
 alter table app_config enable row level security;
 
 -- Semua orang boleh baca (termasuk halaman login yang belum login)
