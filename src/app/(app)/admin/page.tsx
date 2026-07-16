@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info } from 'lucide-react'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock } from 'lucide-react'
+import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
 
 function LogoManager() {
@@ -275,6 +276,80 @@ function ClientLogosManager() {
   )
 }
 
+// ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
+type PayOrder = {
+  id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
+  status: string; invoice_number: string | null; proof_url: string | null; method: string; created_at: string
+}
+function PaymentVerificationManager({ users }: { users: AdminUser[] }) {
+  const [orders, setOrders] = useState<PayOrder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const emailOf = (uid: string) => users.find(u => u.id === uid)?.email ?? uid.slice(0, 8)
+
+  async function load() {
+    setLoading(true)
+    const { data } = await createClient().from('payment_orders').select('*')
+      .in('status', ['menunggu_pembayaran', 'menunggu_verifikasi']).order('created_at', { ascending: false })
+    setOrders((data ?? []) as PayOrder[])
+    setLoading(false)
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function setStatus(id: string, status: 'aktif' | 'batal') {
+    setBusyId(id)
+    const { error } = await createClient().from('payment_orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+    setBusyId(null)
+    if (error) { toast.error('Gagal: ' + error.message); return }
+    toast.success(status === 'aktif' ? 'Pesanan diaktifkan' : 'Pesanan ditolak')
+    setOrders(os => os.filter(o => o.id !== id))
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2"><Receipt size={15} className="text-primary" /> Verifikasi Pembayaran Manual</CardTitle>
+        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/50 rounded-lg px-2.5 py-1 transition-colors"><RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-primary" size={18} /></div>
+        ) : orders.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">Tidak ada pesanan menunggu verifikasi.</p>
+        ) : (
+          <div className="space-y-3">
+            {orders.map(o => (
+              <div key={o.id} className="rounded-xl border border-border/50 bg-muted/20 p-3.5 flex flex-wrap items-center gap-3">
+                {o.proof_url ? (
+                  <a href={o.proof_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={o.proof_url} alt="Bukti transfer" className="w-16 h-16 rounded-lg object-cover border border-border/50 hover:opacity-80 transition-opacity" />
+                  </a>
+                ) : (
+                  <div className="w-16 h-16 rounded-lg border border-border/50 bg-muted/40 flex items-center justify-center shrink-0"><Clock size={18} className="text-muted-foreground/50" /></div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold">{o.invoice_number ?? '—'}</span>
+                    <Badge variant="outline" className={`text-[9px] ${o.status === 'menunggu_verifikasi' ? 'text-blue-400 border-blue-500/30' : 'text-amber-400 border-amber-500/30'}`}>{o.status === 'menunggu_verifikasi' ? 'Bukti diunggah' : 'Menunggu transfer'}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{emailOf(o.user_id)} · {planName(o.plan)} · {o.months} bln</p>
+                  <p className="text-sm font-bold text-primary tabular-nums">{rp(o.total)} <span className="text-[10px] text-muted-foreground font-normal">(kode {o.unique_code})</span></p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {o.proof_url && <a href={o.proof_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center rounded-lg border border-border/50 p-2 text-muted-foreground hover:text-foreground transition-colors" title="Lihat bukti penuh"><ExternalLink size={14} /></a>}
+                  <Button size="sm" variant="outline" className="gap-1.5 text-destructive" disabled={busyId === o.id} onClick={() => setStatus(o.id, 'batal')}><XCircle size={13} /> Tolak</Button>
+                  <Button size="sm" className="gap-1.5" disabled={busyId === o.id} onClick={() => setStatus(o.id, 'aktif')}>{busyId === o.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Aktifkan</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 type AdminUser = { id: string; email: string; created_at: string }
 
 type UserRow = {
@@ -368,6 +443,9 @@ export default function AdminPage() {
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* Pembayaran manual */}
+      <PaymentVerificationManager users={users} />
 
       {/* Logo / branding */}
       <LogoManager />

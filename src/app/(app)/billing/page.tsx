@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import { Sparkles, Crown, Receipt, ArrowUpRight, Clock, Check, XCircle, Loader2 } from 'lucide-react'
 
-type Order = { id: string; plan: PlanId; months: number; total: number; unique_code: number; status: string; created_at: string }
+type Order = { id: string; plan: PlanId; months: number; total: number; unique_code: number; status: string; created_at: string; invoice_number: string | null }
 
 const STATUS: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
   menunggu_pembayaran: { label: 'Menunggu Pembayaran', cls: 'text-amber-400 border-amber-500/30', icon: Clock },
@@ -75,7 +75,7 @@ export default function BillingPage() {
                   <div key={o.id} className="flex items-center justify-between px-4 py-3.5">
                     <div>
                       <p className="text-sm font-semibold">Paket {planName(o.plan)} · {o.months} bln</p>
-                      <p className="text-xs text-muted-foreground">{o.created_at?.slice(0, 10)} · Kode {o.unique_code}</p>
+                      <p className="text-xs text-muted-foreground">{o.invoice_number ?? `Kode ${o.unique_code}`} · {o.created_at?.slice(0, 10)}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold">{rp(o.total)}</p>
@@ -89,7 +89,7 @@ export default function BillingPage() {
         </CardContent>
       </Card>
 
-      <p className="text-center text-xs text-muted-foreground">Pembayaran via transfer Mandiri, diverifikasi manual oleh admin.</p>
+      <p className="text-center text-xs text-muted-foreground">Pembayaran via transfer bank — diverifikasi otomatis, atau manual oleh admin dalam maks. 1×24 jam.</p>
     </div>
   )
 }
