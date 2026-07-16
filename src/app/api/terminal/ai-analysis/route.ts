@@ -1,9 +1,54 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchHeadlineLines } from '@/lib/news'
+import { getAccuracy, getLastAiAnalysis, setLastAiAnalysis } from '@/lib/alert-state'
 
 // Analisa AI MENYELURUH: gabungkan seluruh data terminal (teknikal, makro, COT, BTC)
-// + headline berita multi-sumber → Claude susun analisa lengkap. On-demand (POST).
+// + headline berita multi-sumber → Datalitiq AI susun analisa lengkap. On-demand (POST).
+// Upgrade akurasi: candle mentah (price action), kalender ekonomi (news guard),
+// track-record kalibrasi, post-mortem analisa sebelumnya, rubric conviction,
+// ringkasan berita (model kecil), dan extended thinking.
+
+// ── Kalender ekonomi (USD High) — cache modul 30 menit ──
+type CalEv = { title: string; time: number }
+let calCache: { data: CalEv[]; at: number } | null = null
+async function upcomingUsdHigh(now: number): Promise<CalEv[]> {
+  try {
+    if (!calCache || now - calCache.at > 30 * 60_000) {
+      const res = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (DatalitiqTerminal)' } })
+      if (!res.ok) return calCache?.data ?? []
+      const j = (await res.json()) as { title?: string; country?: string; date?: string; impact?: string }[]
+      calCache = {
+        at: now,
+        data: j.filter(e => e.country === 'USD' && e.impact === 'High' && e.date && e.title)
+          .map(e => ({ title: e.title!, time: new Date(e.date!).getTime() }))
+          .filter(e => Number.isFinite(e.time)).sort((a, b) => a.time - b.time),
+      }
+    }
+    return calCache.data.filter(e => e.time > now - 60 * 60_000).slice(0, 3)
+  } catch { return [] }
+}
+
+// ── Ringkasan berita via model kecil (murah) — cache modul 10 menit ──
+let newsSumCache: { text: string; at: number } | null = null
+async function summarizeNews(anthropic: Anthropic, lines: string[], now: number): Promise<string> {
+  if (!lines.length) return '(tidak ada headline)'
+  if (newsSumCache && now - newsSumCache.at < 10 * 60_000) return newsSumCache.text
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 500,
+      system: 'Ringkas headline pasar berikut jadi MAKS 5 poin tema terpenting untuk trader XAU/USD (emas). Tiap poin 1 kalimat + tandai arah dampaknya ke emas: [bullish]/[bearish]/[netral]. Bahasa Indonesia. Hanya poin-poin, tanpa pembuka.',
+      messages: [{ role: 'user', content: lines.map((h, i) => `${i + 1}. ${h}`).join('\n') }],
+    })
+    const text = msg.content.find(b => b.type === 'text')?.text?.trim()
+    if (text) { newsSumCache = { text, at: now }; return text }
+  } catch { /* fallback ke headline mentah */ }
+  return lines.slice(0, 12).map((h, i) => `${i + 1}. ${h}`).join('\n')
+}
+
+// Format waktu relatif untuk kalender (menit/jam ke depan)
+const relMin = (ms: number) => { const m = Math.round(ms / 60_000); return m < 0 ? `${-m} mnt lalu` : m < 90 ? `${m} mnt lagi` : `${Math.round(m / 60)} jam lagi` }
 
 function extractJson(raw: string): string {
   const start = raw.indexOf('{'); if (start < 0) throw new Error('tidak ada JSON')
@@ -23,8 +68,25 @@ export async function POST(req: Request) {
   try {
     const snap = await req.json()
     const userPrompt = typeof snap.userPrompt === 'string' ? snap.userPrompt.trim() : ''
-    const news = await fetchHeadlineLines()
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const nowMs = Date.now()
+    const [news, calendar, accuracy, lastAi] = await Promise.all([
+      fetchHeadlineLines(), upcomingUsdHigh(nowMs), getAccuracy(30), getLastAiAnalysis(),
+    ])
+    const newsSummary = await summarizeNews(anthropic, news, nowMs)
+
+    // Kalender: rilis USD berdampak tinggi terdekat
+    const calLine = calendar.length
+      ? calendar.map(e => `${e.title} (${relMin(e.time - nowMs)})`).join('; ')
+      : 'tidak ada rilis USD berdampak tinggi dalam waktu dekat'
+    // Track record kalibrasi (agregat — aman dari feedback loop)
+    const accLine = accuracy && accuracy.total >= 10
+      ? `${accuracy.pct}% arah benar dari ${accuracy.total} kesimpulan (30 hari, horizon 2 jam)${accuracy.byRegime.length ? ' — per kondisi: ' + accuracy.byRegime.map(r => `${r.regime} ${r.pct}% (${r.total}x)`).join(', ') : ''}`
+      : 'belum cukup data (kalibrasi masih berjalan)'
+    // Post-mortem analisa sebelumnya
+    const pmLine = lastAi && snap.price
+      ? `${Math.round((nowMs - lastAi.at) / 60_000)} menit lalu kamu menyimpulkan ${lastAi.verdict} ${lastAi.confidence}% (${lastAi.keputusan}) di harga ${lastAi.price}; harga sekarang ${snap.price} (${(snap.price - lastAi.price) >= 0 ? '+' : ''}${(snap.price - lastAi.price).toFixed(2)} poin). Evaluasi singkat apakah pandangan itu terbukti/meleset dan apa artinya untuk analisa sekarang.`
+      : 'belum ada analisa sebelumnya'
 
     const dataBlock = `DATA TERMINAL XAU/USD (real-time):
 - Harga: ${snap.price} (${snap.changePct >= 0 ? '+' : ''}${snap.changePct}%), sesi ${snap.session}, volatilitas ${snap.volatility}
@@ -38,15 +100,39 @@ export async function POST(req: Request) {
 - Rasio Emas/Perak (XAU/XAG): ${snap.goldSilverRatio}
 - Bitcoin: ${snap.btc?.price} (${snap.btc?.changePct}%)
 - Aset risiko real-time (Twelve Data): S&P 500 ${snap.riskAssets?.spy}%, Nasdaq 100 ${snap.riskAssets?.qqq}%, VIX (proxy ETF) ${snap.riskAssets?.vix}%, Dolar real-time (proxy UUP) ${snap.riskAssets?.dollarRealtime}%
-HEADLINE BERITA (2 hari):
-${news.map((h, i) => `${i + 1}. ${h}`).join('\n')}${userPrompt ? `\n\nKONTEKS/PERMINTAAN DARI TRADER (WAJIB dipertimbangkan & disesuaikan dalam analisa & keputusan): "${userPrompt}"` : ''}`
+- KALENDER EKONOMI (rilis USD berdampak tinggi terdekat): ${calLine}
+- TRACK RECORD kesimpulan terminal (kalibrasi nyata): ${accLine}
+- POST-MORTEM analisa AI sebelumnya: ${pmLine}
+CANDLE MENTAH (price action; format O/H/L/C per bar, urut lama→baru, bar TERTUTUP):
+M5 (30 bar terakhir): ${Array.isArray(snap.candlesM5) ? snap.candlesM5.join(' ') : 'tidak tersedia'}
+M15 (20 bar terakhir): ${Array.isArray(snap.candlesM15) ? snap.candlesM15.join(' ') : 'tidak tersedia'}
+RINGKASAN BERITA (2 hari, sudah diringkas):
+${newsSummary}${userPrompt ? `\n\nKONTEKS/PERMINTAAN DARI TRADER (WAJIB dipertimbangkan & disesuaikan dalam analisa & keputusan): "${userPrompt}"` : ''}`
 
     const msg = await anthropic.messages.create({
       model: 'claude-opus-4-8',
-      max_tokens: 2600,
+      max_tokens: 7000,
+      // Extended thinking (adaptive): penalaran multi-langkah (cek konflik antar-pilar, self-check) sebelum JSON final
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'high' },
       system: `Kamu kepala analis (Head of Research) XAU/USD di sebuah trading desk. Susun ANALISA MENYELURUH yang menggabungkan TEKNIKAL, MAKRO, dan SENTIMEN dari data terminal yang diberikan.
 
-Prinsip: dolar/yield naik = bearish emas; inflasi mereda / ekspektasi pemangkasan Fed / risk-off / geopolitik / dolar melemah = bullish emas. COT: institusi (funds) & commercials adalah smart money, retail sering kontrarian. Bias timeframe BESAR (H4/Daily) adalah FILTER arah: kalau keputusan (BELI/JUAL) berlawanan dengan bias H4/Daily, turunkan conviction dan sebutkan risikonya secara eksplisit di keputusanAlasan atau risks — jangan diam-diam mengabaikannya. Regime "Tren Melemah" (ADX menurun) = momentum tren sekarang mulai pudar, waspada potensi reversal — jangan rekomendasikan entry agresif searah tren lama tanpa peringatan. Kalau ada sinyal reversal (2+ dari 4: EMA cross/DI cross/MACD cross/struktur berubah) di satu atau lebih timeframe, WAJIB sebutkan itu secara eksplisit karena itu peringatan dini pembalikan arah — jangan diabaikan meski sinyal utama masih searah tren lama.
+Prinsip: dolar/yield naik = bearish emas; inflasi mereda / ekspektasi pemangkasan Fed / risk-off / geopolitik / dolar melemah = bullish emas. COT: institusi (funds) & commercials adalah smart money, retail sering kontrarian. Bias timeframe BESAR (H4/Daily) adalah FILTER arah: kalau keputusan (BELI/JUAL) berlawanan dengan bias H4/Daily, turunkan conviction dan sebutkan risikonya secara eksplisit di keputusanAlasan atau risks — jangan diam-diam mengabaikannya. Regime "Tren Melemah"/momentum pudar (ADX menurun) = waspada potensi reversal — jangan rekomendasikan entry agresif searah tren lama tanpa peringatan. Kalau ada sinyal reversal (2+ dari 4: EMA cross/DI cross/MACD cross/struktur berubah) di satu atau lebih timeframe, WAJIB sebutkan itu secara eksplisit.
+
+PRICE ACTION: baca CANDLE MENTAH yang diberikan (O/H/L/C) — perhatikan rejection wick, engulfing, momentum candle, dan level yang berulang ditolak/ditembus. Gunakan sebagai konfirmasi/penolakan atas sinyal indikator, dan rujuk pola konkret yang kamu lihat (mis. "3 candle M5 terakhir rejection di 4060").
+
+NEWS GUARD: cek KALENDER EKONOMI. Jika ada rilis USD berdampak tinggi < 60 menit lagi, keputusan default TUNGGU (atau beri peringatan sangat eksplisit) — spike berita mengalahkan sinyal teknikal. Sebutkan event & waktunya di risks/watch.
+
+KALIBRASI: gunakan TRACK RECORD sebagai dasar conviction — bila akurasi historis pada kondisi regime sekarang rendah, jangan beri conviction Tinggi. Gunakan POST-MORTEM untuk koreksi diri secara eksplisit di executive (1 kalimat: pandangan lalu terbukti/meleset dan implikasinya).
+
+RUBRIC CONVICTION (wajib dipatuhi):
+- "Tinggi" HANYA jika: 3 pilar (teknikal/makro/sentimen) searah + searah bias H4/Daily + tidak ada rilis besar < 60 mnt + tidak ada sinyal reversal berlawanan.
+- "Sedang" jika mayoritas searah tapi ada 1 konflik.
+- "Rendah" jika pilar bertentangan / regime Ranging / dekat rilis besar. Keputusan BELI/JUAL dengan conviction Rendah TIDAK BOLEH — pakai TUNGGU.
+
+SELF-CHECK sebelum jawab (kerjakan dalam penalaranmu): (1) konsisten dengan H4/Daily? (2) konsisten dengan regime? (3) ada rilis berita dekat? (4) R:R dari entry/sl/tp ≥ 1:1.5? (5) angka level konsisten dengan harga sekarang & pivot? Jika ada yang gagal, revisi keputusan/level sebelum menulis JSON.
+
+ANGKA WAJIB: entry/sl/tp di plan & chartLevels HARUS angka harga konkret (bukan "di area support"); di plan sebutkan juga jarak dalam poin dan rasio R:R terhitung (mis. "SL 4051.2 (-8.3 poin), TP 4074.5 (+15 poin), R:R 1:1.8").
 
 Tugasmu: bantu trader mengambil KEPUTUSAN terbaik. Tegas, berbasis data, dan jelaskan "kenapa".
 
@@ -98,6 +184,10 @@ PENTING untuk chartLevels: isi dengan ANGKA harga bersih (bukan teks/range), kon
       risks: arr(p.risks, 3),
       watch: arr(p.watch, 3),
       fetchedAt: new Date().toISOString(),
+    }
+    // Simpan untuk post-mortem analisa berikutnya (gagal-diam bila Supabase tak dikonfigurasi)
+    if (typeof snap.price === 'number') {
+      await setLastAiAnalysis({ verdict: result.verdict, confidence: result.confidence, keputusan: result.keputusan, price: snap.price, at: nowMs })
     }
     return NextResponse.json(result)
   } catch (err) {

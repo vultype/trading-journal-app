@@ -83,14 +83,54 @@ export async function evaluateDuePredictions(priceNow: number): Promise<number> 
   } catch { return 0 }
 }
 
-export async function getAccuracy(days = 30): Promise<{ total: number; correct: number; pct: number | null; window: number } | null> {
+export type RegimeAccuracy = { regime: string; total: number; correct: number; pct: number }
+export type AccuracyReport = { total: number; correct: number; pct: number | null; window: number; byRegime: RegimeAccuracy[] }
+// Fase regime dari label (label mengandung arah, mis. "Trending Bullish" → "Trending")
+const regimePhaseOf = (label: string) => label.includes('Trending') ? 'Trending' : label.includes('Konfirmasi') ? 'Konfirmasi Arah' : label.includes('Ranging') ? 'Ranging' : 'Lainnya'
+
+export async function getAccuracy(days = 30): Promise<AccuracyReport | null> {
   const c = client(); if (!c) return null
   try {
     const since = new Date(Date.now() - days * 86_400_000).toISOString()
-    const { data, error } = await c.from('terminal_predictions').select('correct').eq('evaluated', true).not('correct', 'is', null).gte('created_at', since).limit(5000)
+    const { data, error } = await c.from('terminal_predictions').select('correct,regime').eq('evaluated', true).not('correct', 'is', null).gte('created_at', since).limit(5000)
     if (error || !data) return null
-    const total = data.length
-    const correct = (data as { correct: boolean }[]).filter(r => r.correct).length
-    return { total, correct, pct: total ? Math.round((correct / total) * 100) : null, window: days }
+    const rows = data as { correct: boolean; regime: string | null }[]
+    const total = rows.length
+    const correct = rows.filter(r => r.correct).length
+    const byMap = new Map<string, { total: number; correct: number }>()
+    for (const r of rows) {
+      const k = regimePhaseOf(r.regime ?? '')
+      const v = byMap.get(k) ?? { total: 0, correct: 0 }
+      v.total++; if (r.correct) v.correct++
+      byMap.set(k, v)
+    }
+    const byRegime: RegimeAccuracy[] = [...byMap.entries()].map(([regime, v]) => ({ regime, total: v.total, correct: v.correct, pct: Math.round((v.correct / v.total) * 100) })).sort((a, b) => b.total - a.total)
+    return { total, correct, pct: total ? Math.round((correct / total) * 100) : null, window: days, byRegime }
   } catch { return null }
+}
+
+export type PredictionRow = { created_at: string; dir: string; confidence: number | null; price: number; regime: string | null; evaluated: boolean; correct: boolean | null; price_after: number | null }
+export async function getRecentPredictions(limit = 10): Promise<PredictionRow[]> {
+  const c = client(); if (!c) return []
+  try {
+    const { data, error } = await c.from('terminal_predictions').select('created_at,dir,confidence,price,regime,evaluated,correct,price_after').order('created_at', { ascending: false }).limit(limit)
+    if (error || !data) return []
+    return data as PredictionRow[]
+  } catch { return [] }
+}
+
+// ── Memori post-mortem analisa AI (dipakai ai-analysis route) ──
+// Disimpan di tabel terminal_alert_state dengan id berbeda — tanpa tabel baru.
+export type LastAiAnalysis = { verdict: string; confidence: number; keputusan: string; price: number; at: number }
+const AI_ROW_ID = 'ai_postmortem'
+export async function getLastAiAnalysis(): Promise<LastAiAnalysis | null> {
+  const c = client(); if (!c) return null
+  try {
+    const { data } = await c.from('terminal_alert_state').select('state').eq('id', AI_ROW_ID).maybeSingle()
+    return (data?.state as LastAiAnalysis) ?? null
+  } catch { return null }
+}
+export async function setLastAiAnalysis(v: LastAiAnalysis): Promise<void> {
+  const c = client(); if (!c) return
+  try { await c.from('terminal_alert_state').upsert({ id: AI_ROW_ID, state: v, updated_at: new Date().toISOString() }) } catch { /* gagal-diam */ }
 }

@@ -162,11 +162,56 @@ function useNews() {
   useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/news')).json(); if (!s && Array.isArray(j)) { setData(j); setUpdatedAt(Date.now()) } } catch { } }; poll(); const id = setInterval(poll, 600_000); return () => { s = true; clearInterval(id) } }, [])
   return { data, updatedAt }
 }
-type Accuracy = { total: number; correct: number; pct: number | null; window: number; ready: boolean }
+type RegimeAcc = { regime: string; total: number; correct: number; pct: number }
+type Accuracy = { total: number; correct: number; pct: number | null; window: number; ready: boolean; byRegime?: RegimeAcc[] }
 function useAccuracy() {
   const [acc, setAcc] = useState<Accuracy | null>(null)
   useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/accuracy?days=30')).json(); if (!s) setAcc(j) } catch { } }; poll(); const id = setInterval(poll, 1800_000); return () => { s = true; clearInterval(id) } }, [])
   return acc
+}
+// Kalender ekonomi USD (High/Medium) — untuk News Guard & panel kalender. Poll 15 menit.
+type CalEvent = { title: string; time: number; impact: 'High' | 'Medium'; forecast: string; previous: string }
+function useCalendar() {
+  const [events, setEvents] = useState<CalEvent[]>([])
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/calendar')).json(); if (!s && Array.isArray(j)) setEvents(j) } catch { } }; poll(); const id = setInterval(poll, 900_000); return () => { s = true; clearInterval(id) } }, [])
+  return events
+}
+// Riwayat 10 kesimpulan terakhir + hasil evaluasi (kalibrasi). Poll 5 menit.
+type PredRow = { created_at: string; dir: string; confidence: number | null; price: number; regime: string | null; evaluated: boolean; correct: boolean | null; price_after: number | null }
+function usePredictions() {
+  const [rows, setRows] = useState<PredRow[] | null>(null)
+  useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/predictions')).json(); if (!s && Array.isArray(j)) setRows(j) } catch { } }; poll(); const id = setInterval(poll, 300_000); return () => { s = true; clearInterval(id) } }, [])
+  return rows
+}
+// Statistik sesi dari candle H1 sendiri (~6 hari data): rata-rata range per sesi vs hari ini.
+const SESSIONS = [
+  { name: 'Asia', s: 0, e: 7 }, { name: 'London', s: 7, e: 12 },
+  { name: 'Overlap', s: 12, e: 16 }, { name: 'New York', s: 16, e: 21 },
+] as const
+function sessionStats(h1: Candle[], now: number) {
+  const byKey = new Map<string, { hi: number; lo: number }>()
+  for (const c of h1) {
+    const d = new Date(c.t); const day = Math.floor(c.t / 86_400_000); const hr = d.getUTCHours()
+    const sess = SESSIONS.find(x => hr >= x.s && hr < x.e); if (!sess) continue
+    const k = `${day}|${sess.name}`
+    const v = byKey.get(k)
+    if (v) { v.hi = Math.max(v.hi, c.h); v.lo = Math.min(v.lo, c.l) } else byKey.set(k, { hi: c.h, lo: c.l })
+  }
+  const today = Math.floor(now / 86_400_000)
+  const avg: Record<string, { sum: number; n: number }> = {}
+  const todayRange: Record<string, number> = {}
+  for (const [k, v] of byKey) {
+    const [dayS, name] = k.split('|'); const range = v.hi - v.lo
+    if (Number(dayS) === today) todayRange[name] = range
+    else { const a = avg[name] ?? { sum: 0, n: 0 }; a.sum += range; a.n++; avg[name] = a }
+  }
+  const hrNow = new Date(now).getUTCHours()
+  const cur = SESSIONS.find(x => hrNow >= x.s && hrNow < x.e)
+  const curAvg = cur && avg[cur.name]?.n ? avg[cur.name].sum / avg[cur.name].n : null
+  return {
+    current: cur && curAvg ? { name: cur.name, range: todayRange[cur.name] ?? 0, avg: curAvg, pct: Math.round(((todayRange[cur.name] ?? 0) / curAvg) * 100) } : null,
+    perSession: SESSIONS.map(x => ({ name: x.name, avg: avg[x.name]?.n ? avg[x.name].sum / avg[x.name].n : null })),
+  }
 }
 
 
@@ -391,19 +436,6 @@ const MACRO_META: { key: string; meta: CardMeta }[] = [
   { key: 'nfp', meta: { name: 'NFP (bulanan)', sub: 'Nonfarm Payrolls — lemah = bullish', dec: 0, unit: 'K', corr: 1, src: 'FRED' } },
   { key: 'wagegrowth', meta: { name: 'Pertumbuhan Upah', sub: 'Avg Hourly Earnings YoY', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
 ]
-function TVWidget({ src, config }: { src: string; config: Record<string, unknown> }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const c = ref.current; if (!c) return
-    c.innerHTML = ''
-    const w = document.createElement('div'); w.className = 'tradingview-widget-container__widget'; w.style.height = '100%'; w.style.width = '100%'; c.appendChild(w)
-    const s = document.createElement('script'); s.src = src; s.async = true; s.type = 'text/javascript'; s.innerHTML = JSON.stringify(config); c.appendChild(s)
-    return () => { c.innerHTML = '' }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src])
-  return <div className="tradingview-widget-container" ref={ref} style={{ height: '100%', width: '100%' }} />
-}
-const TV_EVENTS = { colorTheme: 'dark', isTransparent: false, locale: 'en', countryFilter: 'us', importanceFilter: '0,1', width: '100%', height: '100%' }
 
 // Baris COT yang mudah dibaca (bar proporsi long/short)
 function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }) {
@@ -519,6 +551,11 @@ export function TradingTerminal() {
   const ai = useAiAnalysis()
   const { data: newsItems, updatedAt: newsAt } = useNews()
   const accuracy = useAccuracy()
+  const calEvents = useCalendar()
+  const predictions = usePredictions()
+  // Spread broker (poin $) — disimpan lokal, untuk cek kelayakan biaya scalping
+  const [spread, setSpread] = useState<number>(() => { if (typeof window === 'undefined') return 0; const v = parseFloat(localStorage.getItem('dtq_spread') || '0'); return Number.isFinite(v) && v >= 0 ? v : 0 })
+  const saveSpread = (v: number) => { setSpread(v); try { localStorage.setItem('dtq_spread', String(v)) } catch { } }
   const [tab, setTab] = useState<Tab>('ringkasan')
   const [chartFull, setChartFull] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
@@ -540,6 +577,23 @@ export function TradingTerminal() {
   // #7 guard pasar tutup: candle M5 terbaru lebih tua dari ~15 menit = pasar tutup / data mati
   const marketStale = feed.lastCandleT ? now - feed.lastCandleT > 15 * 60_000 : false
   const staleAgeMin = feed.lastCandleT ? Math.round((now - feed.lastCandleT) / 60_000) : 0
+  // News Guard: rilis USD High-impact ±30 menit dari sekarang → tahan entry
+  const highEvents = calEvents.filter(e => e.impact === 'High')
+  const guardEvent = highEvents.find(e => Math.abs(now - e.time) <= 30 * 60_000) ?? null
+  const nextEvent = highEvents.find(e => e.time > now) ?? null
+  const evCountdown = (t: number) => { const m = Math.round((t - now) / 60_000); return m <= 0 ? `${-m} mnt lalu` : m < 90 ? `${m} mnt lagi` : `${Math.floor(m / 60)}j ${m % 60}m lagi` }
+  // Statistik sesi (dari H1 sendiri) & divergensi XAU↔Dolar (UUP live)
+  const sess = sessionStats(feed.tf.H1.candles, now)
+  const dvg = (() => {
+    const g = feed.changePct, d = cross.uup?.changePct
+    if (d == null) return null
+    if (g > 0.1 && d > 0.1) return { label: 'Divergensi Bullish', desc: 'emas naik MESKI dolar naik — emas kuat', tone: 'bull' as const }
+    if (g < -0.1 && d < -0.1) return { label: 'Divergensi Bearish', desc: 'emas turun meski dolar turun — emas lemah', tone: 'bear' as const }
+    if (Math.abs(g) <= 0.1 && Math.abs(d) <= 0.1) return { label: 'Tenang', desc: 'emas & dolar sama-sama datar', tone: 'neutral' as const }
+    return { label: 'Normal (inverse)', desc: d > 0 ? 'dolar naik → menekan emas' : 'dolar turun → menopang emas', tone: 'neutral' as const }
+  })()
+  // Kelayakan biaya: target scalp tipikal (ATR M15) minimal 3× spread
+  const costOk = spread > 0 ? feed.tf.M15.atr >= 3 * spread : null
   // #6 putus feedback loop: verdict AI TIDAK diumpankan ke skor (dulu bikin AI konfirmasi diri sendiri)
   const riskOn = riskOnScore(cross, usOpen)
   const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null)
@@ -614,6 +668,9 @@ export function TradingTerminal() {
     biasTFbesar: { H4: feed.htf.H4 ? { bias: feed.htf.H4.bias.label, rsi: Math.round(feed.htf.H4.rsi), struktur: feed.htf.H4.structure.label } : null, D1: feed.htf.D1 ? { bias: feed.htf.D1.bias.label, rsi: Math.round(feed.htf.D1.rsi), struktur: feed.htf.D1.structure.label } : null },
     regime: regime.label, momentum: Math.round(avgMomentum), bbSqueeze, riskSentiment: riskOn < -0.1 ? 'risk-off' : riskOn > 0.1 ? 'risk-on' : 'netral',
     goldSilverRatio: goldSilver ? +goldSilver.toFixed(1) : null, yieldCurve2s10: curve2s10 != null ? +curve2s10.toFixed(2) : null,
+    // Candle mentah (bar TERTUTUP) untuk price action AI — O/H/L/C ringkas
+    candlesM5: feed.tf.M5.candles.slice(-30).map(c => `${c.o.toFixed(1)}/${c.h.toFixed(1)}/${c.l.toFixed(1)}/${c.c.toFixed(1)}`),
+    candlesM15: feed.tf.M15.candles.slice(-20).map(c => `${c.o.toFixed(1)}/${c.h.toFixed(1)}/${c.l.toFixed(1)}/${c.c.toFixed(1)}`),
     pivots: pivotsLive ? { P: +pivotsLive.P.toFixed(2), R1: +pivotsLive.R1.toFixed(2), R2: +pivotsLive.R2.toFixed(2), S1: +pivotsLive.S1.toFixed(2), S2: +pivotsLive.S2.toFixed(2) } : null,
     macro: macro ? Object.fromEntries(Object.entries(macro).map(([k, v]) => [k, { value: v.value, prior: v.prior }])) : null,
     cot: cot ? { date: cot.date, funds: { net: cot.funds.net, deltaNet: cot.funds.deltaNet }, commercials: { net: cot.commercials.net }, retail: { net: cot.retail.net, deltaNet: cot.retail.deltaNet } } : null,
@@ -653,14 +710,48 @@ export function TradingTerminal() {
       </div>
     </Panel>
   )
-  const KesimpulanPanel = (
-    <Panel title="Kesimpulan & Saran" icon={Lightbulb} info="Rangkuman otomatis dari seluruh data (teknikal, makro, COT, berita) → kesimpulan + saran aksi + catatan risiko.">
-      <div className="flex items-center gap-2 mb-2"><span className="text-lg font-black" style={{ color: meterZone(sc.overall).color }}>{meterZone(sc.overall).name}</span><span className="text-[10px] text-white/40">Confidence {sc.confidence}%</span></div>
-      <ul className="space-y-1 mb-2">{kLines.map((l, i) => <li key={i} className="text-[10px] text-white/65 leading-snug flex gap-1.5"><span className="text-primary mt-0.5">•</span>{l}</li>)}</ul>
-      <div className="mt-auto space-y-1.5">
-        <div className="flex items-start gap-1.5 rounded-lg bg-primary/8 p-2"><Target size={12} className="text-primary mt-0.5 shrink-0" /><p className="text-[10px] text-white/85 font-medium leading-snug">{kAction}</p></div>
-        <div className="flex items-start gap-1.5"><span className="text-[9px] text-amber-400/70 mt-0.5">⚠</span><p className="text-[9px] text-white/45 leading-snug">{kRisk}</p></div>
+  // Panel gabungan "Detail 3 Pilar & Alasan" — merger Signal Meter + Bias & Confidence +
+  // Kesimpulan & Saran (Ringkasan). Decision Hero sudah pegang verdict/confidence/aksi.
+  const PilarPanel = (
+    <Panel title="Detail 3 Pilar & Alasan" icon={GaugeIcon} accent={meterZone(sc.overall).color} info="Rincian di balik kesimpulan: skor tiap pilar (makro/teknikal/sentimen), kesepakatan antar-pilar, dan alasan + risikonya." right={<span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${dirBg(sc.label)}`}>{sc.label} {confPct}%</span>}>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <div className="space-y-2.5">
+            <PillarRow label="Makro (FRED + Dolar live)" score={sc.macro} desc="Dolar, yield, inflasi, kebijakan Fed" />
+            <PillarRow label="Teknikal (Chart)" score={sc.tech} desc="Konfluensi M5/M15/H1 · tren · momentum" />
+            <PillarRow label="Sentimen (Berita/Pasar)" score={sc.senti} desc="VIX, saham, BTC · risk-on/off" />
+          </div>
+          <p className="text-[10px] text-white/50 leading-snug mt-3 pt-2 border-t border-white/5">Kesepakatan sinyal: <b className={sc.confidence > 66 ? 'text-emerald-400' : sc.confidence > 40 ? 'text-amber-400' : 'text-red-400'}>{sc.confidence > 66 ? 'Kuat' : sc.confidence > 40 ? 'Sedang' : 'Lemah'}</b> · Pendorong utama: <b className="text-white/80">{strongestPillar}</b></p>
+        </div>
+        <div className="flex flex-col">
+          <ul className="space-y-1 mb-2">{kLines.map((l, i) => <li key={i} className="text-[10px] text-white/65 leading-snug flex gap-1.5"><span className="text-primary mt-0.5">•</span>{l}</li>)}</ul>
+          <div className="mt-auto flex items-start gap-1.5"><span className="text-[9px] text-amber-400/70 mt-0.5">⚠</span><p className="text-[9px] text-white/45 leading-snug">{kRisk}</p></div>
+        </div>
       </div>
+    </Panel>
+  )
+  // Riwayat 10 kesimpulan terakhir + hasil evaluasi 2 jam (dari kalibrasi cron)
+  const RiwayatPanel = (
+    <Panel title="Riwayat Kesimpulan" icon={CheckCircle2} info="10 kesimpulan terakhir yang tercatat (via cron tiap 5 menit, dirangkum) + hasil evaluasinya 2 jam kemudian: ✓ arah benar, ✗ meleset, ○ netral/belum dievaluasi. Untuk menakar keandalan sinyal secara nyata.">
+      {predictions && predictions.length > 0 ? (
+        <div className="space-y-1">
+          {predictions.map((p, i) => {
+            const t = new Date(p.created_at)
+            const res = !p.evaluated ? { icon: '○', c: 'text-white/35', txt: 'menunggu' } : p.correct === true ? { icon: '✓', c: 'text-emerald-400', txt: `${p.price_after != null ? (p.price_after - p.price >= 0 ? '+' : '') + (p.price_after - p.price).toFixed(1) : ''}` } : p.correct === false ? { icon: '✗', c: 'text-red-400', txt: `${p.price_after != null ? (p.price_after - p.price >= 0 ? '+' : '') + (p.price_after - p.price).toFixed(1) : ''}` } : { icon: '—', c: 'text-white/35', txt: 'netral' }
+            return (
+              <div key={i} className="flex items-center gap-2 rounded-lg bg-white/[0.02] px-2 py-1.5 text-[10px]">
+                <span className="text-white/35 tabular-nums w-14 shrink-0">{t.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} {t.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit' })}</span>
+                <span className={`font-bold w-16 ${dirColor(p.dir)}`}>{p.dir === 'BULLISH' ? 'Bullish' : p.dir === 'BEARISH' ? 'Bearish' : 'Netral'}</span>
+                <span className="text-white/40 tabular-nums">{p.confidence ?? '—'}%</span>
+                <span className="text-white/40 tabular-nums hidden sm:inline">@{p.price.toFixed(1)}</span>
+                <span className={`ml-auto font-black ${res.c}`}>{res.icon} <span className="font-semibold tabular-nums">{res.txt}</span></span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2.5 text-white/40 text-[11px] py-4"><Clock size={14} className="text-white/25" /> Belum ada riwayat — aktifkan cron + tabel terminal_predictions, riwayat terisi otomatis.</div>
+      )}
     </Panel>
   )
   const MtfPanel = (
@@ -784,9 +875,29 @@ export function TradingTerminal() {
       </div>
     </Panel>
   )
+  const upcomingCal = calEvents.filter(e => e.time > now - 3600_000).slice(0, 12)
   const CalendarPanel = (
-    <Panel title="Kalender Ekonomi AS" icon={CalendarClock} className="h-[420px]" info="Jadwal rilis data ekonomi AS berdampak tinggi. Hindari entry menjelang rilis high-impact.">
-      <div className="flex-1 min-h-0 rounded-lg overflow-hidden"><TVWidget src="https://s3.tradingview.com/external-embedding/embed-widget-events.js" config={TV_EVENTS} /></div>
+    <Panel title="Kalender Ekonomi AS (minggu ini)" icon={CalendarClock} info="Jadwal rilis data ekonomi USD berdampak tinggi/menengah (sumber publik, refresh 30 mnt). Merah = High impact — News Guard otomatis menahan sinyal ±30 menit di sekitarnya. Hindari entry menjelang rilis besar.">
+      {upcomingCal.length ? (
+        <div className="grid sm:grid-cols-2 gap-1.5">
+          {upcomingCal.map((e, i) => {
+            const past = e.time < now
+            const soon = !past && e.time - now < 3600_000
+            return (
+              <div key={i} className={`flex items-center gap-2.5 rounded-lg border px-2.5 py-2 ${soon && e.impact === 'High' ? 'border-amber-500/30 bg-amber-500/10' : 'border-white/[0.06] bg-white/[0.02]'} ${past ? 'opacity-45' : ''}`}>
+                <span className={`h-2 w-2 rounded-full shrink-0 ${e.impact === 'High' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold text-white/85 truncate">{e.title}</p>
+                  <p className="text-[9px] text-white/40">{new Date(e.time).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} WIB{e.forecast ? ` · perkiraan ${e.forecast}` : ''}{e.previous ? ` · sebelumnya ${e.previous}` : ''}</p>
+                </div>
+                <span className={`text-[9px] font-bold tabular-nums shrink-0 ${soon && e.impact === 'High' ? 'text-amber-300' : 'text-white/40'}`}>{past ? 'lewat' : evCountdown(e.time)}</span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2.5 text-white/40 text-[11px] py-4"><Loader2 size={13} className="animate-spin text-white/25" /> Memuat kalender…</div>
+      )}
     </Panel>
   )
 
@@ -857,6 +968,13 @@ export function TradingTerminal() {
             <div className="flex-1">
               <div className="h-2.5 rounded-full bg-white/5 overflow-hidden"><div className={`h-full rounded-full ${(accuracy.pct ?? 0) >= 60 ? 'bg-emerald-400' : (accuracy.pct ?? 0) >= 45 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${accuracy.pct ?? 0}%` }} /></div>
               <p className="text-[11px] text-white/55 mt-2"><b className="text-white/85 tabular-nums">{accuracy.correct}</b> dari <b className="text-white/85 tabular-nums">{accuracy.total}</b> kesimpulan terarah benar dalam 2 jam (30 hari terakhir). Dipakai untuk menakar keandalan sinyal — makin banyak data, makin akurat angkanya.</p>
+              {accuracy.byRegime && accuracy.byRegime.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {accuracy.byRegime.map(r => (
+                    <span key={r.regime} className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold ${r.pct >= 60 ? 'text-emerald-400' : r.pct >= 45 ? 'text-amber-400' : 'text-red-400'}`} title={`${r.correct}/${r.total} benar saat kondisi ${r.regime}`}>{r.regime} {r.pct}% <span className="text-white/35 font-semibold">({r.total}x)</span></span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -886,12 +1004,29 @@ export function TradingTerminal() {
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="flex items-start gap-2 text-[12px] text-white/85 font-medium leading-relaxed"><Target size={14} className="mt-0.5 shrink-0" style={{ color: heroClr }} />{kAction}</p>
-          <div className="flex flex-wrap gap-1.5 mt-2.5">
+          {guardEvent ? (
+            <p className="flex items-start gap-2 text-[12px] font-semibold leading-relaxed text-amber-300"><ShieldAlert size={15} className="mt-0.5 shrink-0 text-amber-400" />NEWS GUARD — rilis <b>&ldquo;{guardEvent.title}&rdquo;</b> {evCountdown(guardEvent.time)}. Tahan entry: spike berita mengalahkan sinyal teknikal. Tunggu pasar mencerna dulu.</p>
+          ) : (
+            <p className="flex items-start gap-2 text-[12px] text-white/85 font-medium leading-relaxed"><Target size={14} className="mt-0.5 shrink-0" style={{ color: heroClr }} />{kAction}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
             <span className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold ${regime.c}`}><Signal size={9} /> {regime.label}</span>
             <span className={`inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold ${volLabel === 'Tinggi' ? 'text-amber-400' : volLabel === 'Rendah' ? 'text-sky-400' : 'text-emerald-400'}`}><Flame size={9} /> Volatilitas {volLabel}</span>
             <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold text-white/60"><Crosshair size={9} /> {conf.bulls}B/{conf.bears}S dari 3 TF</span>
             <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold text-white/60"><Circle size={7} className="fill-primary text-primary" /> Sesi {session}</span>
+            {!guardEvent && nextEvent && nextEvent.time - now < 3 * 3600_000 && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-300"><CalendarClock size={9} /> {nextEvent.title} · {evCountdown(nextEvent.time)}</span>
+            )}
+            {costOk != null && (
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold ${costOk ? 'border-white/10 bg-white/[0.04] text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-300'}`} title={`Target scalp tipikal (ATR M15 $${feed.tf.M15.atr.toFixed(2)}) ${costOk ? '≥' : '<'} 3× spread ($${(3 * spread).toFixed(2)})`}>
+                <Scale size={9} /> Biaya {costOk ? 'layak' : 'tinggi'}
+              </span>
+            )}
+            <label className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] text-white/45">
+              Spread $
+              <input type="number" step="0.05" min="0" value={spread || ''} placeholder="0.30" onChange={e => saveSpread(parseFloat(e.target.value) || 0)}
+                className="w-11 bg-transparent text-[9px] font-bold text-white/80 outline-none placeholder:text-white/25" />
+            </label>
           </div>
         </div>
         <p className="hidden xl:block text-[9px] text-white/30 max-w-[130px] leading-relaxed shrink-0">Ringkasan otomatis dari teknikal, makro & sentimen. Detail di panel bawah.</p>
@@ -904,8 +1039,8 @@ export function TradingTerminal() {
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
-      <StatTile icon={Coins} label="Rasio Emas/Perak" value={goldSilver ? goldSilver.toFixed(1) : '—'} sub={goldSilver ? (goldSilver > 85 ? 'emas relatif mahal' : goldSilver < 70 ? 'perak memimpin' : 'normal') : 'memuat'} tone="neutral" info="XAU/XAG. >85 emas mahal relatif perak (sering risk-off); <70 perak memimpin (risk-on)." />
-      <StatTile icon={GitBranch} label="Yield Curve 2s10s" value={curve2s10 != null ? `${curve2s10 >= 0 ? '+' : ''}${curve2s10.toFixed(2)}` : '—'} sub={curve2s10 != null ? (curve2s10 < 0 ? 'inversi — sinyal resesi' : 'normal') : 'memuat'} tone={curve2s10 != null && curve2s10 < 0 ? 'warn' : 'neutral'} info="Selisih yield 10Y − 2Y. Negatif (inversi) = pasar cemas resesi → mendorong ekspektasi pemangkasan Fed (bullish emas jangka menengah)." />
+      <StatTile icon={Clock} label="Range Sesi Ini" value={sess.current ? `${sess.current.pct}%` : '—'} sub={sess.current ? `${sess.current.name}: $${sess.current.range.toFixed(1)} vs rata² $${sess.current.avg.toFixed(1)}` : 'di luar jam sesi utama'} tone={sess.current ? (sess.current.pct > 110 ? 'warn' : sess.current.pct < 50 ? 'neutral' : 'bull') : 'neutral'} info={`Range sesi berjalan vs rata-rata sesi yang sama (~6 hari H1 sendiri). >110% = sudah bergerak banyak (hati-hati kejar harga); <50% = ruang gerak mungkin masih ada. Rata-rata: ${sess.perSession.map(s => `${s.name} $${s.avg ? s.avg.toFixed(1) : '—'}`).join(' · ')}.`} />
+      <StatTile icon={Coins} label="XAU vs Dolar" value={dvg ? <span className={dvg.tone === 'bull' ? 'text-emerald-400' : dvg.tone === 'bear' ? 'text-red-400' : 'text-white/70'}>{dvg.label}</span> : '—'} sub={dvg?.desc ?? 'memuat dolar live'} tone={dvg?.tone ?? 'neutral'} info="Emas & dolar normalnya bergerak BERLAWANAN. Divergensi (bergerak searah) = sinyal kekuatan/kelemahan tersembunyi emas — emas naik saat dolar ikut naik berarti permintaan emas sangat kuat. Dari %change harian XAU vs UUP (proxy dolar live)." />
     </div>
   )
 
@@ -1190,9 +1325,8 @@ export function TradingTerminal() {
               {InsightStrip}
               <Flow n={1} label="Keputusan" />
               {AiPanel}
-              <div className="lg:col-span-4">{SignalMeterPanel}</div>
-              <div className="lg:col-span-4">{BiasPanel}</div>
-              <div className="lg:col-span-4">{KesimpulanPanel}</div>
+              <div className="lg:col-span-7">{PilarPanel}</div>
+              <div className="lg:col-span-5">{RiwayatPanel}</div>
               <Flow n={2} label="Konfirmasi Teknikal" />
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
               <div className="lg:col-span-4 grid grid-rows-2 gap-2.5">{MtfPanel}{MomentumPanel}</div>

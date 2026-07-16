@@ -22,6 +22,24 @@ const TRENDING_COOLDOWN = 60 * 60_000   // jangan ulang notif Trending dalam 60 
 const LAYAK_COOLDOWN = 45 * 60_000      // jangan ulang notif "layak masuk" arah sama dalam 45 mnt
 
 const CROSS_SYMBOLS = 'BTC/USD,SPY,QQQ,VIXY,XAG/USD'
+const NEWS_GUARD_MS = 30 * 60_000 // News Guard: ±30 menit di sekitar rilis USD berdampak tinggi
+
+// Cek apakah SEKARANG berada dalam jendela rilis USD High-impact (ForexFactory mingguan).
+async function newsGuardActive(now: number): Promise<{ active: boolean; event?: string; minutes?: number }> {
+  try {
+    const res = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', { cache: 'no-store', headers: { 'User-Agent': 'Mozilla/5.0 (DatalitiqTerminal)' } })
+    if (!res.ok) return { active: false }
+    const j = (await res.json()) as { title?: string; country?: string; date?: string; impact?: string }[]
+    for (const e of j) {
+      if (e.country !== 'USD' || e.impact !== 'High' || !e.date) continue
+      const t = new Date(e.date).getTime()
+      if (Number.isFinite(t) && Math.abs(now - t) <= NEWS_GUARD_MS) {
+        return { active: true, event: e.title, minutes: Math.round((t - now) / 60_000) }
+      }
+    }
+    return { active: false }
+  } catch { return { active: false } } // kalender gagal → jangan blokir alert
+}
 
 async function fetchCross(): Promise<{ spy: CrossQuote; qqq: CrossQuote; vixy: CrossQuote; btc: CrossQuote }> {
   const key = process.env.TWELVE_DATA_API_KEY
@@ -114,6 +132,13 @@ export async function GET(req: Request) {
     // #8 kalibrasi: catat kesimpulan sekarang + evaluasi kesimpulan lama (gagal-diam bila tabel belum ada)
     await logPrediction({ dir: sc.label, confidence: sc.confidence, price, regime: regime.label })
     await evaluateDuePredictions(price)
+
+    // News Guard: di sekitar rilis USD berdampak tinggi, TAHAN alert (kalibrasi tetap dicatat).
+    // State sengaja TIDAK di-update supaya rising-edge trending tetap terkirim setelah guard lewat.
+    const guard = await newsGuardActive(now)
+    if (guard.active) {
+      return NextResponse.json({ ok: true, skipped: 'news_guard', event: guard.event, minutes: guard.minutes, regime: regime.label, confidence: sc.confidence })
+    }
 
     const trending = regime.phase === 'trending'
     const layak = trending && sc.confidence >= CONF_MIN && conf.strength === 'kuat'
