@@ -21,6 +21,9 @@ declare global {
 const CLIENT_KEY = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ''
 const IS_SANDBOX = CLIENT_KEY.startsWith('SB-')
 const SNAP_URL = IS_SANDBOX ? 'https://app.sandbox.midtrans.com/snap/snap.js' : 'https://app.midtrans.com/snap/snap.js'
+// DOKU sebagai gateway online utama (redirect-based). Flag publik hanya penanda tampil,
+// kredensial asli tetap server-side.
+const DOKU_ENABLED = process.env.NEXT_PUBLIC_DOKU_ENABLED === 'true'
 
 const INCLUDED = [
   'Kesimpulan arah pasar + tingkat keyakinan real-time',
@@ -91,6 +94,28 @@ function CheckoutInner() {
         onError: () => toast.error('Pembayaran gagal. Coba lagi.'),
         onClose: () => { /* user menutup popup — tetap di review */ },
       })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan')
+      setBusy(false)
+    }
+  }
+
+  // DOKU: redirect-based. Buat order + sesi checkout di server → arahkan ke halaman DOKU.
+  async function payWithDoku() {
+    if (!userId) return
+    setBusy(true)
+    try {
+      const sb = createClient()
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { toast.error('Sesi habis, silakan login ulang'); setBusy(false); return }
+      const res = await fetch('/api/payment/doku/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ plan, months: dur.months, origin: window.location.origin }),
+      })
+      const j = await res.json()
+      if (!res.ok || !j.paymentUrl) { toast.error(j.error || 'Gagal memulai pembayaran'); setBusy(false); return }
+      window.location.href = j.paymentUrl
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan')
       setBusy(false)
@@ -185,7 +210,19 @@ function CheckoutInner() {
               <span className="text-xl font-black text-primary">{rp(base)}</span>
             </div>
 
-            {CLIENT_KEY && (
+            {DOKU_ENABLED ? (
+              <>
+                <button onClick={payWithDoku} disabled={busy || !userId}
+                  className="group w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-primary/25">
+                  {busy ? <><Loader2 size={16} className="animate-spin" /> Mengalihkan ke pembayaran…</> : <><CreditCard size={16} /> Bayar Online <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></>}
+                </button>
+                <div className="flex items-center justify-center gap-2 text-[11px] text-white/40 mt-3">
+                  <Wallet size={12} /> Kartu · QRIS · GoPay/OVO/Dana · Virtual Account · Alfamart/Indomaret
+                </div>
+                <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via DOKU · Akses aktif otomatis</p>
+                <div className="flex items-center gap-3 my-4"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] text-white/35 uppercase tracking-wider">atau</span><div className="h-px flex-1 bg-white/10" /></div>
+              </>
+            ) : CLIENT_KEY ? (
               <>
                 <button onClick={payWithMidtrans} disabled={busy || !userId || !snapReady}
                   className="group w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-primary/25">
@@ -198,7 +235,7 @@ function CheckoutInner() {
                 <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via Midtrans · Akses aktif otomatis</p>
                 <div className="flex items-center gap-3 my-4"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] text-white/35 uppercase tracking-wider">atau</span><div className="h-px flex-1 bg-white/10" /></div>
               </>
-            )}
+            ) : null}
             <button onClick={startManualTransfer} disabled={busy || !userId}
               className="group w-full flex items-center justify-center gap-2 border border-white/15 text-white/85 rounded-xl px-6 py-3.5 text-sm font-bold hover:bg-white/5 disabled:opacity-50 transition-colors">
               {busy ? <><Loader2 size={16} className="animate-spin" /> Menyiapkan pesanan…</> : <><Building2 size={16} className="text-primary" /> Transfer Bank</>}
@@ -271,7 +308,7 @@ function CheckoutInner() {
           <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.05] p-8 text-center space-y-3">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/15"><Loader2 size={30} className="text-emerald-400 animate-spin" /></div>
             <h2 className="text-xl font-black">Mengonfirmasi Pembayaran…</h2>
-            <p className="text-sm text-white/55 max-w-sm mx-auto leading-relaxed">Pembayaran kamu sedang dikonfirmasi Midtrans. Paket <strong className="text-white/85">{planName(plan)}</strong> akan <strong className="text-white/85">aktif otomatis</strong> begitu terkonfirmasi (biasanya beberapa detik untuk QRIS/e-wallet/kartu).</p>
+            <p className="text-sm text-white/55 max-w-sm mx-auto leading-relaxed">Pembayaran kamu sedang dikonfirmasi. Paket <strong className="text-white/85">{planName(plan)}</strong> akan <strong className="text-white/85">aktif otomatis</strong> begitu terkonfirmasi (biasanya beberapa detik untuk QRIS/e-wallet/kartu).</p>
             <div className="flex gap-2.5 justify-center pt-3">
               <button onClick={() => router.push('/billing')} className="text-sm font-semibold border border-white/15 text-white/80 rounded-xl px-4 py-2.5 hover:bg-white/5 transition-colors">Lihat Status Pesanan</button>
               <button onClick={() => router.push(plan === 'terminal' ? '/terminal' : '/jurnal')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity">{plan === 'terminal' ? 'Ke Terminal' : 'Ke Dashboard'}</button>
