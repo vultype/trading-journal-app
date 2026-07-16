@@ -136,6 +136,28 @@ function FeatureImagesManager() {
             <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config add column if not exists feature_images jsonb not null default {'\''}{'{}'}{'\''}::jsonb;</code>
           </div>
         )}
+        {/* Hero image — dashboard besar di homepage */}
+        <div className="rounded-xl border border-primary/30 bg-primary/[0.04] p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-bold flex items-center gap-1.5"><ImageIcon size={14} className="text-primary" /> Gambar Hero (Dashboard Besar Homepage)</p>
+            {images['hero'] && (
+              <button onClick={() => remove('hero')} className="inline-flex items-center gap-1 text-xs text-destructive hover:underline"><Trash2 size={12} /> Hapus</button>
+            )}
+          </div>
+          <div className="flex items-center justify-center rounded-lg border border-border/40 bg-black/20 overflow-hidden mb-2 aspect-[16/10] max-w-md mx-auto">
+            {images['hero']
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={images['hero']} alt="Hero" className="w-full h-full object-cover" />
+              : <span className="text-[11px] text-muted-foreground">Belum ada — pakai chart animasi bawaan</span>}
+          </div>
+          <label className={`inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold cursor-pointer transition-opacity ${busyKey === 'hero' ? 'opacity-60 pointer-events-none' : 'hover:opacity-90'}`}>
+            {busyKey === 'hero' ? <><Loader2 size={13} className="animate-spin" /> Upload…</> : <><Upload size={13} /> Upload Gambar Hero</>}
+            <input type="file" accept="image/png,image/webp,image/jpeg" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload('hero', f) }} />
+          </label>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">Screenshot dashboard terminal (landscape). <strong>Ukuran ideal 2400 × 1500 px</strong> (rasio 16:10), format WebP/PNG, maks 1,5 MB. Ditampilkan penuh dengan bar browser di atasnya.</p>
+        </div>
+
+        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 pt-2">Gambar per fitur (showcase)</p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {FEATURE_SLOTS.map(s => (
             <div key={s.key} className="rounded-xl border border-border/50 bg-muted/20 p-3">
