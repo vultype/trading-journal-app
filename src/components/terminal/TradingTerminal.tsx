@@ -399,11 +399,13 @@ function DataCard({ meta, value, prior, changePct }: { meta: CardMeta; value: nu
   if (value == null) return <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5 flex flex-col justify-center items-center min-h-[76px]"><Loader2 size={14} className="animate-spin text-white/30" /><span className="text-[9px] text-white/30 mt-1">{meta.name}</span></div>
   const chg = changePct != null ? changePct : (prior != null && prior !== 0 ? ((value - prior) / prior) * 100 : 0)
   const impact = Math.sign(chg) * meta.corr
-  const imp = impact > 0.02 ? { t: 'Bullish', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.02 ? { t: 'Bearish', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
+  // Label EKSPLISIT menyebut "Emas" — tag ini menilai dampak KE EMAS dari pergerakan aset,
+  // BUKAN arah aset itu sendiri (mis. Dolar turun bisa tetap berlabel "Bullish Emas").
+  const imp = impact > 0.02 ? { t: '↑ Bullish Emas', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.02 ? { t: '↓ Bearish Emas', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
   const up = chg >= 0
   return (
-    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5" title={`${meta.name}: ${meta.sub}. Tag = dampak ke emas dari arah pergerakan.`}>
-      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85 flex items-center gap-1">{meta.name}<span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /></span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 ${imp.c}`}>{imp.t}</span></div>
+    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5" title={`${meta.name}: ${meta.sub}. Tag = dampak ke EMAS (XAU/USD) dari arah pergerakan ${meta.name}, bukan arah ${meta.name} itu sendiri.`}>
+      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85 flex items-center gap-1">{meta.name}<span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /></span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 whitespace-nowrap ${imp.c}`}>{imp.t}</span></div>
       <div className="text-[9px] text-white/35 mb-1">{meta.sub}</div>
       <div className="flex items-end justify-between"><span className="text-sm font-black tabular-nums">{meta.prefix ?? ''}{value.toLocaleString('en-US', { minimumFractionDigits: meta.dec, maximumFractionDigits: meta.dec })}{meta.unit ?? ''}</span><span className={`text-[10px] font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{chg.toFixed(2)}%</span></div>
     </div>
