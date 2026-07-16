@@ -25,6 +25,7 @@ import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
 import { type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 import {
   TFS, clamp, atrLast, adxLabel, computeTF, riskOnScore, scores, confluence, regimeOf, usMarketOpen,
+  macroCandleImpact, macroCandleBlend,
   type TF, type Dir, type Candle, type Bias, type ReversalDir, type Reversal, type TFData, type CrossQuote,
 } from '@/lib/terminal-signal'
 
@@ -118,6 +119,36 @@ function useCrossAsset() {
     return () => { stopped = true; clearInterval(id) }
   }, [])
   return { btc: map?.['BTC/USD'] ?? null, spy: map?.SPY ?? null, qqq: map?.QQQ ?? null, vixy: map?.VIXY ?? null, uup: map?.UUP ?? null, xag: map?.['XAG/USD'] ?? null, updatedAt }
+}
+// Candle per-timeframe untuk proxy makro — UUP (dolar) & IEF (yield 10Y, harga
+// berbanding terbalik dgn yield). Dipakai supaya pilar Makro bisa dihitung per
+// M5/M15/H1 seperti Teknikal (bukan cuma arah harian FRED), dan untuk deteksi
+// "DXY vs Yield bertentangan → berpotensi ranging".
+type MacroTechFeed = { uup: Record<TF, TFData> | null; ief: Record<TF, TFData> | null }
+function useMacroCandleFeed(): MacroTechFeed {
+  const [uup, setUup] = useState<Record<TF, TFData> | null>(null)
+  const [ief, setIef] = useState<Record<TF, TFData> | null>(null)
+  useEffect(() => {
+    let stopped = false
+    const refs: Record<'UUP' | 'IEF', Partial<Record<TF, Candle[]>>> = { UUP: {}, IEF: {} }
+    async function pollOne(symbol: 'UUP' | 'IEF', tf: TF) {
+      try {
+        const arr = await (await fetch(`/api/terminal/candles?tf=${tf}&symbol=${symbol}`)).json()
+        if (stopped || !Array.isArray(arr) || !arr.length) return
+        refs[symbol][tf] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
+        const r = refs[symbol]
+        if (r.M5 && r.M15 && r.H1) {
+          const built = { M5: computeTF(r.M5), M15: computeTF(r.M15), H1: computeTF(r.H1) }
+          if (symbol === 'UUP') setUup(built); else setIef(built)
+        }
+      } catch { }
+    }
+    const pollAll = () => { for (const sym of ['UUP', 'IEF'] as const) for (const tf of TFS) pollOne(sym, tf) }
+    pollAll()
+    const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) pollAll() }, 60_000)
+    return () => { stopped = true; clearInterval(id) }
+  }, [])
+  return { uup, ief }
 }
 function useMacro() {
   const [map, setMap] = useState<Record<string, MacroPoint> | null>(null)
@@ -593,6 +624,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   const live = useLiveXauFeed()
   const cross = useCrossAsset()
   const { map: macro, updatedAt: macroAt } = useMacro()
+  const macroTech = useMacroCandleFeed()
   const { p: pivotsLive, updatedAt: pivotAt } = usePivots()
   const { cot, updatedAt: cotAt } = useCot()
   const ai = useAiAnalysis()
@@ -637,7 +669,11 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   const costOk = spread > 0 ? feed.tf.M15.atr >= 3 * spread : null
   // #6 putus feedback loop: verdict AI TIDAK diumpankan ke skor (dulu bikin AI konfirmasi diri sendiri)
   const riskOn = riskOnScore(cross, usOpen)
-  const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null)
+  // Makro per-candle (UUP=dolar, IEF=yield 10Y terbalik) — M5/M15/H1, sebanding dgn Teknikal.
+  const macroTechReady = macroTech.uup && macroTech.ief
+  const fastMacro = macroTechReady ? macroCandleBlend(macroTech.uup!, macroTech.ief!) : null
+  const macroM15 = macroTechReady ? macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15) : null
+  const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null, fastMacro)
   const conf = confluence(feed.tf)
   const dir = sc.label
   const m5 = feed.tf.M5.candles
@@ -1087,7 +1123,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   )
   const InsightStrip = (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi pasar. Ranging = sideways/squeeze, tanpa arah (main pantulan). Sedang Konfirmasi Arah = tren belum matang atau momentum berubah, arah belum pasti (tunggu). Trending Bullish/Bearish = ADX≥25 & menguat, arah terkonfirmasi (ikuti arah). Arah dari +DI vs -DI M15." />
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={macroM15?.conflict ? `${regime.desc} · ⚠️ DXY/Yield bertentangan — waspada ranging` : regime.desc} tone={macroM15?.conflict ? 'warn' : 'neutral'} info="3 kondisi pasar dari ADX/DI M15. ⚠️ muncul saat dolar (UUP) & yield (IEF) per-candle saling melawan arah — tarik-menarik makro bisa bikin tren teknikal berpotensi ranging/berbalik, meski ADX masih bilang trending." />
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
@@ -1249,10 +1285,15 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   // ── Kesimpulan MAKRO → XAU/USD: verdict + pendorong utama, dihitung dari data FRED + dolar live ──
   const makroDrivers = (() => {
     const out: { l: string; arah: 'bullish' | 'bearish' | 'netral'; d: string }[] = []
+    // Per-candle (M15, proxy UUP/IEF) — sebanding horizon waktunya dengan pilar Teknikal.
+    if (macroM15) {
+      out.push({ l: 'Dolar (candle M15, proxy UUP)', arah: macroM15.dollarImpact > 20 ? 'bullish' : macroM15.dollarImpact < -20 ? 'bearish' : 'netral', d: `dampak ${macroM15.dollarImpact >= 0 ? '+' : ''}${Math.round(macroM15.dollarImpact)}` })
+      out.push({ l: 'Yield (candle M15, proxy IEF)', arah: macroM15.yieldImpact > 20 ? 'bullish' : macroM15.yieldImpact < -20 ? 'bearish' : 'netral', d: `dampak ${macroM15.yieldImpact >= 0 ? '+' : ''}${Math.round(macroM15.yieldImpact)}` })
+    }
     const dLive = cross.uup?.changePct
-    if (dLive != null) out.push({ l: 'Dolar (live)', arah: dLive > 0.05 ? 'bearish' : dLive < -0.05 ? 'bullish' : 'netral', d: `UUP ${dLive >= 0 ? '+' : ''}${dLive.toFixed(2)}% hari ini` })
+    if (dLive != null) out.push({ l: 'Dolar (live, harian)', arah: dLive > 0.05 ? 'bearish' : dLive < -0.05 ? 'bullish' : 'netral', d: `UUP ${dLive >= 0 ? '+' : ''}${dLive.toFixed(2)}% hari ini` })
     const dirOf = (k: string, invert = true) => { const p = macro?.[k]; if (!p) return null; const up = p.value > p.prior; return { up, arah: (invert ? (up ? 'bearish' : 'bullish') : (up ? 'bullish' : 'bearish')) as 'bullish' | 'bearish' } }
-    const y = dirOf('us10y'); if (y && macro?.us10y) out.push({ l: 'Yield 10Y', arah: y.arah, d: `${macro.us10y.value}% (${y.up ? 'naik' : 'turun'})` })
+    const y = dirOf('us10y'); if (y && macro?.us10y) out.push({ l: 'Yield 10Y (FRED, harian)', arah: y.arah, d: `${macro.us10y.value}% (${y.up ? 'naik' : 'turun'})` })
     const r = dirOf('realyield'); if (r && macro?.realyield) out.push({ l: 'Real Yield', arah: r.arah, d: `${macro.realyield.value}% (${r.up ? 'naik' : 'turun'})` })
     const c = dirOf('cpi', false); if (c && macro?.cpi) out.push({ l: 'Inflasi CPI', arah: c.up ? 'bullish' : 'bearish', d: `${macro.cpi.value}% YoY (${c.up ? 'naik' : 'mereda'})` })
     if (macro?.fedfunds) out.push({ l: 'Fed Funds', arah: 'netral', d: `${macro.fedfunds.value}% — arah kebijakan jadi kunci` })
@@ -1260,7 +1301,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   })()
   const makroVerdict = sc.macro > 15 ? { t: 'Bullish untuk Emas', c: '#34d399' } : sc.macro < -15 ? { t: 'Bearish untuk Emas', c: '#f87171' } : { t: 'Netral untuk Emas', c: '#9ca3af' }
   const MakroKesimpulanPanel = (
-    <Panel title="Kesimpulan Makro → XAU/USD" icon={Lightbulb} accent={makroVerdict.c} info="Sintesis otomatis seluruh data makro (dolar live, yield, inflasi, Fed) menjadi satu kesimpulan dampak ke emas. Skor dari pilar Makro di Signal Meter.">
+    <Panel title="Kesimpulan Makro → XAU/USD" icon={Lightbulb} accent={makroVerdict.c} info="Sintesis otomatis seluruh data makro (dolar & yield per-candle M5/M15/H1, inflasi, Fed) menjadi satu kesimpulan dampak ke emas. Skor dari pilar Makro di Signal Meter.">
       <div className="flex items-center gap-4 mb-4">
         <div className="relative w-16 h-16 shrink-0">
           <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" /><circle cx="18" cy="18" r="15" fill="none" stroke={makroVerdict.c} strokeWidth="3.5" strokeDasharray={`${Math.abs(sc.macro) / 100 * 94} 94`} strokeLinecap="round" /></svg>
@@ -1271,6 +1312,12 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
           <p className="text-[11px] text-white/45 mt-1.5">Skor pilar makro {sc.macro >= 0 ? '+' : ''}{Math.round(sc.macro)} dari −100…+100</p>
         </div>
       </div>
+      {macroM15?.conflict && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2 mb-3">
+          <span className="text-amber-400 text-xs mt-0.5">⚠</span>
+          <p className="text-[11px] text-amber-200/90 leading-snug">Dolar & Yield per-candle (M15) sedang <b>berlawanan arah</b> — tarik-menarik makro, berpotensi bikin harga ranging meski Teknikal menunjukkan tren.</p>
+        </div>
+      )}
       <div className="space-y-1.5">
         {makroDrivers.map(d => (
           <div key={d.l} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">

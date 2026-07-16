@@ -44,12 +44,14 @@ export async function fetchDailyPivots(): Promise<Pivots | null> {
   return { P, R1: 2 * P - L, R2: P + (H - L), S1: 2 * P - H, S2: P - (H - L) }
 }
 
-export async function fetchCandles(tf: TF, outputsize = 150): Promise<TDCandle[]> {
+// symbol default XAU/USD (dipakai chart harga terminal); bisa diisi simbol lain
+// (mis. 'UUP', 'IEF') untuk candle proxy makro per-timeframe.
+export async function fetchCandles(tf: TF, symbol: string = SYMBOL, outputsize = 150): Promise<TDCandle[]> {
   const interval = TD_INTERVAL[tf]
   // timezone=UTC WAJIB: tanpa ini Twelve Data memakai timezone exchange/server (bukan UTC),
   // padahal parser di bawah menganggap datetime sebagai UTC — bikin jendela sesi,
   // anchor VWAP harian & guard pasar-tutup bergeser beberapa jam.
-  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(SYMBOL)}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${key()}`, { cache: 'no-store' })
+  const res = await fetch(`${BASE}/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${key()}`, { cache: 'no-store' })
   const j = await res.json()
   if (j.status === 'error' || j.code) throw new Error(j.message || 'Twelve Data time_series error')
   const values = (j.values ?? []) as { datetime: string; open: string; high: string; low: string; close: string }[]

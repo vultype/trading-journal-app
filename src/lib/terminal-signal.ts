@@ -159,11 +159,19 @@ export function riskOnScore(cross: { spy: CrossQuote; qqq: CrossQuote; vixy: Cro
 }
 // dollarLive = %change UUP (proxy dolar) real-time. Bila ada, arah dolar intraday
 // pakai UUP (bergerak live), FRED cuma untuk yield/real-yield yang lebih lambat.
-export function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, riskOn: number, dollarLive?: number | null) {
+// fastMacro = dampak-ke-emas per-candle dari proxy UUP (dolar) & IEF (yield 10Y,
+// harga terbalik dgn yield), masing² -100..100, dihitung dari M5/M15/H1 (opsional
+// — dashboard mengisinya, cron-alert yang belum punya candle proxy ini tetap
+// jalan dgn fallback FRED harian di bawah).
+export function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint> | null, newsScore: number | null, riskOn: number, dollarLive?: number | null, fastMacro?: { dollarImpact: number; yieldImpact: number } | null) {
   const tech = clamp((tf.M5.bias.score + tf.M15.bias.score + tf.H1.bias.score) / 9, -1, 1) * 100
   const dir = (k: string) => { const p = macro?.[k]; return p ? Math.sign(p.value - p.prior) : 0 }
   const dollarDir = dollarLive != null && Math.abs(dollarLive) > 0.02 ? Math.sign(dollarLive) : dir('dollar')
-  const macroScore = clamp(-(dollarDir * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
+  // Real yield (TIPS) tak punya proxy candle yang baik → tetap dari FRED sbg konteks lebih lambat,
+  // walau fastMacro (dolar+yield nominal per-candle) tersedia.
+  const macroScore = fastMacro
+    ? clamp(fastMacro.dollarImpact * 0.45 + fastMacro.yieldImpact * 0.35 + dir('realyield') * 100 * 0.20, -100, 100)
+    : clamp(-(dollarDir * 0.4 + dir('us10y') * 0.35 + dir('realyield') * 0.25), -1, 1) * 100
   const senti = newsScore != null ? clamp(newsScore / 100 * 0.7 + riskOn * 0.3, -1, 1) * 100 : riskOn * 100
   const overall = macroScore * 0.3 + tech * 0.45 + senti * 0.25
   const label: Dir = overall > 20 ? 'BULLISH' : overall < -20 ? 'BEARISH' : 'NETRAL'
@@ -172,6 +180,24 @@ export function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint>
   const mag = (Math.abs(macroScore) + Math.abs(tech) + Math.abs(senti)) / 3
   const confidence = Math.round(clamp((agree / 3) * 0.6 + (mag / 100) * 0.4, 0, 1) * 100)
   return { macro: macroScore, tech, senti, overall, label, confidence }
+}
+// ─────────────────────────── makro per-candle: DXY (UUP) & Yield (IEF, terbalik) ───────────────────────────
+// Dampak-ke-emas per timeframe, dari bias.score TFData (rentang kira-kira -3..+3 → diskalakan -100..100).
+// UUP naik = dolar menguat → BEARISH emas (dibalik). IEF naik = harga obligasi naik = yield turun → BULLISH emas (searah).
+const tfImpact = (d: TFData, invert: boolean) => clamp(d.bias.score / 3, -1, 1) * 100 * (invert ? -1 : 1)
+export type MacroCandleTF = { dollarImpact: number; yieldImpact: number; conflict: boolean }
+export function macroCandleImpact(uup: TFData, ief: TFData): MacroCandleTF {
+  const dollarImpact = tfImpact(uup, true)
+  const yieldImpact = tfImpact(ief, false)
+  // Konflik: kedua sinyal cukup kuat (bukan netral, >20) TAPI berlawanan arah → tarik-menarik,
+  // berpotensi ranging meski Regime (ADX) teknikal sedang bilang trending.
+  const conflict = Math.abs(dollarImpact) > 20 && Math.abs(yieldImpact) > 20 && Math.sign(dollarImpact) !== Math.sign(yieldImpact)
+  return { dollarImpact, yieldImpact, conflict }
+}
+// Rata-rata M5/M15/H1 → dipakai sebagai fastMacro di scores() (konsisten dgn cara `tech` dirata-ratakan).
+export function macroCandleBlend(uup: Record<TF, TFData>, ief: Record<TF, TFData>): { dollarImpact: number; yieldImpact: number } {
+  const avg = (k: 'dollarImpact' | 'yieldImpact') => TFS.reduce((s, t) => s + macroCandleImpact(uup[t], ief[t])[k], 0) / TFS.length
+  return { dollarImpact: avg('dollarImpact'), yieldImpact: avg('yieldImpact') }
 }
 export function confluence(tf: Record<TF, TFData>) {
   const labels = TFS.map(t => tf[t].bias.label)
