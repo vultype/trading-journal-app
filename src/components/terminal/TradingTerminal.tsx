@@ -647,6 +647,17 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   const adx = feed.tf.M15.adx, adxL = adxLabel(adx), trendUp = feed.tf.M15.plusDI >= feed.tf.M15.minusDI
   const confPct = Math.round((sc.overall + 100) / 2)
   const strongestPillar = Math.abs(sc.macro) >= Math.abs(sc.tech) && Math.abs(sc.macro) >= Math.abs(sc.senti) ? 'Makro' : Math.abs(sc.tech) >= Math.abs(sc.senti) ? 'Teknikal' : 'Sentimen'
+  // Konflik pilar: 2 pilar TERKUAT (bukan sekadar sama tanda) berlawanan arah & sama-sama
+  // bukan netral (>20). Confidence bisa tetap tinggi murni karena magnitude besar, meski
+  // pilar-pilarnya sebetulnya saling melawan — jangan sampai teks bilang "sejalan" saat ini.
+  const pillarsRanked = [{ n: 'Makro', s: sc.macro }, { n: 'Teknikal', s: sc.tech }, { n: 'Sentimen', s: sc.senti }].sort((a, b) => Math.abs(b.s) - Math.abs(a.s))
+  const [pTop, pSecond] = pillarsRanked
+  const pillarConflict = Math.abs(pTop.s) > 20 && Math.abs(pSecond.s) > 20 && Math.sign(pTop.s) !== Math.sign(pSecond.s)
+  const agreementText = pillarConflict
+    ? { label: 'Kuat (tarik-menarik)', desc: `${pTop.n} & ${pSecond.n} berlawanan ekstrem — tunggu konfirmasi.`, cls: 'text-amber-400' }
+    : sc.confidence > 66 ? { label: 'Kuat', desc: 'Ketiga pilar cenderung sejalan.', cls: 'text-emerald-400' }
+    : sc.confidence > 40 ? { label: 'Sedang', desc: 'Sebagian pilar sejalan.', cls: 'text-amber-400' }
+    : { label: 'Lemah', desc: 'Pilar saling bertentangan — hati-hati.', cls: 'text-red-400' }
 
   // Zona Support/Resistance untuk SCALPING — band di sekitar level pivot, hanya yang DEKAT harga.
   // Zona S/R untuk SCALPING — utamakan swing intraday M5 & M15 (paling DEKAT harga),
@@ -741,7 +752,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
           <span className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-sm font-black tabular-nums leading-none">{sc.confidence}%</span><span className="text-[7px] text-white/40 uppercase">yakin</span></span>
         </div>
         <div className="flex-1">
-          <p className="text-[11px] text-white/55 leading-snug">Kesepakatan sinyal: <b className={sc.confidence > 66 ? 'text-emerald-400' : sc.confidence > 40 ? 'text-amber-400' : 'text-red-400'}>{sc.confidence > 66 ? 'Kuat' : sc.confidence > 40 ? 'Sedang' : 'Lemah'}</b>. {sc.confidence > 66 ? 'Ketiga pilar cenderung sejalan.' : sc.confidence > 40 ? 'Sebagian pilar sejalan.' : 'Pilar saling bertentangan — hati-hati.'}</p>
+          <p className="text-[11px] text-white/55 leading-snug">Kesepakatan sinyal: <b className={agreementText.cls}>{agreementText.label}</b>. {agreementText.desc}</p>
         </div>
       </div>
       <div className="space-y-2.5">
@@ -762,7 +773,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
             <PillarRow label="Teknikal (Chart)" score={sc.tech} desc="Konfluensi M5/M15/H1 · tren · momentum" />
             <PillarRow label="Sentimen (Berita/Pasar)" score={sc.senti} desc="VIX, saham, BTC · risk-on/off" />
           </div>
-          <p className="text-[10px] text-white/50 leading-snug mt-3 pt-2 border-t border-white/5">Kesepakatan sinyal: <b className={sc.confidence > 66 ? 'text-emerald-400' : sc.confidence > 40 ? 'text-amber-400' : 'text-red-400'}>{sc.confidence > 66 ? 'Kuat' : sc.confidence > 40 ? 'Sedang' : 'Lemah'}</b> · Pendorong utama: <b className="text-white/80">{strongestPillar}</b></p>
+          <p className="text-[10px] text-white/50 leading-snug mt-3 pt-2 border-t border-white/5">Kesepakatan sinyal: <b className={agreementText.cls}>{agreementText.label}</b> · {agreementText.desc}</p>
         </div>
         <div className="flex flex-col">
           <ul className="space-y-1 mb-2">{kLines.map((l, i) => <li key={i} className="text-[10px] text-white/65 leading-snug flex gap-1.5"><span className="text-primary mt-0.5">•</span>{l}</li>)}</ul>
