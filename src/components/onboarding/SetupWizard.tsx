@@ -46,7 +46,7 @@ export function SetupWizard() {
       addAccount({ name: finalName, broker: broker.trim() || undefined, currency, initial_balance: init })
     }
 
-    router.push('/dashboard')
+    router.push('/jurnal')
   }
 
   const canNext =

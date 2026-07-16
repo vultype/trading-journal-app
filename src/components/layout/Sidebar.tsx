@@ -22,7 +22,7 @@ import { BrandLogo } from '@/components/layout/BrandLogo'
 type NavItem = { href: string; label: string; icon: React.ElementType; children?: NavItem[] }
 type NavGroup = { label: string; items: NavItem[] }
 
-const dashboard: NavItem  = { href: '/dashboard',    label: 'Dashboard', icon: LayoutDashboard }
+const dashboard: NavItem  = { href: '/jurnal',       label: 'Dashboard', icon: LayoutDashboard }
 const trades: NavItem     = { href: '/trades',       label: 'Trade',     icon: TrendingUp }
 const simulator: NavItem  = { href: '/simulator',    label: 'Simulator', icon: FlaskConical }
 const finance: NavItem    = { href: '/finance', label: 'Keuangan', icon: Wallet, children: [
@@ -40,7 +40,7 @@ const terminalItem: NavItem = { href: '/terminal',   label: 'Terminal XAU', icon
 const hubItem: NavItem    = { href: '/hub',          label: 'Ganti Tools', icon: Grid2x2 }
 
 // Menu yang tetap terbuka sebelum user mencatat trade pertama
-export const ALWAYS_UNLOCKED = ['/dashboard', '/panduan']
+export const ALWAYS_UNLOCKED = ['/jurnal', '/panduan']
 
 function useGroups(): NavGroup[] {
   const { isAdmin } = useStore()
@@ -178,7 +178,7 @@ export function BottomNav() {
   const { isLocked } = useMenuLock()
 
   // 4 utama untuk bar bawah; sisanya masuk sheet "Lainnya"
-  const primaryHrefs = ['/dashboard', '/trades', '/analisis', '/finance']
+  const primaryHrefs = ['/jurnal', '/trades', '/analisis', '/finance']
   const primary = primaryHrefs.map(h => flat.find(n => n.href === h)!).filter(Boolean)
   const more    = flat.filter(n => !primaryHrefs.includes(n.href))
 

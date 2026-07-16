@@ -180,7 +180,7 @@ export default function DashboardPage() {
   const onboardSteps = [
     { done: !!settings.displayName,      label: 'Lengkapi profil',       href: '/settings' },
     { done: accounts.length > 0,         label: 'Tambah akun broker',    href: '/settings' },
-    { done: trades.length > 0,           label: 'Catat trade pertama',   href: '/dashboard' },
+    { done: trades.length > 0,           label: 'Catat trade pertama',   href: '/jurnal' },
     { done: (settings.targetBulanan ?? 0) > 0, label: 'Set target bulanan', href: '/settings' },
     { done: journalNotes.length > 0,     label: 'Tulis jurnal pertama',  href: '/journal' },
   ]

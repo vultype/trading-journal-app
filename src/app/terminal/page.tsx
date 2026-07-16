@@ -34,7 +34,7 @@ export default function TerminalPage() {
         <p className="text-sm text-white/50 max-w-sm">Datalitiq AI Terminal memerlukan langganan aktif. Setelah pembayaran diverifikasi, akses terbuka otomatis.</p>
         <div className="mt-2 flex items-center gap-2">
           <button onClick={() => router.replace('/checkout?plan=terminal&months=1')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2">Langganan Sekarang</button>
-          <button onClick={() => router.replace('/dashboard')} className="text-sm font-semibold bg-white/10 text-white rounded-lg px-4 py-2">Ke Dashboard</button>
+          <button onClick={() => router.replace('/jurnal')} className="text-sm font-semibold bg-white/10 text-white rounded-lg px-4 py-2">Ke Dashboard</button>
         </div>
       </div>
     )

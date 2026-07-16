@@ -103,7 +103,7 @@ export default function AdminPage() {
   const [journalCount, setJournalCount] = useState(0)
 
   useEffect(() => {
-    if (!storeLoading && !isAdmin) router.replace('/dashboard')
+    if (!storeLoading && !isAdmin) router.replace('/jurnal')
   }, [storeLoading, isAdmin, router])
 
   async function load() {

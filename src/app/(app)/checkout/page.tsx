@@ -157,7 +157,7 @@ function CheckoutInner() {
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">Terima kasih! Pesanan kamu tercatat. Paket <strong>{planName(plan)}</strong> akan aktif setelah admin memverifikasi transfer (maks. 1×24 jam).</p>
             <div className="flex gap-2 justify-center pt-2">
               <Button variant="outline" onClick={() => router.push('/billing')}>Lihat Status</Button>
-              <Button onClick={() => router.push('/dashboard')}>Ke Dashboard</Button>
+              <Button onClick={() => router.push('/jurnal')}>Ke Dashboard</Button>
             </div>
           </CardContent>
         </Card>

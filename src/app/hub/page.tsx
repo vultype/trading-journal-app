@@ -108,7 +108,7 @@ export default function HubPage() {
               ))}
             </div>
             <div className="mt-auto pt-6">
-              <Link href="/dashboard" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
+              <Link href="/jurnal" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
                 Buka Jurnal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </div>

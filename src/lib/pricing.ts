@@ -24,7 +24,7 @@ export const BANK = {
   name: 'Mandiri',
   number: '1370098765432',
   holder: 'PT DATALITIQ INDONESIA',
-  wa: '6281234567890',
+  wa: '6281212124512',
 }
 
 // Kode unik 3 digit (100–999) untuk identifikasi transfer

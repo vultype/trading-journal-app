@@ -586,15 +586,21 @@ export function TerminalLanding() {
             {logoUrl ? <BrandLogo url={logoUrl} /> : <span className="text-lg font-black tracking-tight">Datalitiq</span>}
             <span className="text-xs text-white/30 hidden sm:inline">· Analisa pasar emas berbasis AI</span>
           </div>
-          <div className="flex items-center gap-6 text-sm text-white/40">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/40">
             <a href="#fitur" className="hover:text-white transition-colors">Fitur</a>
             <a href="#harga" className="hover:text-white transition-colors">Harga</a>
             <Link href="/jurnal-trading-tools" className="hover:text-white transition-colors">Jurnal Tools</Link>
             <Link href="/login" className="hover:text-white transition-colors">Masuk</Link>
           </div>
         </div>
+        <div className="max-w-6xl mx-auto px-5 pb-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs text-white/30 border-t border-white/5 pt-6">
+          <Link href="/syarat-ketentuan" className="hover:text-white transition-colors">Syarat & Ketentuan</Link>
+          <Link href="/kebijakan-refund" className="hover:text-white transition-colors">Kebijakan Refund</Link>
+          <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
+          <Link href="/kontak" className="hover:text-white transition-colors">Kontak</Link>
+        </div>
         <p className="text-center text-[11px] text-white/25 pb-2 px-5 max-w-3xl mx-auto leading-relaxed">Datalitiq bukan penasihat keuangan berizin. Seluruh analisa adalah alat bantu, bukan rekomendasi investasi. Trading mengandung risiko.</p>
-        <p className="text-center text-xs text-white/20 pb-6">© {new Date().getFullYear()} Datalitiq. All rights reserved.</p>
+        <p className="text-center text-xs text-white/20 pb-6">© {new Date().getFullYear()} PT Datalitiq Indonesia. All rights reserved.</p>
       </footer>
 
       <style jsx global>{`

@@ -438,7 +438,7 @@ export function LandingPage() {
 
   function switchLang(l: Lang) { setLang(l); if (typeof window !== 'undefined') localStorage.setItem('dtq_lang', l) }
 
-  const primaryHref = loggedIn ? '/dashboard' : '/login'
+  const primaryHref = loggedIn ? '/jurnal' : '/login'
   const checkoutHref = (plan: string, months: number) => {
     const target = `/checkout?plan=${plan}&months=${months}`
     return loggedIn ? target : `/login?next=${encodeURIComponent(target)}`
@@ -483,7 +483,7 @@ export function LandingPage() {
             </h1>
             <p className="text-base text-white/60 mt-5 leading-relaxed max-w-lg">{t.hero.sub}</p>
             <div className="flex flex-wrap items-center gap-3 mt-7">
-              <Link href={loggedIn ? '/dashboard' : checkoutHref('standar', 1)} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
+              <Link href={loggedIn ? '/jurnal' : checkoutHref('standar', 1)} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
                 {loggedIn ? t.nav.dash : t.hero.cta1} <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <a href="#features" className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors">{t.hero.cta2}</a>
@@ -733,7 +733,7 @@ export function LandingPage() {
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
             <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">{t.finalTitle}</h2>
             <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">{t.finalSub}</p>
-            <Link href={loggedIn ? '/dashboard' : checkoutHref('standar', 1)} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
+            <Link href={loggedIn ? '/jurnal' : checkoutHref('standar', 1)} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? t.nav.dash : t.finalCta} <ArrowRight size={16} />
             </Link>
           </div>
@@ -747,13 +747,19 @@ export function LandingPage() {
             {logoUrl ? <BrandLogo url={logoUrl} /> : <span className="text-lg font-black tracking-tight">Datalitiq</span>}
             <span className="text-xs text-white/30 hidden sm:inline">· {t.footerTagline}</span>
           </div>
-          <div className="flex items-center gap-6 text-sm text-white/40">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/40">
             <a href="#features" className="hover:text-white transition-colors">{t.nav.features}</a>
             <a href="#pricing" className="hover:text-white transition-colors">{t.nav.pricing}</a>
             <Link href="/login" className="hover:text-white transition-colors">{t.nav.login}</Link>
           </div>
         </div>
-        <p className="text-center text-xs text-white/20 pb-6">© {new Date().getFullYear()} Datalitiq. All rights reserved.</p>
+        <div className="max-w-6xl mx-auto px-5 pb-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs text-white/30 border-t border-white/5 pt-6">
+          <Link href="/syarat-ketentuan" className="hover:text-white transition-colors">Syarat & Ketentuan</Link>
+          <Link href="/kebijakan-refund" className="hover:text-white transition-colors">Kebijakan Refund</Link>
+          <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
+          <Link href="/kontak" className="hover:text-white transition-colors">Kontak</Link>
+        </div>
+        <p className="text-center text-xs text-white/20 pb-6">© {new Date().getFullYear()} PT Datalitiq Indonesia. All rights reserved.</p>
       </footer>
 
       <style jsx global>{`
