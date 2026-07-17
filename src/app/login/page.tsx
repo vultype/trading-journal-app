@@ -7,12 +7,23 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { BrandLogo } from '@/components/layout/BrandLogo'
-import { TrendingUp, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react'
+import { TrendingUp, Lock, Mail, AlertCircle, Loader2, User } from 'lucide-react'
+
+// Origin kanonik untuk redirect OAuth/konfirmasi email. Pakai NEXT_PUBLIC_SITE_URL
+// (mis. https://www.datalitiq.com) bila diset agar TIDAK mendarat di domain Vercel
+// walau user mengakses lewat URL Vercel. Fallback ke origin browser (dev/lokal).
+function siteOrigin() {
+  const env = process.env.NEXT_PUBLIC_SITE_URL
+  if (env) return env.replace(/\/$/, '')
+  return typeof window !== 'undefined' ? window.location.origin : ''
+}
 
 export default function LoginPage() {
   const router   = useRouter()
+  const [name,   setName]   = useState('')
   const [email,  setEmail]  = useState('')
   const [pass,   setPass]   = useState('')
+  const [pass2,  setPass2]  = useState('')
   const [mode,   setMode]   = useState<'signin' | 'signup'>('signin')
   const [error,  setError]  = useState('')
   const [busy,   setBusy]   = useState(false)
@@ -37,7 +48,7 @@ export default function LoginPage() {
     const sb = createClient()
     const { error: err } = await sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextTarget())}` },
+      options: { redirectTo: `${siteOrigin()}/auth/callback?next=${encodeURIComponent(nextTarget())}` },
     })
     if (err) { setError(err.message); setBusy(false) }
     // sukses -> browser redirect ke Google, tidak ada lagi yang perlu dilakukan di sini
@@ -45,13 +56,23 @@ export default function LoginPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setBusy(true); setError('')
+    setError('')
 
+    if (mode === 'signup') {
+      if (!name.trim()) { setError('Nama tidak boleh kosong.'); return }
+      if (pass.length < 6) { setError('Password minimal 6 karakter.'); return }
+      if (pass !== pass2) { setError('Konfirmasi password tidak cocok.'); return }
+    }
+
+    setBusy(true)
     try {
       const sb = createClient()
 
       if (mode === 'signup') {
-        const { data, error: err } = await sb.auth.signUp({ email, password: pass })
+        const { data, error: err } = await sb.auth.signUp({
+          email, password: pass,
+          options: { data: { full_name: name.trim() }, emailRedirectTo: `${siteOrigin()}/auth/callback` },
+        })
         if (err) { setError(err.message); setBusy(false); return }
         if (data.session) {
           router.replace(nextTarget())
@@ -127,6 +148,20 @@ export default function LoginPage() {
             </div>
 
             <form onSubmit={submit} className="space-y-4">
+              {mode === 'signup' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nama</Label>
+                  <div className="relative">
+                    <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"/>
+                    <Input
+                      type="text" placeholder="Nama kamu" required
+                      value={name} onChange={e => setName(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label className="text-xs">Email</Label>
                 <div className="relative">
@@ -153,6 +188,23 @@ export default function LoginPage() {
                   <p className="text-[10px] text-muted-foreground">Minimal 6 karakter</p>
                 )}
               </div>
+
+              {mode === 'signup' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Konfirmasi Password</Label>
+                  <div className="relative">
+                    <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"/>
+                    <Input
+                      type="password" placeholder="••••••••" required minLength={6}
+                      value={pass2} onChange={e => setPass2(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  {pass2 && pass !== pass2 && (
+                    <p className="text-[10px] text-red-400">Password tidak cocok</p>
+                  )}
+                </div>
+              )}
 
               {error && (
                 <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
