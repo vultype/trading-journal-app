@@ -6,7 +6,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { DetailLineChart, DetailMultiLineChart, Row, Stat, fmtDate, fmtDateShort, type ChartPoint } from './DetailChart'
-import { Loader2, ExternalLink } from 'lucide-react'
+import { Loader2, ExternalLink, TrendingUp, TrendingDown, Minus, ArrowRight } from 'lucide-react'
 
 type MacroPoint = { value: number; prior: number }
 export type MacroMap = Record<string, MacroPoint & { key?: string; date?: string; history?: number[] }> | null
@@ -168,31 +168,155 @@ function IndicatorCard({ label, type, id, current, href, color = '#60a5fa' }: { 
   )
 }
 
-// ── Section: Lintas Aset ──
-export function LintasAsetSection({ macro, cross }: { macro: MacroMap; cross: CrossData }) {
-  const num = (q: Q, dec = 2) => q ? q.price.toFixed(dec) : '—'
+// ── util: fetch banyak history sekali dgn CONCURRENCY terbatas (cegah rate-limit
+// Twelve Data yg bikin sebagian chart kosong) + dedupe (1 simbol = 1 request) ──
+async function fetchMany(defs: { key: string; type: 'fred' | 'mkt'; id: string }[], concurrency = 3): Promise<Record<string, Series>> {
+  const out: Record<string, Series> = {}
+  const queue = [...defs]
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    for (;;) {
+      const d = queue.shift(); if (!d) break
+      out[d.key] = await fetchHistory(d.type, d.id, 120)
+    }
+  }))
+  return out
+}
+
+// Bacaan interpretasi tiap aset ke EMAS (tone + kalimat singkat).
+type Reading = { tone: 'bull' | 'bear' | 'neutral'; label: string; note: string }
+function ReadingBadge({ r }: { r: Reading }) {
+  const c = r.tone === 'bull' ? 'bg-emerald-500/12 text-emerald-400 border-emerald-500/25' : r.tone === 'bear' ? 'bg-red-500/12 text-red-400 border-red-500/25' : 'bg-white/[0.05] text-white/55 border-white/10'
+  const Ic = r.tone === 'bull' ? TrendingUp : r.tone === 'bear' ? TrendingDown : Minus
+  return <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${c}`}><Ic size={10} /> {r.label}</span>
+}
+
+const upDown = (chg: number, upBear = true): Reading['tone'] => Math.abs(chg) < 0.02 ? 'neutral' : (chg > 0) === upBear ? 'bear' : 'bull'
+
+// ── Kartu aset UTAMA (featured): chart besar + bacaan + narasi (variasi layout) ──
+function FeaturedAsset({ label, sub, current, chg, data, color, href, reading, body }: {
+  label: string; sub: string; current: string; chg?: string; data: Series | undefined; color: string; href: string; reading: Reading; body: string
+}) {
+  const cd: ChartPoint[] | null = data && data.length ? data.map(p => ({ label: fmtDateShort(p.date), value: p.value })) : null
   return (
-    <div className="space-y-4">
-      <MacroComparisonChart title="Perbandingan Lintas Aset" note="XAU/USD vs dolar, VIX, saham & Bitcoin — cari mana yang searah/berlawanan dengan emas."
-        defs={[
-          { name: 'XAU/USD', color: '#fbbf24', main: true, type: 'mkt', id: 'XAU/USD' },
-          { name: 'DXY', color: '#60a5fa', default: true, type: 'fred', id: 'dollar' },
-          { name: 'VIX', color: '#a78bfa', type: 'mkt', id: 'VIXY' },
-          { name: 'S&P 500', color: '#22d3ee', default: true, type: 'mkt', id: 'SPY' },
-          { name: 'Bitcoin', color: '#fb923c', type: 'mkt', id: 'BTC/USD' },
-          { name: 'Silver', color: '#e2e8f0', type: 'mkt', id: 'XAG/USD' },
-        ]} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <IndicatorCard label="Indeks Dolar (DXY)" type="fred" id="dollar" current={macro?.dollar ? macro.dollar.value.toFixed(2) : '—'} href="/terminal/data/macro/dollar" color="#60a5fa" />
-        <IndicatorCard label="Yield 10Y" type="fred" id="us10y" current={macro?.us10y ? `${macro.us10y.value}%` : '—'} href="/terminal/data/macro/us10y" color="#f472b6" />
-        <IndicatorCard label="Yield 2Y" type="fred" id="us02y" current={macro?.us02y ? `${macro.us02y.value}%` : '—'} href="/terminal/data/macro/us02y" color="#f472b6" />
-        <IndicatorCard label="Real Yield 10Y" type="fred" id="realyield" current={macro?.realyield ? `${macro.realyield.value}%` : '—'} href="/terminal/data/macro/realyield" color="#34d399" />
-        <IndicatorCard label="VIX (Ketakutan)" type="mkt" id="VIXY" current={num(cross?.vixy ?? null)} href="/terminal/data/market/vix" color="#a78bfa" />
-        <IndicatorCard label="S&P 500" type="mkt" id="SPY" current={num(cross?.spy ?? null)} href="/terminal/data/market/spx" color="#22d3ee" />
-        <IndicatorCard label="Nasdaq 100" type="mkt" id="QQQ" current={num(cross?.qqq ?? null)} href="/terminal/data/market/ndx" color="#22d3ee" />
-        <IndicatorCard label="Bitcoin" type="mkt" id="BTC/USD" current={cross?.btc ? Math.round(cross.btc.price).toLocaleString('en-US') : '—'} href="/terminal/data/market/btc" color="#fb923c" />
-        <IndicatorCard label="Perak (Silver)" type="mkt" id="XAG/USD" current={num(cross?.xag ?? null, 3)} href="/terminal/data/market/xag" color="#e2e8f0" />
+    <div className="rounded-2xl border border-white/[0.08] bg-[#0b100e] overflow-hidden grid md:grid-cols-2">
+      <div className="p-5 flex flex-col">
+        <div className="flex items-center justify-between gap-2 mb-1"><p className="text-[13px] font-black">{label}</p><ReadingBadge r={reading} /></div>
+        <p className="text-[10px] text-white/40 mb-3">{sub}</p>
+        <div className="flex items-baseline gap-2 mb-3">
+          <span className="text-2xl font-black tabular-nums">{current}</span>
+          {chg && <span className="text-xs font-bold tabular-nums text-white/50">{chg}</span>}
+        </div>
+        <p className="text-[12px] text-white/60 leading-relaxed flex-1">{body}</p>
+        <p className="text-[11px] font-semibold mt-3" style={{ color: reading.tone === 'bull' ? '#34d399' : reading.tone === 'bear' ? '#f87171' : 'rgba(255,255,255,0.6)' }}>→ {reading.note}</p>
+        <Link href={href} className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline mt-3">Detail & tren panjang <ArrowRight size={12} /></Link>
       </div>
+      <div className="relative p-3 border-t md:border-t-0 md:border-l border-white/[0.06] flex items-center" style={{ background: `linear-gradient(180deg, ${color}0a, transparent)` }}>
+        {cd ? <div className="w-full"><DetailLineChart data={cd} height={190} /></div> : <div className="w-full h-[190px] flex items-center justify-center text-[11px] text-white/25">Memuat chart…</div>}
+      </div>
+    </div>
+  )
+}
+
+// ── Kartu aset RINGKAS: chart kecil + bacaan (variasi) ──
+function MiniAsset({ label, current, data, href, reading }: { label: string; current: string; data: Series | undefined; href: string; reading: Reading }) {
+  const cd: ChartPoint[] | null = data && data.length ? data.map(p => ({ label: fmtDateShort(p.date), value: p.value })) : null
+  return (
+    <Link href={href} className="group rounded-2xl border border-white/[0.07] bg-[#0b100e] p-4 hover:border-primary/25 transition-colors block">
+      <div className="flex items-center justify-between mb-1"><p className="text-[12px] font-bold text-white/80">{label}</p><ExternalLink size={12} className="text-white/25 group-hover:text-primary transition-colors" /></div>
+      <div className="flex items-center justify-between gap-2 mb-2"><span className="text-lg font-black tabular-nums">{current}</span><ReadingBadge r={reading} /></div>
+      {cd ? <DetailLineChart data={cd} height={80} /> : <div className="h-[80px] flex items-center justify-center text-[10px] text-white/25">Memuat…</div>}
+      <p className="text-[10px] text-white/40 leading-snug mt-2">{reading.note}</p>
+    </Link>
+  )
+}
+
+function GroupHead({ emoji, title, intro }: { emoji: string; title: string; intro: string }) {
+  return (
+    <div className="pt-1">
+      <h3 className="text-base font-black flex items-center gap-2"><span className="text-lg">{emoji}</span> {title}</h3>
+      <p className="text-[12px] text-white/55 leading-relaxed mt-1.5 max-w-3xl">{intro}</p>
+    </div>
+  )
+}
+
+// ── Section: Lintas Aset (gaya artikel/editorial) ──
+export function LintasAsetSection({ macro, cross }: { macro: MacroMap; cross: CrossData }) {
+  const [h, setH] = useState<Record<string, Series> | null>(null)
+  useEffect(() => {
+    let stop = false
+    fetchMany([
+      { key: 'xau', type: 'mkt', id: 'XAU/USD' }, { key: 'dollar', type: 'fred', id: 'dollar' },
+      { key: 'us10y', type: 'fred', id: 'us10y' }, { key: 'us02y', type: 'fred', id: 'us02y' }, { key: 'realyield', type: 'fred', id: 'realyield' },
+      { key: 'vix', type: 'mkt', id: 'VIXY' }, { key: 'spy', type: 'mkt', id: 'SPY' }, { key: 'qqq', type: 'mkt', id: 'QQQ' },
+      { key: 'btc', type: 'mkt', id: 'BTC/USD' }, { key: 'xag', type: 'mkt', id: 'XAG/USD' },
+    ], 3).then(r => { if (!stop) setH(r) })
+    return () => { stop = true }
+  }, [])
+
+  const pct = (q: Q) => q ? `${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%` : ''
+  const num = (q: Q, dec = 2) => q ? q.price.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) : '—'
+  const fdir = (k: string): number => { const p = macro?.[k]; return p ? p.value - p.prior : 0 }
+
+  // Bacaan per aset
+  const rDollar: Reading = { tone: upDown(fdir('dollar')), label: fdir('dollar') > 0 ? 'Tekan emas' : 'Dukung emas', note: fdir('dollar') > 0 ? 'Dolar menguat dari rilis lalu — biasanya menekan harga emas.' : 'Dolar melemah — angin positif buat emas.' }
+  const r10: Reading = { tone: upDown(fdir('us10y')), label: fdir('us10y') > 0 ? 'Tekan emas' : 'Dukung emas', note: fdir('us10y') > 0 ? 'Yield naik → biaya peluang emas naik.' : 'Yield turun → emas lebih menarik.' }
+  const r2: Reading = { tone: upDown(fdir('us02y')), label: fdir('us02y') > 0 ? 'Hawkish' : 'Dovish', note: fdir('us02y') > 0 ? 'Yield 2Y naik → pasar hawkish, sedikit menekan emas.' : 'Yield 2Y turun → ekspektasi pangkas bunga.' }
+  const rReal: Reading = { tone: upDown(fdir('realyield')), label: fdir('realyield') > 0 ? 'Tekan emas' : 'Dukung emas', note: 'Korelasi paling kuat ke emas — real yield turun = paling bullish.' }
+  const rVix: Reading = { tone: cross?.vixy ? (cross.vixy.changePct > 0.5 ? 'bull' : cross.vixy.changePct < -0.5 ? 'bear' : 'neutral') : 'neutral', label: cross?.vixy && cross.vixy.changePct > 0.5 ? 'Dukung emas' : 'Netral', note: 'VIX naik = pasar takut (risk-off) → dana lari ke aset aman seperti emas.' }
+  const rSpy: Reading = { tone: cross?.spy ? (cross.spy.changePct < -0.3 ? 'bull' : cross.spy.changePct > 0.3 ? 'bear' : 'neutral') : 'neutral', label: cross?.spy && cross.spy.changePct < -0.3 ? 'Risk-off' : cross?.spy && cross.spy.changePct > 0.3 ? 'Risk-on' : 'Netral', note: 'Saham anjlok (risk-off) sering angkat emas; reli saham = selera risiko tinggi.' }
+  const rQqq: Reading = { tone: cross?.qqq ? (cross.qqq.changePct < -0.3 ? 'bull' : cross.qqq.changePct > 0.3 ? 'bear' : 'neutral') : 'neutral', label: cross?.qqq && cross.qqq.changePct < -0.3 ? 'Risk-off' : cross?.qqq && cross.qqq.changePct > 0.3 ? 'Risk-on' : 'Netral', note: 'Teknologi sensitif ke suku bunga — sinyal dini pergeseran risiko.' }
+  const rBtc: Reading = { tone: 'neutral', label: 'Sentimen risiko', note: 'Korelasi ke emas tidak konsisten — lebih sebagai barometer selera risiko 24/7.' }
+  const rXag: Reading = { tone: cross?.xag ? (cross.xag.changePct >= 0 ? 'bull' : 'bear') : 'neutral', label: 'Searah emas', note: 'Perak biasanya bergerak searah emas, tapi lebih volatil ("emas dengan leverage").' }
+
+  return (
+    <div className="space-y-6">
+      {/* Intro artikel */}
+      <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1.5">Lintas Aset · Analisa Korelasi</p>
+        <h2 className="text-xl font-black tracking-tight">Emas Tidak Bergerak Sendirian</h2>
+        <p className="text-[13px] text-white/60 leading-relaxed mt-2 max-w-3xl">Harga XAU/USD adalah cerminan dari tarik-menarik antar aset besar dunia — dolar, suku bunga, saham, hingga kripto. Halaman ini membaca <b className="text-white/85">apa yang sedang dilakukan aset-aset itu</b> dan menerjemahkannya menjadi bacaan sederhana: <span className="text-emerald-400 font-semibold">dukung emas</span> atau <span className="text-red-400 font-semibold">tekan emas</span>. Chart di bawah menyamakan semua ke % perubahan agar bisa dibandingkan langsung.</p>
+      </div>
+
+      {/* Chart komparasi (interaktif) — pakai data yg sudah di-fetch (tanpa fetch ganda) */}
+      {h ? (
+        <MacroComparisonChart title="Perbandingan Lintas Aset" note="XAU/USD (garis utama) vs dolar, VIX, saham & Bitcoin — cari mana yang searah/berlawanan dengan emas."
+          defs={[
+            { name: 'XAU/USD', color: '#fbbf24', main: true, raw: h.xau ?? [] },
+            { name: 'DXY', color: '#60a5fa', default: true, raw: h.dollar ?? [] },
+            { name: 'VIX', color: '#a78bfa', raw: h.vix ?? [] },
+            { name: 'S&P 500', color: '#22d3ee', default: true, raw: h.spy ?? [] },
+            { name: 'Bitcoin', color: '#fb923c', raw: h.btc ?? [] },
+            { name: 'Silver', color: '#e2e8f0', raw: h.xag ?? [] },
+          ]} />
+      ) : <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] h-[360px] flex items-center justify-center"><Loader2 size={22} className="animate-spin text-white/30" /></div>}
+
+      {/* Grup 1: Dolar & Suku Bunga */}
+      <GroupHead emoji="💵" title="Dolar & Suku Bunga AS" intro="Ini 'lawan utama' emas. Emas dihargakan dalam dolar dan tidak memberi bunga — jadi saat dolar & yield naik, emas kehilangan daya tarik relatif. Real yield (yield dikurangi inflasi) adalah penggerak paling konsisten." />
+      <FeaturedAsset label="Indeks Dolar (DXY)" sub="Broad USD Index · Federal Reserve" current={macro?.dollar ? macro.dollar.value.toFixed(2) : '—'} chg={macro?.dollar ? `dari ${macro.dollar.prior.toFixed(2)}` : ''} data={h?.dollar} color="#60a5fa" href="/terminal/data/macro/dollar" reading={rDollar}
+        body="Dolar adalah cerminan kekuatan ekonomi & kebijakan Fed. Ketika investor global memburu aset AS (yield tinggi, ekonomi kuat), dolar menguat dan emas — yang dihargakan dalam dolar — jadi relatif lebih mahal bagi pemegang mata uang lain, sehingga permintaan cenderung turun." />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <MiniAsset label="Yield 10Y" current={macro?.us10y ? `${macro.us10y.value}%` : '—'} data={h?.us10y} href="/terminal/data/macro/us10y" reading={r10} />
+        <MiniAsset label="Yield 2Y" current={macro?.us02y ? `${macro.us02y.value}%` : '—'} data={h?.us02y} href="/terminal/data/macro/us02y" reading={r2} />
+        <MiniAsset label="Real Yield 10Y" current={macro?.realyield ? `${macro.realyield.value}%` : '—'} data={h?.realyield} href="/terminal/data/macro/realyield" reading={rReal} />
+      </div>
+
+      {/* Grup 2: Selera Risiko */}
+      <GroupHead emoji="😨" title="Selera Risiko Pasar" intro="Emas adalah 'aset aman'. Saat pasar panik (risk-off) — saham anjlok, VIX melonjak — dana sering mengalir ke emas. Sebaliknya, saat pasar berani (risk-on), uang lebih memilih aset berisiko." />
+      <FeaturedAsset label="VIX — Indeks Ketakutan" sub="Proxy VIXY · volatilitas S&P 500" current={cross?.vixy ? cross.vixy.price.toFixed(2) : '—'} chg={pct(cross?.vixy ?? null)} data={h?.vix} color="#a78bfa" href="/terminal/data/market/vix" reading={rVix}
+        body="VIX mengukur ekspektasi gejolak pasar saham 30 hari ke depan. Lonjakan tajam biasanya menandai kepanikan (krisis, kejutan geopolitik) — dan di momen itulah emas paling sering diburu sebagai pelabuhan aman. VIX yang rendah & tenang menandakan pasar percaya diri, kurang menguntungkan emas." />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <MiniAsset label="S&P 500" current={num(cross?.spy ?? null)} data={h?.spy} href="/terminal/data/market/spx" reading={rSpy} />
+        <MiniAsset label="Nasdaq 100" current={num(cross?.qqq ?? null)} data={h?.qqq} href="/terminal/data/market/ndx" reading={rQqq} />
+      </div>
+
+      {/* Grup 3: Aset Alternatif */}
+      <GroupHead emoji="🪙" title="Aset Alternatif" intro="Bitcoin & perak sering dibandingkan dengan emas. Perak bergerak searah (logam mulia), sementara Bitcoin lebih sebagai barometer selera risiko modern — korelasinya ke emas naik-turun." />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <MiniAsset label="Bitcoin (BTC/USD)" current={cross?.btc ? Math.round(cross.btc.price).toLocaleString('en-US') : '—'} data={h?.btc} href="/terminal/data/market/btc" reading={rBtc} />
+        <MiniAsset label="Perak (XAG/USD)" current={num(cross?.xag ?? null, 3)} data={h?.xag} href="/terminal/data/market/xag" reading={rXag} />
+      </div>
+
+      <p className="text-[11px] text-white/30 leading-relaxed pt-2 border-t border-white/[0.06]">Bacaan di atas dihitung otomatis dari data terbaru (arah rilis / perubahan harga) & kaidah korelasi umum ke emas — bersifat konteks, bukan sinyal entry. Data: Federal Reserve (FRED) & Twelve Data.</p>
     </div>
   )
 }
