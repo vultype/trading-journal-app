@@ -14,7 +14,7 @@ import {
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
-  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown,
+  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight,
   Lock, Crown, Check,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
@@ -542,7 +542,7 @@ function Sparkline({ data, color = '#34d399', h = 26, w = 84 }: { data: number[]
 // StatTile: kartu ringkas. Kalau `detail` diisi, kartu bisa DIKLIK untuk expand
 // info lebih dalam inline (accordion di dalam kartu itu sendiri) — tanpa modal,
 // tanpa mengganggu layout grid kartu di sekitarnya.
-function StatTile({ icon: Icon, label, value, sub, tone = 'neutral', spark, sparkColor, info, detail }: { icon: React.ElementType; label: string; value: React.ReactNode; sub?: string; tone?: 'bull' | 'bear' | 'warn' | 'neutral'; spark?: number[]; sparkColor?: string; info?: string; detail?: React.ReactNode }) {
+function StatTile({ icon: Icon, label, value, sub, tone = 'neutral', spark, sparkColor, info, detail, moreHref, moreLabel = 'Detail lengkap' }: { icon: React.ElementType; label: string; value: React.ReactNode; sub?: string; tone?: 'bull' | 'bear' | 'warn' | 'neutral'; spark?: number[]; sparkColor?: string; info?: string; detail?: React.ReactNode; moreHref?: string; moreLabel?: string }) {
   const [open, setOpen] = useState(false)
   const toneC = tone === 'bull' ? 'text-emerald-400' : tone === 'bear' ? 'text-red-400' : tone === 'warn' ? 'text-amber-400' : 'text-white/85'
   const hair = tone === 'bull' ? 'from-emerald-400/60' : tone === 'bear' ? 'from-red-400/60' : tone === 'warn' ? 'from-amber-400/60' : 'from-white/15'
@@ -559,6 +559,12 @@ function StatTile({ icon: Icon, label, value, sub, tone = 'neutral', spark, spar
         <div><p className={`text-xl font-black leading-none ${toneC}`}>{value}</p>{sub && <p className="text-[11px] text-white/45 mt-1 leading-tight">{sub}</p>}</div>
         {spark && <Sparkline data={spark} color={sparkColor ?? '#60a5fa'} />}
       </div>
+      {/* Link ke halaman detail — SELALU tampil (tak perlu expand dulu) */}
+      {moreHref && (
+        <Link href={moreHref} onClick={e => e.stopPropagation()} className="relative z-10 flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline mt-2.5 pt-2.5 border-t border-white/[0.06]">
+          {moreLabel} <ChevronRight size={12} />
+        </Link>
+      )}
       {open && detail && (
         <div className="mt-3 pt-3 border-t border-white/[0.07] cursor-default" onClick={e => e.stopPropagation()}>
           {detail}
@@ -1746,6 +1752,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               {/* Statistik makro kunci */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatTile icon={Landmark} label="Dolar (Live)" value={cross.uup ? <span className={cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup.changePct < -0.05 ? 'text-emerald-400' : 'text-white/70'}>{cross.uup.changePct >= 0 ? '+' : ''}{cross.uup.changePct.toFixed(2)}%</span> : '—'} sub={cross.uup ? (cross.uup.changePct > 0.05 ? 'menguat → tekan emas' : cross.uup.changePct < -0.05 ? 'melemah → dukung emas' : 'datar') : 'memuat'} tone={cross.uup ? (cross.uup.changePct > 0.05 ? 'bear' : cross.uup.changePct < -0.05 ? 'bull' : 'neutral') : 'neutral'} info="Proxy UUP real-time. Dolar & emas biasanya berlawanan arah."
+                  moreHref="/terminal/data/dxy" moreLabel="Lihat chart & detail DXY"
                   detail={<>
                     <DetailRow l="UUP (proxy live)" v={cross.uup ? `${cross.uup.changePct >= 0 ? '+' : ''}${cross.uup.changePct.toFixed(2)}%` : '—'} c={cross.uup && cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup && cross.uup.changePct < -0.05 ? 'text-emerald-400' : undefined} />
                     <DetailRow l="Indeks Dolar (DXY, FRED harian)" v={macro?.dollar ? macro.dollar.value.toFixed(2) : '—'} />
@@ -1754,7 +1761,6 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                       <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-white/[0.05]"><span className="text-[10px] text-white/35">Tren beberapa rilis terakhir</span><Sparkline data={macro.dollar.history} color="#60a5fa" w={70} h={20} /></div>
                     )}
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Emas dihargakan dalam dolar — dolar menguat = emas relatif lebih mahal buat pemegang mata uang lain, biasanya menekan harga.</p>
-                    <Link href="/terminal/data/dxy" onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline mt-2.5">Lihat detail penuh (chart & tren 90 hari) →</Link>
                   </>} />
                 <StatTile icon={GitBranch} label="Yield 10Y" value={macro?.us10y ? `${macro.us10y.value}%` : '—'} sub={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'naik → tekan emas' : 'turun → dukung emas') : 'memuat'} tone={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'bear' : 'bull') : 'neutral'} info="Yield Treasury 10 tahun. Naik = biaya peluang memegang emas naik."
                   detail={<>
