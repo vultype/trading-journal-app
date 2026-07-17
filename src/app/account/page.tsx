@@ -162,7 +162,8 @@ export default function AccountPage() {
           </div>
         </div>
 
-        {/* Token AI — saldo & top up */}
+        {/* Token AI — saldo & top up. Hanya relevan untuk user yang bisa pakai AI (Pro/admin) */}
+        {sub.isPro && (
         <div id="token" className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 scroll-mt-20">
           <div className="flex items-center gap-2 mb-4">
             <Coins size={17} className="text-primary" />
@@ -290,6 +291,7 @@ export default function AccountPage() {
             </>
           )}
         </div>
+        )}
 
         {/* Profil */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
