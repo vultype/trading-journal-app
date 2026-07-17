@@ -120,7 +120,7 @@ export async function GET(req: Request) {
     const conf = confluence(tf)
     const adx = tf.M15.adx
     const trendUp = tf.M15.plusDI >= tf.M15.minusDI
-    const regime = regimeOf({ bbSqueeze: tf.M15.boll.squeeze, adx, adxTrend: tf.M15.adxTrend, trendUp })
+    const regime = regimeOf({ bbSqueeze: tf.M15.boll.squeeze, adx, adxTrend: tf.M15.adxTrend, trendUp, m5: { adx: tf.M5.adx, trendUp: tf.M5.plusDI >= tf.M5.minusDI } })
     const price = quote?.price ?? tf.M5.candles[tf.M5.candles.length - 1].c
 
     // #7 guard pasar tutup: candle M5 terbaru lebih tua dari 15 menit → jangan kirim alert dari data mati

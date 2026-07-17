@@ -854,7 +854,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const dayPos = dayRange > 0 ? clamp((feed.price - feed.dayLow) / dayRange, 0, 1) : 0.5
   const bbSqueeze = feed.tf.M15.boll.squeeze
   const adxTrend = feed.tf.M15.adxTrend
-  const regime = regimeOf({ bbSqueeze, adx, adxTrend, trendUp })
+  const regime = regimeOf({ bbSqueeze, adx, adxTrend, trendUp, m5: { adx: feed.tf.M5.adx, trendUp: feed.tf.M5.plusDI >= feed.tf.M5.minusDI } })
   const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null

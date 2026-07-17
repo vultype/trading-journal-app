@@ -213,16 +213,23 @@ export function confluence(tf: Record<TF, TFData>) {
 export type RegimePhase = 'ranging' | 'konfirmasi' | 'trending'
 export type RegimeDir = 'bullish' | 'bearish' | 'netral'
 export type Regime = { label: string; phase: RegimePhase; dir: RegimeDir; c: string; desc: string }
-export function regimeOf(p: { bbSqueeze: boolean; adx: number; adxTrend: 'naik' | 'turun' | 'stabil'; trendUp: boolean }): Regime {
-  const { bbSqueeze, adx, adxTrend, trendUp } = p
+export function regimeOf(p: { bbSqueeze: boolean; adx: number; adxTrend: 'naik' | 'turun' | 'stabil'; trendUp: boolean; m5?: { adx: number; trendUp: boolean } }): Regime {
+  const { bbSqueeze, adx, adxTrend, trendUp, m5 } = p
   const dir: RegimeDir = trendUp ? 'bullish' : 'bearish'
   const Dir = trendUp ? 'Bullish' : 'Bearish'
+  const green = trendUp ? 'text-emerald-400' : 'text-red-400'
   // Ranging: squeeze atau ADX lemah → tanpa arah
   if (bbSqueeze || adx < 18)
     return { label: 'Ranging', phase: 'ranging', dir: 'netral', c: 'text-amber-400', desc: bbSqueeze ? 'volatilitas menyempit, tanpa arah jelas' : 'sideways / tren lemah' }
   // Trending: ADX kuat & MASIH menguat (arah terkonfirmasi)
   if (adx >= 25 && adxTrend !== 'turun')
-    return { label: `Trending ${Dir}`, phase: 'trending', dir, c: trendUp ? 'text-emerald-400' : 'text-red-400', desc: trendUp ? 'tren naik kuat — ikuti arah beli' : 'tren turun kuat — ikuti arah jual' }
+    return { label: `Trending ${Dir}`, phase: 'trending', dir, c: green, desc: trendUp ? 'tren naik kuat — ikuti arah beli' : 'tren turun kuat — ikuti arah jual' }
+  // Konfirmasi dini (opsi B): M15 sudah mulai membangun tren (ADX≥20 & tak melemah) DAN
+  // M5 sudah bergerak searah dengan momentum jelas (ADX M5≥25) → naikkan ke Trending lebih
+  // awal, supaya status tidak "ketinggalan" saat M5/M15 sebenarnya sudah jalan.
+  const m5Confirm = !!m5 && m5.trendUp === trendUp && m5.adx >= 25
+  if (adx >= 20 && adxTrend !== 'turun' && m5Confirm)
+    return { label: `Trending ${Dir}`, phase: 'trending', dir, c: green, desc: `${trendUp ? 'tren naik' : 'tren turun'} dini — M5 sudah bergerak searah & konfirmasi momentum` }
   // Sisanya (ADX 18-25 sedang terbentuk, atau ADX turun/momentum pudar) → arah belum pasti
   return { label: 'Sedang Konfirmasi Arah', phase: 'konfirmasi', dir: 'netral', c: 'text-sky-400', desc: `cenderung ${trendUp ? 'naik' : 'turun'}, tapi ${adxTrend === 'turun' ? 'momentum mulai pudar' : 'tren belum matang'} — tunggu konfirmasi` }
 }
