@@ -87,10 +87,13 @@ export type Balances = { allowance: number; topup: number; total: number }
 export async function computeBalances(sb: SupabaseClient, userId: string, ctx: AllowanceCtx | null): Promise<Balances> {
   const { data } = await sb.from('ai_credit_ledger')
     .select('bucket, delta, cycle_start').eq('user_id', userId)
+  // Bandingkan cycle_start sebagai WAKTU, bukan string — format ISO dari Postgres
+  // ("…+00:00") beda dgn toISOString() ("…​.000Z") walau instant-nya sama.
+  const cycleMs = ctx ? new Date(ctx.cycleStart).getTime() : NaN
   let allowance = 0, topup = 0
   for (const r of (data || []) as { bucket: string; delta: number; cycle_start: string | null }[]) {
     if (r.bucket === 'topup') topup += r.delta
-    else if (r.bucket === 'allowance' && ctx && r.cycle_start === ctx.cycleStart) allowance += r.delta
+    else if (r.bucket === 'allowance' && ctx && r.cycle_start && new Date(r.cycle_start).getTime() === cycleMs) allowance += r.delta
   }
   if (allowance < 0) allowance = 0
   if (topup < 0) topup = 0
