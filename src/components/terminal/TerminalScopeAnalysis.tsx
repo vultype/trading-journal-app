@@ -19,8 +19,8 @@ type Analysis = {
   kesimpulan: string; watch: string[]; risiko: string[]; fetchedAt: string
 }
 
-export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, suggestions }: {
-  scope: ScopeKind; title: string; subtitle: string; snapshot: unknown; suggestions: string[]
+export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, suggestions, hidePrompt = false }: {
+  scope: ScopeKind; title: string; subtitle: string; snapshot: unknown; suggestions: string[]; hidePrompt?: boolean
 }) {
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState<false | 'auto' | 'custom'>(false)
@@ -65,25 +65,27 @@ export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, sugges
         </button>
       </div>
 
-      {/* Input prompt */}
-      <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-        <label className="text-[10px] uppercase tracking-widest font-semibold text-white/40">Tanya spesifik (opsional)</label>
-        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={2}
-          placeholder={`Contoh: apa dampak terbesar ${scope} ke emas sekarang?`}
-          className="w-full mt-1.5 bg-transparent text-sm text-white resize-none outline-none placeholder:text-white/30" />
-        <div className="flex items-center justify-between gap-2 mt-1.5 pt-2 border-t border-white/10">
-          <div className="flex flex-wrap gap-1">
-            {suggestions.map(s => (
-              <button key={s} onClick={() => setPrompt(s)} disabled={!!loading}
-                className="text-[10px] rounded-full border border-white/15 px-2 py-1 text-white/50 hover:border-primary/40 hover:text-white transition-colors disabled:opacity-50">{s}</button>
-            ))}
+      {/* Input prompt — disembunyikan pada mode hidePrompt (analisa otomatis saja) */}
+      {!hidePrompt && (
+        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+          <label className="text-[10px] uppercase tracking-widest font-semibold text-white/40">Tanya spesifik (opsional)</label>
+          <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={2}
+            placeholder={`Contoh: apa dampak terbesar ${scope} ke emas sekarang?`}
+            className="w-full mt-1.5 bg-transparent text-sm text-white resize-none outline-none placeholder:text-white/30" />
+          <div className="flex items-center justify-between gap-2 mt-1.5 pt-2 border-t border-white/10">
+            <div className="flex flex-wrap gap-1">
+              {suggestions.map(s => (
+                <button key={s} onClick={() => setPrompt(s)} disabled={!!loading}
+                  className="text-[10px] rounded-full border border-white/15 px-2 py-1 text-white/50 hover:border-primary/40 hover:text-white transition-colors disabled:opacity-50">{s}</button>
+              ))}
+            </div>
+            <button onClick={runCustom} disabled={!!loading || !prompt.trim()}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-white/10 hover:bg-white/15 rounded-lg px-3 py-1.5 disabled:opacity-40 transition-colors shrink-0">
+              {loading === 'custom' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Tanya
+            </button>
           </div>
-          <button onClick={runCustom} disabled={!!loading || !prompt.trim()}
-            className="flex items-center gap-1.5 text-xs font-semibold bg-white/10 hover:bg-white/15 rounded-lg px-3 py-1.5 disabled:opacity-40 transition-colors shrink-0">
-            {loading === 'custom' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Tanya
-          </button>
         </div>
-      </div>
+      )}
 
       {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menimbang faktor & dampak ke emas…', 'Menyusun bias & narasi…']} />}
       {error && !loading && low && <div className="mt-3 rounded-lg bg-amber-500/8 border border-amber-500/25 p-3 text-center"><p className="flex items-center justify-center gap-1.5 text-xs text-amber-400"><Coins size={13} /> {error}</p><Link href="/account#token" className="inline-flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3 py-1.5 mt-2 hover:opacity-90 transition-opacity"><Sparkles size={12} /> Top Up Kredit</Link></div>}
@@ -99,7 +101,7 @@ export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, sugges
 
       {/* Hasil terstruktur */}
       {data && !loading && <StructResult a={data} scope={scope} />}
-      {!data && !qa && !loading && !error && <p className="text-[11px] text-white/40 text-center py-3">Klik <b className="text-primary">Analisa Otomatis</b> untuk lihat dampak {scope} ke XAU/USD (bias %, tiap faktor), atau ketik pertanyaan lalu <b>Tanya</b>.</p>}
+      {!data && !qa && !loading && !error && <p className="text-[11px] text-white/40 text-center py-3">Klik <b className="text-primary">Analisa Otomatis</b> untuk lihat dampak {scope} ke XAU/USD — bias %, nada Fed, tiap faktor & kesimpulan.</p>}
     </div>
   )
 }

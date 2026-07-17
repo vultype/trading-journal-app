@@ -14,7 +14,7 @@ import {
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
-  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight,
+  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight, ArrowRight,
   Lock, Crown, Check,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
@@ -1747,8 +1747,14 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
             </div>)}
 
             {tab === 'makro' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
-              <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
-                suggestions={['Bias makro emas bullish atau bearish?', 'Posisi COT institusi vs retail bagaimana?', 'Inflasi terakhir dukung atau tekan emas?']} />
+              {/* Masuk ke hub makro mendalam (multi-halaman + chart komparasi) */}
+              <Link href="/terminal/macro" className="group flex items-center gap-3 rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.08] to-transparent px-4 py-3 hover:border-primary/40 transition-colors">
+                <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 text-primary shrink-0"><LayoutDashboard size={17} /></span>
+                <div className="flex-1 min-w-0"><p className="text-[13px] font-bold">Makro Mendalam</p><p className="text-[11px] text-white/50 leading-snug">Summary + chart komparasi, lintas aset, inflasi & Fed, institusi vs retail.</p></div>
+                <ArrowRight size={16} className="text-white/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+              </Link>
+              <TerminalScopeAnalysis scope="makro" hidePrompt title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
+                suggestions={[]} />
               {/* Statistik makro kunci (termasuk COT — posisi institusi/retail juga bagian makro) */}
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 <StatTile icon={Landmark} label="Dolar (Live)" value={cross.uup ? <span className={cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup.changePct < -0.05 ? 'text-emerald-400' : 'text-white/70'}>{cross.uup.changePct >= 0 ? '+' : ''}{cross.uup.changePct.toFixed(2)}%</span> : '—'} sub={cross.uup ? (cross.uup.changePct > 0.05 ? 'menguat → tekan emas' : cross.uup.changePct < -0.05 ? 'melemah → dukung emas' : 'datar') : 'memuat'} tone={cross.uup ? (cross.uup.changePct > 0.05 ? 'bear' : cross.uup.changePct < -0.05 ? 'bull' : 'neutral') : 'neutral'} info="Proxy UUP real-time. Dolar & emas biasanya berlawanan arah."
@@ -1837,8 +1843,8 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
             </div>)}
 
             {tab === 'sentimen' && (!isPro ? <LockedTab icon={Users} {...LOCKED_TAB_META.sentimen} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
-              <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
-                suggestions={['Sentimen sedang dukung atau tekan emas?', 'Berita terkini condong ke mana?', 'Ada tanda risk-off yang menguntungkan emas?']} />
+              <TerminalScopeAnalysis scope="sentimen" hidePrompt title="Analisa Sentimen AI" subtitle="Dampak risk-on/off & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
+                suggestions={[]} />
               {/* Statistik sentimen kunci (COT dipindah ke tab Makro) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <StatTile icon={Scale} label="Mood Pasar" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Seimbang'}</span>} sub={riskOn < -0.1 ? 'defensif → dukung emas' : riskOn > 0.1 ? 'agresif → tekan emas' : 'tanpa arah'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq & BTC real-time."
