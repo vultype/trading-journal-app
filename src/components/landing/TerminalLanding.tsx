@@ -16,8 +16,6 @@ const TERMINAL_PRICE = 179000
 
 // Platform/broker tempat trader kami berasal — sinyal kepercayaan (bukan klaim kemitraan resmi).
 const CLIENTS = ['Exness', 'XM', 'IC Markets', 'FTMO', 'Pepperstone', 'OANDA', 'Binance', 'Bybit', 'MIFX', 'FundedNext', 'Octa', 'Deriv']
-// Sumber data yang benar-benar dipakai terminal.
-const DATA_SOURCES = ['Twelve Data', 'FRED (The Fed)', 'CFTC', 'TradingView']
 
 // Angka nyata dari sistem yang berjalan — bukan klaim marketing.
 const STATS: { icon: React.ElementType; v: string; l: string }[] = [
@@ -475,7 +473,7 @@ function DataDrivenSection({ primaryCta }: { primaryCta: string }) {
         <Reveal>
           <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/30 px-3.5 py-1.5 text-xs font-bold text-primary mb-6"><BarChart3 size={13} /> Data-Driven Analysis</span>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Keputusan yang Digerakkan <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Data</span>, Bukan Firasat.</h2>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Keputusan yang Digerakkan <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Data</span>, Bukan Feeling dan Emosi.</h2>
             <p className="text-base text-white/55 mt-5 leading-relaxed">Setiap angka di layar punya arti. Terminal menerjemahkan aliran data pasar jadi sinyal yang bisa ditindak — dan menyesuaikannya dengan gaya trading-mu.</p>
           </div>
         </Reveal>
@@ -582,7 +580,7 @@ function PremiumAiSection({ primaryCta }: { primaryCta: string }) {
         <div className="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center mb-16">
           <Reveal>
             <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/30 px-3.5 py-1.5 text-xs font-bold text-primary mb-6"><Sparkles size={13} /> Mesin Analisa · Premium AI</span>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Bukan Sekadar Chart.<br /><span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Mesin Analisa Data</span> Bertenaga AI.</h2>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Bukan Sekadar Chart.<br /><span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Mesin Analisa</span> Dengan AI Data Driven.</h2>
             <p className="text-base text-white/55 mt-6 leading-relaxed max-w-lg">Terminal Datalitiq menyerap ribuan titik data pasar — makro, teknikal, sentimen, berita — lalu menalarnya seperti seorang analis institusi, dan menyulingnya jadi <span className="text-white/85 font-semibold">satu keputusan yang bisa kamu pahami dalam hitungan detik.</span></p>
             <div className="flex flex-wrap gap-2.5 mt-7">
               {['Extended thinking', 'Data real-time', 'Kalibrasi nyata', 'Fokus scalping'].map(t => (
@@ -650,8 +648,8 @@ function MarketNoiseSection() {
       <div className="relative max-w-3xl mx-auto px-6 text-center">
         <Reveal>
           <span className="inline-flex items-center gap-2 rounded-full bg-red-500/10 ring-1 ring-red-500/25 px-3.5 py-1.5 text-xs font-bold text-red-300 mb-6"><Radio size={13} /> Pasar emas tak pernah tidur</span>
-          <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.06]">Emas Bergerak Tiap Detik.<br />Jangan Membacanya Sendirian.</h2>
-          <p className="text-base md:text-lg text-white/55 mt-6 leading-relaxed">Harga, dolar, yield, berita Fed, posisi institusi — semua berteriak bersamaan. Sendirian, kamu tenggelam dalam kebisingan. Datalitiq menyaring semua itu jadi <span className="text-white/90 font-semibold">satu arah emas yang jelas.</span></p>
+          <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.06]">Satu Engine untuk Semua Keputusan Open Posisi</h2>
+          <p className="text-base md:text-lg text-white/55 mt-6 leading-relaxed">Harga, dolar, yield, berita Fed, posisi institusi — semua bergerak bersamaan. Datalitiq menimbang semuanya lewat satu engine, lalu menyaringnya jadi <span className="text-white/90 font-semibold">satu arah emas yang jelas.</span></p>
         </Reveal>
         {/* alur: banyak sumber → satu sinyal */}
         <Reveal delay={120}>
@@ -719,7 +717,7 @@ function TradingStylesSection({ primaryCta }: { primaryCta: string }) {
         <Reveal>
           <div className="text-center max-w-2xl mx-auto mb-14">
             <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/30 px-3.5 py-1.5 text-xs font-bold text-primary mb-6"><Layers size={13} /> Semua Gaya Trading</span>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Scalping, Intraday, atau Swing —<br /><span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Emas Kamu, Cara Kamu.</span></h2>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-[1.05]">Terminal Ini Cocok untuk Semua Gaya Trading<br /><span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Scalping, Intraday, atau Swing.</span></h2>
             <p className="text-base text-white/55 mt-5 leading-relaxed">Terminal menyesuaikan timeframe & kedalaman analisa dengan gaya trading emas-mu — bukan memaksamu ikut satu metode.</p>
           </div>
         </Reveal>
@@ -827,7 +825,7 @@ export function TerminalLanding() {
         <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {logoUrl ? <BrandLogo url={logoUrl} /> : <span className="text-xl font-black tracking-tight">Datalitiq</span>}
-            <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-widest text-primary/80 bg-primary/10 rounded-full px-2 py-0.5">Emas · XAU/USD</span>
+            <span className="hidden sm:inline text-[9px] font-bold uppercase tracking-widest text-primary/80 bg-primary/10 rounded-full px-2 py-0.5">AI Terminal Tools</span>
           </div>
           <nav className="hidden md:flex items-center gap-7 text-sm text-white/60">
             <a href="#cara-kerja" className="hover:text-white transition-colors">Cara Kerja</a>
@@ -837,7 +835,6 @@ export function TerminalLanding() {
             <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/jurnal-trading-tools" className="hidden lg:block text-xs font-medium text-white/40 hover:text-white/70 px-2 py-2 transition-colors">Jurnal Tools</Link>
             <Link href="/login" className="hidden sm:block text-sm font-medium text-white/70 hover:text-white px-3 py-2 transition-colors">Masuk</Link>
             <Link href={primaryCta} className="text-sm font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 transition-opacity shadow-lg shadow-primary/20">{loggedIn ? 'Buka Terminal' : 'Mulai'}</Link>
           </div>
@@ -854,14 +851,11 @@ export function TerminalLanding() {
 
         <div className="relative max-w-4xl mx-auto px-6 pt-20 md:pt-28 text-center">
           <Reveal>
-            <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 ring-1 ring-primary/25 px-3.5 py-1.5 text-xs font-semibold text-primary mb-8">
-              <Sparkles size={13} /> Khusus Emas · XAU/USD · Terminal kelas institusi
-            </span>
-            <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-[1.02]">
-              Trading <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Emas</span> dengan Data.<br />Bukan Feeling.
+            <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-[1.06]">
+              Terminal <span className="bg-gradient-to-r from-primary via-emerald-400 to-cyan-400 bg-clip-text text-transparent">XAUUSD</span> Kelas Institusi untuk Trader Retail
             </h1>
             <p className="text-lg text-white/55 mt-7 leading-relaxed max-w-xl mx-auto">
-              Terminal AI yang <span className="text-white/80 font-semibold">100% fokus ke emas (XAU/USD)</span> — makro real-time, sentimen institusi & bias harian yang jelas, dalam satu layar. Satu instrumen, dianalisa sedalam mungkin.
+              Data makro real-time, sentimen institusi, dan bias harian yang jelas — dalam satu layar. Fokus penuh ke satu instrumen, dianalisa sedalam mungkin.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 mt-10">
               <Link href={primaryCta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-7 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
@@ -919,7 +913,6 @@ export function TerminalLanding() {
           <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-[#060a09] to-transparent" />
           <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-[#060a09] to-transparent" />
         </div>
-        <p className="text-center text-[10px] text-white/25 mt-5">Ditenagai data resmi: <span className="text-white/40">{DATA_SOURCES.join(' · ')}</span></p>
       </section>
 
       {/* ── Stats ── */}
@@ -1090,7 +1083,7 @@ export function TerminalLanding() {
         <Reveal>
           <div className="relative rounded-3xl overflow-hidden border border-primary/20 bg-gradient-to-br from-primary/15 via-[#0a1110] to-[#0a1110] p-10 md:p-16 text-center">
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
-            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Berhenti Menebak Arah Pasar.<br className="hidden md:block" /> Biar Data yang Memandu.</h2>
+            <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">Berhenti Tebak Arah Market.<br className="hidden md:block" /> Mulai Naik Level dengan Pakai Data.</h2>
             <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">Gabung hari ini seharga ≈ Rp6 ribu/hari — makro, sentimen & bias harian XAU/USD dalam satu terminal. Tanpa kontrak, berhenti kapan saja.</p>
             <Link href={primaryCta} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? 'Buka Terminal' : `Mulai Sekarang — ${rp(TERMINAL_PRICE)}/bln`} <ArrowRight size={16} />
