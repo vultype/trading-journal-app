@@ -701,8 +701,8 @@ function LockedTab({ icon: Icon, title, tagline, benefits }: { icon: React.Eleme
 }
 const LOCKED_TAB_META: Record<string, { title: string; tagline: string; benefits: string[] }> = {
   teknikal: { title: 'Analisa Teknikal AI', tagline: 'Datalitiq AI membaca chart & struktur multi-timeframe jadi arah + level entry/stop/target.', benefits: ['Konfluensi M5/M15/H1 + bias H4/Daily', 'Level entry, stop & target berupa angka', 'Sinyal reversal & zona penting otomatis'] },
-  makro: { title: 'Analisa Makro AI', tagline: 'Dampak dolar, yield, inflasi & kebijakan Fed ke XAU/USD — diterjemahkan jadi bias yang jelas.', benefits: ['12+ data ekonomi resmi (FRED)', 'Kesimpulan makro → arah emas', 'Kurva yield & real yield dijelaskan'] },
-  sentimen: { title: 'Analisa Sentimen AI', tagline: 'Posisi institusi (COT), risk-on/off, dan berita ditimbang jadi peta sentimen ke emas.', benefits: ['Posisi uang besar vs retail (COT mingguan)', 'Peta sentimen → dukung/tekan emas', 'Ukuran takut-serakah (VIX)'] },
+  makro: { title: 'Analisa Makro AI', tagline: 'Dampak dolar, yield, inflasi, Fed & posisi institusi (COT) ke XAU/USD — jadi bias yang jelas.', benefits: ['12+ data ekonomi resmi (FRED)', 'Posisi COT institusi vs retail (smart money)', 'Kurva yield & real yield dijelaskan'] },
+  sentimen: { title: 'Analisa Sentimen AI', tagline: 'Risk-on/off (VIX, saham, BTC) & berita terkini ditimbang jadi peta sentimen ke emas.', benefits: ['Risk-on/off dari VIX, S&P500, Nasdaq & BTC', 'Peta sentimen → dukung/tekan emas', 'Analisa dampak berita terkini'] },
   berita: { title: 'Analisa News AI', tagline: 'Prediksi arah emas sebelum rilis berita besar — skenario reaksi + level kunci, tanpa larangan.', benefits: ['Prediksi dampak CPI/NFP/FOMC ke emas', 'Skenario reaksi + probabilitas', 'Rekomendasi arah pre-news + peringatan'] },
 }
 
@@ -1748,10 +1748,11 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
 
             {tab === 'makro' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalScopeAnalysis scope="makro" title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
-                suggestions={['Bias makro emas bullish atau bearish?', 'Kurva yield 2s10s artinya apa untuk emas?', 'Inflasi terakhir dukung atau tekan emas?']} />
-              {/* Statistik makro kunci */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                suggestions={['Bias makro emas bullish atau bearish?', 'Posisi COT institusi vs retail bagaimana?', 'Inflasi terakhir dukung atau tekan emas?']} />
+              {/* Statistik makro kunci (termasuk COT — posisi institusi/retail juga bagian makro) */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 <StatTile icon={Landmark} label="Dolar (Live)" value={cross.uup ? <span className={cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup.changePct < -0.05 ? 'text-emerald-400' : 'text-white/70'}>{cross.uup.changePct >= 0 ? '+' : ''}{cross.uup.changePct.toFixed(2)}%</span> : '—'} sub={cross.uup ? (cross.uup.changePct > 0.05 ? 'menguat → tekan emas' : cross.uup.changePct < -0.05 ? 'melemah → dukung emas' : 'datar') : 'memuat'} tone={cross.uup ? (cross.uup.changePct > 0.05 ? 'bear' : cross.uup.changePct < -0.05 ? 'bull' : 'neutral') : 'neutral'} info="Proxy UUP real-time. Dolar & emas biasanya berlawanan arah."
+                  spark={macro?.dollar?.history} sparkColor="#60a5fa"
                   moreHref="/terminal/data/macro/dollar" moreLabel="Lihat chart & detail DXY"
                   detail={<>
                     <DetailRow l="UUP (proxy live)" v={cross.uup ? `${cross.uup.changePct >= 0 ? '+' : ''}${cross.uup.changePct.toFixed(2)}%` : '—'} c={cross.uup && cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup && cross.uup.changePct < -0.05 ? 'text-emerald-400' : undefined} />
@@ -1763,6 +1764,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Emas dihargakan dalam dolar — dolar menguat = emas relatif lebih mahal buat pemegang mata uang lain, biasanya menekan harga.</p>
                   </>} />
                 <StatTile icon={GitBranch} label="Yield 10Y" value={macro?.us10y ? `${macro.us10y.value}%` : '—'} sub={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'naik → tekan emas' : 'turun → dukung emas') : 'memuat'} tone={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'bear' : 'bull') : 'neutral'} info="Yield Treasury 10 tahun. Naik = biaya peluang memegang emas naik."
+                  spark={macro?.us10y?.history} sparkColor="#60a5fa"
                   moreHref="/terminal/data/macro/us10y" moreLabel="Lihat chart & detail Yield 10Y"
                   detail={<>
                     <DetailRow l="US10Y" v={macro?.us10y ? `${macro.us10y.value}%` : '—'} />
@@ -1775,6 +1777,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Yield naik = investor dapat imbal hasil lebih tinggi dari obligasi "bebas risiko" → emas (tanpa imbal hasil) jadi kurang menarik. Kurva 2s10s negatif = pasar obligasi memperkirakan resesi/pangkas bunga.</p>
                   </>} />
                 <StatTile icon={Flame} label="Inflasi CPI" value={macro?.cpi ? `${macro.cpi.value}%` : '—'} sub={macro?.cpi ? `YoY · prior ${macro.cpi.prior}%` : 'memuat'} tone={macro?.cpi ? (macro.cpi.value > macro.cpi.prior ? 'bull' : 'neutral') : 'neutral'} info="Inflasi tinggi = emas sebagai lindung nilai makin menarik (jangka menengah)."
+                  spark={macro?.cpi?.history} sparkColor="#60a5fa"
                   moreHref="/terminal/data/macro/cpi" moreLabel="Lihat chart & detail CPI"
                   detail={<>
                     <DetailRow l="CPI (headline, YoY)" v={macro?.cpi ? `${macro.cpi.value}%` : '—'} />
@@ -1787,6 +1790,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Core PCE paling dipantau The Fed untuk keputusan suku bunga. Inflasi mereda → peluang pangkas bunga naik → bullish emas.</p>
                   </>} />
                 <StatTile icon={Scale} label="Fed Funds" value={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} sub="suku bunga acuan" tone="neutral" info="Ekspektasi pemangkasan = bullish emas; ditahan tinggi = bearish."
+                  spark={macro?.fedfunds?.history} sparkColor="#60a5fa"
                   moreHref="/terminal/data/macro/fedfunds" moreLabel="Lihat chart & detail Fed Funds"
                   detail={<>
                     <DetailRow l="Fed Funds Rate" v={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} />
@@ -1798,28 +1802,8 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     )}
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Suku bunga acuan Fed. Pasar tenaga kerja melemah + upah mereda = ruang lebih besar buat Fed memangkas bunga → bullish emas.</p>
                   </>} />
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MakroKesimpulanPanel}{RiskSentimentPanel}</div>
-              {CrossPanel}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
-              {InflasiPanel}
-              {CalendarPanel}
-            </div>)}
-
-            {tab === 'sentimen' && (!isPro ? <LockedTab icon={Users} {...LOCKED_TAB_META.sentimen} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
-              <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
-                suggestions={['Sentimen sedang dukung atau tekan emas?', 'Posisi institusi vs retail bagaimana?', 'Ada tanda ekstrem/kontrarian?']} />
-              {/* Statistik sentimen kunci */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatTile icon={Scale} label="Mood Pasar" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Seimbang'}</span>} sub={riskOn < -0.1 ? 'defensif → dukung emas' : riskOn > 0.1 ? 'agresif → tekan emas' : 'tanpa arah'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq & BTC real-time."
-                  detail={<>
-                    <DetailRow l="S&P 500" v={cross.spy ? `${cross.spy.changePct >= 0 ? '+' : ''}${cross.spy.changePct.toFixed(2)}%` : '—'} c={cross.spy && cross.spy.changePct < 0 ? 'text-emerald-400' : cross.spy && cross.spy.changePct > 0 ? 'text-red-400' : undefined} />
-                    <DetailRow l="Nasdaq (QQQ)" v={cross.qqq ? `${cross.qqq.changePct >= 0 ? '+' : ''}${cross.qqq.changePct.toFixed(2)}%` : '—'} c={cross.qqq && cross.qqq.changePct < 0 ? 'text-emerald-400' : cross.qqq && cross.qqq.changePct > 0 ? 'text-red-400' : undefined} />
-                    <DetailRow l="VIX (proxy)" v={cross.vixy ? `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(2)}%` : '—'} c={cross.vixy && cross.vixy.changePct > 0 ? 'text-emerald-400' : undefined} />
-                    <DetailRow l="Bitcoin" v={cross.btc ? `${cross.btc.changePct >= 0 ? '+' : ''}${cross.btc.changePct.toFixed(2)}%` : '—'} c={cross.btc && cross.btc.changePct < 0 ? 'text-emerald-400' : cross.btc && cross.btc.changePct > 0 ? 'text-red-400' : undefined} />
-                    <p className="text-[10px] text-white/40 leading-snug mt-2">Saham/BTC turun & VIX naik bersamaan = pasar sedang defensif (risk-off) → uang biasanya lari ke aset aman seperti emas.</p>
-                  </>} />
                 <StatTile icon={Users} label="Institusi (COT)" value={cot ? <span className={cot.funds.net >= 0 ? 'text-emerald-400' : 'text-red-400'}>{cot.funds.net >= 0 ? 'Net Long' : 'Net Short'}</span> : '—'} sub={cot ? `${kfmt(cot.funds.net)} · Δ ${kfmt(cot.funds.deltaNet)}/mgg` : 'memuat'} tone={cot ? (cot.funds.net >= 0 ? 'bull' : 'bear') : 'neutral'} info="Posisi bersih dana besar di futures emas (CFTC, mingguan)."
+                  spark={cot?.fundsHistory} sparkColor="#34d399"
                   moreHref="/terminal/data/cot" moreLabel="Lihat chart & detail COT"
                   detail={cot ? <>
                     <DetailRow l="Funds (institusi/spekulan)" v={`${kfmt(cot.funds.net)}`} c={cot.funds.net >= 0 ? 'text-emerald-400' : 'text-red-400'} />
@@ -1832,6 +1816,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Funds = hedge fund & spekulan besar, trend-follower. Commercials = produsen/bank, sering benar di titik ekstrem (smart money kontrarian). Data mingguan (lagging) — konteks, bukan sinyal entry.</p>
                   </> : undefined} />
                 <StatTile icon={Users} label="Retail" value={cot ? <span className="text-white/75">{cot.retail.net >= 0 ? 'Net Long' : 'Net Short'}</span> : '—'} sub={cot ? `${kfmt(cot.retail.net)} — sering kontrarian` : 'memuat'} tone="neutral" info="Trader kecil sering berada di sisi yang salah pada titik ekstrem."
+                  spark={cot?.retailHistory} sparkColor="#a78bfa"
                   moreHref="/terminal/data/cot" moreLabel="Lihat chart & detail COT"
                   detail={cot ? <>
                     <DetailRow l="Retail net" v={`${kfmt(cot.retail.net)}`} c={cot.retail.net >= 0 ? 'text-emerald-400' : 'text-red-400'} />
@@ -1842,6 +1827,28 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     )}
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Trader ritel (non-reportable) cenderung salah arah di titik ekstrem — kalau posisinya berlawanan sama institusi, condong ikuti institusi.</p>
                   </> : undefined} />
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MakroKesimpulanPanel}{RiskSentimentPanel}</div>
+              {CrossPanel}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
+              {InflasiPanel}
+              {CotPanel}
+              {CalendarPanel}
+            </div>)}
+
+            {tab === 'sentimen' && (!isPro ? <LockedTab icon={Users} {...LOCKED_TAB_META.sentimen} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+              <TerminalScopeAnalysis scope="sentimen" title="Analisa Sentimen AI" subtitle="Dampak risk-on/off, COT & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
+                suggestions={['Sentimen sedang dukung atau tekan emas?', 'Berita terkini condong ke mana?', 'Ada tanda risk-off yang menguntungkan emas?']} />
+              {/* Statistik sentimen kunci (COT dipindah ke tab Makro) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <StatTile icon={Scale} label="Mood Pasar" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Seimbang'}</span>} sub={riskOn < -0.1 ? 'defensif → dukung emas' : riskOn > 0.1 ? 'agresif → tekan emas' : 'tanpa arah'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq & BTC real-time."
+                  detail={<>
+                    <DetailRow l="S&P 500" v={cross.spy ? `${cross.spy.changePct >= 0 ? '+' : ''}${cross.spy.changePct.toFixed(2)}%` : '—'} c={cross.spy && cross.spy.changePct < 0 ? 'text-emerald-400' : cross.spy && cross.spy.changePct > 0 ? 'text-red-400' : undefined} />
+                    <DetailRow l="Nasdaq (QQQ)" v={cross.qqq ? `${cross.qqq.changePct >= 0 ? '+' : ''}${cross.qqq.changePct.toFixed(2)}%` : '—'} c={cross.qqq && cross.qqq.changePct < 0 ? 'text-emerald-400' : cross.qqq && cross.qqq.changePct > 0 ? 'text-red-400' : undefined} />
+                    <DetailRow l="VIX (proxy)" v={cross.vixy ? `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(2)}%` : '—'} c={cross.vixy && cross.vixy.changePct > 0 ? 'text-emerald-400' : undefined} />
+                    <DetailRow l="Bitcoin" v={cross.btc ? `${cross.btc.changePct >= 0 ? '+' : ''}${cross.btc.changePct.toFixed(2)}%` : '—'} c={cross.btc && cross.btc.changePct < 0 ? 'text-emerald-400' : cross.btc && cross.btc.changePct > 0 ? 'text-red-400' : undefined} />
+                    <p className="text-[10px] text-white/40 leading-snug mt-2">Saham/BTC turun & VIX naik bersamaan = pasar sedang defensif (risk-off) → uang biasanya lari ke aset aman seperti emas.</p>
+                  </>} />
                 <StatTile icon={Activity} label="VIX (Takut)" value={cross.vixy ? `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(1)}%` : '—'} sub={cross.vixy ? (cross.vixy.changePct > 2 ? 'ketakutan melonjak' : cross.vixy.changePct > 0 ? 'was-was' : 'tenang') : 'memuat'} tone={cross.vixy ? (cross.vixy.changePct > 2 ? 'bull' : 'neutral') : 'neutral'} info="VIX naik = pasar takut → aliran ke aset aman (emas)."
                   moreHref="/terminal/data/market/vix" moreLabel="Lihat chart & detail VIX"
                   detail={<>
@@ -1852,10 +1859,8 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                   </>} />
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{SentimenKesimpulanPanel}{SentimenChartPanel}</div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-                {CotPanel}
-                <div className="space-y-4">{RiskSentimentPanel}{GoldSilverPanel}{BiasPanel}</div>
-              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{RiskSentimentPanel}{GoldSilverPanel}</div>
+              {BiasPanel}
               {NewsPanel}
             </div>)}
 
