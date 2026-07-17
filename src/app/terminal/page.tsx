@@ -21,5 +21,5 @@ export default function TerminalPage() {
 
   // Free (login tanpa langganan aktif) TETAP boleh masuk — akses terbatas + panel di-blur.
   // Pro = admin / langganan Terminal aktif & BELUM kadaluarsa (dicek di useSubscription).
-  return <TradingTerminal plan={sub.isPro ? 'pro' : 'free'} />
+  return <TradingTerminal plan={sub.isPro ? 'pro' : 'free'} isAdmin={sub.isAdmin} />
 }

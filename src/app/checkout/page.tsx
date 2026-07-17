@@ -9,8 +9,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
 import { DURATIONS, pkgPrice, planBase, planName, rp, type PlanId } from '@/lib/pricing'
+import { Confetti } from '@/components/ui/Confetti'
 import {
-  Crown, Sparkles, ShieldCheck, ArrowLeft, Loader2, CreditCard, Wallet, Check, ArrowRight, AlertCircle,
+  Crown, Sparkles, ShieldCheck, ArrowLeft, Loader2, CreditCard, Wallet, Check, ArrowRight, AlertCircle, PartyPopper,
 } from 'lucide-react'
 
 declare global {
@@ -43,7 +44,7 @@ function CheckoutInner() {
   const dur = DURATIONS.find(d => d.months === months) ?? DURATIONS[0]
   const base = useMemo(() => pkgPrice(planBase(plan), dur.months, dur.off), [plan, dur])
 
-  const [step, setStep] = useState<'review' | 'processing'>(params.get('status') === 'finish' ? 'processing' : 'review')
+  const [step, setStep] = useState<'review' | 'processing' | 'success'>(params.get('status') === 'finish' ? 'processing' : 'review')
   const [busy, setBusy] = useState(false)
   const [snapReady, setSnapReady] = useState(false)
 
@@ -54,6 +55,25 @@ function CheckoutInner() {
       setUserId(data.user.id)
     })
   }, [router, params])
+
+  // Setelah kembali dari pembayaran (?status=finish&inv=…): pantau status order.
+  // Begitu 'aktif' → tampilkan popup selamat + confetti. Aktivasi async via webhook.
+  useEffect(() => {
+    if (step !== 'processing') return
+    const inv = params.get('inv')
+    if (!inv) return
+    const sb = createClient()
+    let stop = false
+    const check = async () => {
+      const { data } = await sb.from('payment_orders').select('status').eq('invoice_number', inv).maybeSingle()
+      if (!stop && data?.status === 'aktif') { setStep('success'); return true }
+      return false
+    }
+    check()
+    const id = setInterval(async () => { if (await check()) clearInterval(id) }, 3500)
+    const stopAt = setTimeout(() => clearInterval(id), 120_000) // berhenti polling setelah 2 menit
+    return () => { stop = true; clearInterval(id); clearTimeout(stopAt) }
+  }, [step, params])
 
   useEffect(() => {
     if (!CLIENT_KEY || DOKU_ENABLED) return
@@ -208,6 +228,30 @@ function CheckoutInner() {
               <button onClick={() => router.push(plan === 'terminal' ? '/terminal' : '/hub')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity">{plan === 'terminal' ? 'Ke Terminal' : 'Ke Hub'}</button>
             </div>
           </div>
+        )}
+
+        {step === 'success' && (
+          <>
+            <Confetti />
+            <div className="relative rounded-3xl p-[1px] bg-gradient-to-br from-primary/70 via-primary/25 to-cyan-500/40 animate-in fade-in zoom-in duration-500">
+              <div className="rounded-3xl bg-[#0a1110] p-8 text-center space-y-4">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/15 ring-1 ring-primary/30">
+                  <PartyPopper size={38} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-primary mb-1">Pembayaran Berhasil 🎉</p>
+                  <h2 className="text-2xl font-black tracking-tight">Selamat, kamu sekarang Pro!</h2>
+                  <p className="text-sm text-white/60 mt-2 max-w-sm mx-auto leading-relaxed">Langganan <strong className="text-white/85">{planName(plan)}</strong> ({dur.id}) sudah <strong className="text-primary">aktif</strong>. Terminal AI XAU/USD & semua tools bonus terbuka penuh — plus jatah kredit AI bulananmu.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2.5 justify-center pt-2">
+                  <button onClick={() => router.push('/terminal')} className="group inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-bold hover:opacity-90 transition-all shadow-lg shadow-primary/25">
+                    <Sparkles size={15} /> Buka Terminal AI <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                  <button onClick={() => router.push('/account')} className="inline-flex items-center justify-center gap-2 border border-white/15 text-white/80 rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/5 transition-colors">Lihat Langganan</button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </main>
     </div>

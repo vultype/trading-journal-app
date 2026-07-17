@@ -66,7 +66,7 @@ export function TerminalAiPanel({ scope, title, subtitle, snapshot, suggestions 
         </div>
       </div>
 
-      {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menghitung indikator & struktur…', 'Menyusun arah & level…']} />}
+      {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menghitung teknikal & struktur…', 'Menyusun arah & level…']} />}
       {error && !loading && low && <div className="mt-3 rounded-lg bg-amber-500/8 border border-amber-500/25 p-3 text-center"><p className="flex items-center justify-center gap-1.5 text-xs text-amber-400"><Coins size={13} /> {error}</p><Link href="/account#token" className="inline-flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3 py-1.5 mt-2 hover:opacity-90 transition-opacity"><Sparkles size={12} /> Top Up Kredit</Link></div>}
       {error && !loading && !low && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p><button onClick={() => run(result?.mode === 'custom' ? 'custom' : 'auto')} className="text-xs font-semibold text-primary hover:underline mt-1">Coba lagi</button></div>}
       {result && !loading && (

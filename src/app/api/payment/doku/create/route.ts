@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       customerId: user.id,
       customerName: (user.user_metadata?.full_name as string) || user.email?.split('@')[0],
       customerEmail: user.email,
-      callbackUrl: `${pubBase}/checkout?status=finish`,
+      callbackUrl: `${pubBase}/checkout?status=finish&inv=${encodeURIComponent(order.invoice_number)}`,
       notificationUrl: `${pubBase}/api/payment/doku/notification`,
     })
 

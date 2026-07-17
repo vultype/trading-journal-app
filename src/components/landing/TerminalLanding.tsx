@@ -20,7 +20,7 @@ const CLIENTS = ['Exness', 'XM', 'IC Markets', 'FTMO', 'Pepperstone', 'OANDA', '
 // Angka nyata dari sistem yang berjalan — bukan klaim marketing.
 const STATS: { icon: React.ElementType; v: string; l: string }[] = [
   { icon: Layers, v: '3 Pilar', l: 'Makro · Teknikal · Sentimen' },
-  { icon: Landmark, v: '12+', l: 'Indikator makro resmi' },
+  { icon: Landmark, v: '12+', l: 'Data makro resmi' },
   { icon: Radio, v: '24/7', l: 'Pemantauan pasar' },
   { icon: Compass, v: '1', l: 'Bias harian yang jelas' },
 ]

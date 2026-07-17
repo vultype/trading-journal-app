@@ -207,7 +207,7 @@ function Result({ a }: { a: Analysis }) {
       {/* Data pendukung / berkorelasi — indikator lain yang menguatkan/melemahkan skenario */}
       {a.dataPendukung.length > 0 && (
         <Section icon={Link2} title="Data Pendukung & Berkorelasi">
-          <p className="text-[10px] text-white/40 mb-1.5 leading-snug">Indikator lain (bukan komponen rilis ini) yang membantu menilai seberapa besar & tahan lama reaksi pasar.</p>
+          <p className="text-[10px] text-white/40 mb-1.5 leading-snug">Data lain (bukan komponen rilis ini) yang membantu menilai seberapa besar & tahan lama reaksi pasar.</p>
           <div className="space-y-1.5">{a.dataPendukung.map((d, i) => <FaktorRow key={i} nama={d.nama} nilai={d.nilai} arah={d.arah} catatan={d.relevansi} />)}</div>
         </Section>
       )}

@@ -507,7 +507,7 @@ const CHART_TFS: { label: string; value: string }[] = [
 function ChartPanel({ onExpand, hasAiLevels, className = '' }: { onExpand: () => void; hasAiLevels: boolean; className?: string }) {
   const [tf, setTf] = useState('15')
   return (
-    <Panel title="Chart XAU/USD" icon={Activity} className={className} info="Line chart XAU/USD (TradingView, OANDA) — bersih tanpa indikator, fokus arah harga. Ganti timeframe lewat tombol M5–D1."
+    <Panel title="Chart XAU/USD" icon={Activity} className={className} info="Line chart XAU/USD (TradingView, OANDA) — bersih & fokus arah harga. Ganti timeframe lewat tombol M5–D1."
       right={
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-0.5">
@@ -520,7 +520,7 @@ function ChartPanel({ onExpand, hasAiLevels, className = '' }: { onExpand: () =>
       }>
       {hasAiLevels && <p className="text-[10px] text-primary/70 mb-2 shrink-0">Level entry/SL/TP dari Analisa AI ada di panel "Analisa AI — Ambil Keputusan".</p>}
       <TradingViewChart symbol="OANDA:XAUUSD" interval={tf} chartStyle="2" minimal height={380} />
-      <p className="text-[10px] text-white/30 mt-2">Line chart · tanpa indikator · TradingView (OANDA)</p>
+      <p className="text-[10px] text-white/30 mt-2">Line chart · fokus arah harga · TradingView (OANDA)</p>
     </Panel>
   )
 }
@@ -635,14 +635,14 @@ function LockedTab({ icon: Icon, title, tagline, benefits }: { icon: React.Eleme
   )
 }
 const LOCKED_TAB_META: Record<string, { title: string; tagline: string; benefits: string[] }> = {
-  teknikal: { title: 'Analisa Teknikal AI', tagline: 'Datalitiq AI membaca chart, indikator & struktur multi-timeframe jadi arah + level entry/stop/target.', benefits: ['Konfluensi M5/M15/H1 + bias H4/Daily', 'Level entry, stop & target berupa angka', 'Sinyal reversal & zona penting otomatis'] },
-  makro: { title: 'Analisa Makro AI', tagline: 'Dampak dolar, yield, inflasi & kebijakan Fed ke XAU/USD — diterjemahkan jadi bias yang jelas.', benefits: ['12+ indikator ekonomi resmi (FRED)', 'Kesimpulan makro → arah emas', 'Kurva yield & real yield dijelaskan'] },
-  sentimen: { title: 'Analisa Sentimen AI', tagline: 'Posisi institusi (COT), risk-on/off, dan berita ditimbang jadi peta sentimen ke emas.', benefits: ['Posisi uang besar vs retail (COT mingguan)', 'Peta sentimen → dukung/tekan emas', 'Indikator takut-serakah (VIX)'] },
+  teknikal: { title: 'Analisa Teknikal AI', tagline: 'Datalitiq AI membaca chart & struktur multi-timeframe jadi arah + level entry/stop/target.', benefits: ['Konfluensi M5/M15/H1 + bias H4/Daily', 'Level entry, stop & target berupa angka', 'Sinyal reversal & zona penting otomatis'] },
+  makro: { title: 'Analisa Makro AI', tagline: 'Dampak dolar, yield, inflasi & kebijakan Fed ke XAU/USD — diterjemahkan jadi bias yang jelas.', benefits: ['12+ data ekonomi resmi (FRED)', 'Kesimpulan makro → arah emas', 'Kurva yield & real yield dijelaskan'] },
+  sentimen: { title: 'Analisa Sentimen AI', tagline: 'Posisi institusi (COT), risk-on/off, dan berita ditimbang jadi peta sentimen ke emas.', benefits: ['Posisi uang besar vs retail (COT mingguan)', 'Peta sentimen → dukung/tekan emas', 'Ukuran takut-serakah (VIX)'] },
   berita: { title: 'Analisa News AI', tagline: 'Prediksi arah emas sebelum rilis berita besar — skenario reaksi + level kunci, tanpa larangan.', benefits: ['Prediksi dampak CPI/NFP/FOMC ke emas', 'Skenario reaksi + probabilitas', 'Rekomendasi arah pre-news + peringatan'] },
 }
 
 // ─────────────────────────── PAGE ───────────────────────────
-export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
+export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'free' | 'pro'; isAdmin?: boolean }) {
   const isPro = plan === 'pro'
   const now = useClock()
   const live = useLiveXauFeed()
@@ -1227,10 +1227,10 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
     </Panel>
   )
 
-  // Matrix indikator multi-timeframe (heatmap)
+  // Kondisi teknikal multi-timeframe (heatmap)
   const cols = ['Tren', 'RSI', 'MACD', 'Stoch', 'Struktur']
   const IndicatorMatrix = (
-    <Panel title="Matrix Indikator Multi-Timeframe" icon={LayoutDashboard} info="Sekilas kondisi tiap indikator di M5/M15/H1. Hijau=bullish, merah=bearish, abu=netral. Makin banyak hijau/merah sejajar = sinyal makin searah.">
+    <Panel title="Teknikal per Timeframe" icon={LayoutDashboard} info="Sekilas kondisi teknikal di M5/M15/H1. Hijau=bullish, merah=bearish, abu=netral. Makin banyak hijau/merah sejajar = sinyal makin searah.">
       <div className="grid grid-cols-6 gap-1 text-center">
         <div />{cols.map(c => <div key={c} className="text-[9px] font-bold uppercase tracking-wider text-white/35 pb-1">{c}</div>)}
         {TFS.map(t => { const d = feed.tf[t]
@@ -1484,7 +1484,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
         </div>
       )}
       {!ai.data && !ai.loading && !ai.error && <div className="py-4 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> — Datalitiq AI membaca seluruh data terminal + berita terkini {aiPrompt.trim() ? '+ konteks darimu ' : ''}lalu memberi <b>keputusan (Beli/Jual/Tunggu)</b> beserta alasan, confluence, rencana, & risiko.</p></div>}
-      {ai.loading && <AiLoading steps={['Membaca harga, candle & indikator…', 'Menimbang makro, COT & berita…', 'Mengecek konfluensi timeframe…', 'Menyusun keputusan & level…']} />}
+      {ai.loading && <AiLoading steps={['Membaca harga, candle & teknikal…', 'Menimbang makro, COT & berita…', 'Mengecek konfluensi timeframe…', 'Menyusun keputusan & level…']} />}
       {ai.error && !ai.loading && ai.insufficient && (
         <div className="py-6 text-center">
           <p className="flex items-center justify-center gap-1.5 text-[11px] text-amber-400 mb-2"><Coins size={13} /> Kredit AI tidak cukup untuk analisa ini ({credits.cost.analysis} kredit). Saldo: {credits.total}.</p>
@@ -1566,7 +1566,9 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
     </div>
   )
 
-  const navGroups = Array.from(new Set(TABS.map(t => t.group ?? 'Menu')))
+  // Status Server hanya untuk admin — sembunyikan tab-nya dari user biasa.
+  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== 'status')
+  const navGroups = Array.from(new Set(visibleTabs.map(t => t.group ?? 'Menu')))
   const activeTab = TABS.find(t => t.id === tab)
 
   return (
@@ -1591,7 +1593,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
               <div key={g}>
                 <p className="px-2 mb-1.5 text-[9px] font-bold uppercase tracking-widest text-white/25">{g}</p>
                 <div className="space-y-0.5">
-                  {TABS.filter(t => (t.group ?? 'Menu') === g).map(t => {
+                  {visibleTabs.filter(t => (t.group ?? 'Menu') === g).map(t => {
                     const on = tab === t.id
                     return (
                       <button key={t.id} onClick={() => setTab(t.id)} className={`relative w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${on ? 'text-white bg-gradient-to-r from-primary/20 to-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
@@ -1606,10 +1608,12 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
               </div>
             ))}
           </nav>
-          <button onClick={() => setTab('status')} className="m-2.5 flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors shrink-0">
-            <span className={`h-2 w-2 rounded-full ${STAT_META[overall].dot} ${overall === 'online' ? 'shadow-[0_0_0_3px_rgba(52,211,153,0.15)]' : ''}`} />
-            <div className="min-w-0 flex-1"><p className={`text-[11px] font-bold ${STAT_META[overall].text}`}>{overall === 'online' ? 'Server Online' : overall === 'offline' ? 'Ada Gangguan' : overall === 'stale' ? 'Sebagian Lambat' : 'Menghubungkan'}</p><p className="text-[9px] text-white/35 tabular-nums">{onlineCount}/{apiSources.length} API aktif</p></div>
-          </button>
+          {isAdmin && (
+            <button onClick={() => setTab('status')} className="m-2.5 flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors shrink-0">
+              <span className={`h-2 w-2 rounded-full ${STAT_META[overall].dot} ${overall === 'online' ? 'shadow-[0_0_0_3px_rgba(52,211,153,0.15)]' : ''}`} />
+              <div className="min-w-0 flex-1"><p className={`text-[11px] font-bold ${STAT_META[overall].text}`}>{overall === 'online' ? 'Server Online' : overall === 'offline' ? 'Ada Gangguan' : overall === 'stale' ? 'Sebagian Lambat' : 'Menghubungkan'}</p><p className="text-[9px] text-white/35 tabular-nums">{onlineCount}/{apiSources.length} API aktif</p></div>
+            </button>
+          )}
         </aside>
 
         {/* Main column */}
@@ -1663,12 +1667,12 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
               <LockedWrap title="Signal Meter & Detail 3 Pilar"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{SignalMeterPanel}{PilarPanel}</div></LockedWrap>
               <LockedWrap title="Konfluensi Timeframe & Bias Besar"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{HtfBiasPanel}</div></LockedWrap>
               <LockedWrap title="Zona Kunci & Sinyal Reversal"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ZonaPanel}{ReversalPanel}</div></LockedWrap>
-              <LockedWrap title="Momentum & Matriks Indikator"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MomentumPanel}{IndicatorMatrix}</div></LockedWrap>
+              <LockedWrap title="Momentum & Teknikal per Timeframe"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MomentumPanel}{IndicatorMatrix}</div></LockedWrap>
               <LockedWrap title="Riwayat Sinyal & Sentimen Risiko"><div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{RiwayatPanel}{RiskSentimentPanel}</div></LockedWrap>
             </div>)}
 
             {tab === 'teknikal' && (!isPro ? <LockedTab icon={Activity} {...LOCKED_TAB_META.teknikal} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
-              <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Datalitiq AI baca chart, indikator & struktur → arah + level entry/stop/target." snapshot={snapshot}
+              <TerminalAiPanel scope="teknikal" title="Analisa Teknikal AI" subtitle="Datalitiq AI baca chart & struktur multi-timeframe → arah + level entry/stop/target." snapshot={snapshot}
                 suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{SignalMeterPanel}</div>
@@ -1714,7 +1718,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
 
             {tab === 'berita' && (!isPro ? <LockedTab icon={Newspaper} {...LOCKED_TAB_META.berita} /> : <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4"><TerminalNewsAnalysis snapshot={snapshot} /></div>)}
 
-            {tab === 'status' && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4">{ServerStatusContent}</div>}
+            {tab === 'status' && isAdmin && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4">{ServerStatusContent}</div>}
 
             {tab === 'panduan' && <div className="max-w-6xl mx-auto"><PanduanContent /></div>}
 
@@ -1725,7 +1729,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
 
       {/* Bottom nav (mobile) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#080d0b]/95 backdrop-blur border-t border-white/[0.06] flex items-center overflow-x-auto">
-        {TABS.map(t => {
+        {visibleTabs.map(t => {
           const on = tab === t.id
           return (
             <button key={t.id} onClick={() => setTab(t.id)} className={`relative flex flex-col items-center gap-0.5 px-3 py-2 shrink-0 ${on ? 'text-primary' : 'text-white/40'}`}>
@@ -1740,80 +1744,134 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   )
 }
 
-// ─────────────────────────── Panduan (untuk pemula) ───────────────────────────
-function GuideCard({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+// ─────────────────────────── Panduan (interaktif, untuk pemula) ───────────────────────────
+// Kartu accordion: klik judul untuk buka/tutup. Satu terbuka default.
+function GuideAccordion({ title, icon: Icon, open, onToggle, children }: { title: string; icon: React.ElementType; open: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e] p-4">
-      <h3 className="flex items-center gap-2 text-sm font-black mb-2"><Icon size={15} className="text-primary" /> {title}</h3>
-      <div className="text-[12px] text-white/65 leading-relaxed space-y-1.5">{children}</div>
+    <div className={`rounded-2xl border transition-colors ${open ? 'border-primary/25 bg-primary/[0.04]' : 'border-white/[0.06] bg-[#0b100e] hover:border-white/15'}`}>
+      <button onClick={onToggle} className="w-full flex items-center gap-2.5 p-4 text-left">
+        <span className={`flex items-center justify-center w-8 h-8 rounded-xl shrink-0 ${open ? 'bg-primary/15 ring-1 ring-primary/30 text-primary' : 'bg-white/5 text-white/50'}`}><Icon size={15} /></span>
+        <h3 className="flex-1 text-sm font-black">{title}</h3>
+        <ChevronDown size={16} className={`text-white/40 transition-transform ${open ? 'rotate-180 text-primary' : ''}`} />
+      </button>
+      {open && <div className="px-4 pb-4 -mt-1 text-[12px] text-white/65 leading-relaxed space-y-1.5">{children}</div>}
     </div>
   )
 }
+
 function PanduanContent() {
+  const [open, setOpen] = useState<string>('istilah')
+  const toggle = (id: string) => setOpen(o => o === id ? '' : id)
+
+  // Langkah cara membaca terminal (stepper visual)
+  const STEPS = [
+    { icon: Compass, t: 'Lihat Signal Meter', d: 'Di tab Ringkasan: jarum ke kanan = bullish, ke kiri = bearish. Cek juga Confidence.' },
+    { icon: Brain, t: 'Jalankan Analisa AI', d: 'Dapat 1 keputusan tegas (Beli/Jual/Tunggu) + alasan + strip M5/M15/H1.' },
+    { icon: Activity, t: 'Konfirmasi Teknikal', d: 'Cek M5/M15/H1 searah? lalu lihat kartu Kesimpulan Makro & Sentimen.' },
+    { icon: Target, t: 'Eksekusi + SL', d: 'Pakai level entry/stop/target dari AI. SL selalu terpasang, jarak sesuai volatilitas.' },
+  ]
+  // Tiga pilar sinyal (legenda)
+  const PILLARS = [
+    { icon: Landmark, t: 'Makro', d: 'Dolar, yield, inflasi & Fed', c: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' },
+    { icon: Activity, t: 'Teknikal', d: 'Chart & struktur multi-timeframe', c: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+    { icon: Users, t: 'Sentimen', d: 'Berita, COT & mood pasar', c: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
+  ]
+
   return (
-    <div className="space-y-3">
-      <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-transparent p-4">
-        <h2 className="text-base font-black flex items-center gap-2 mb-1"><BookOpen size={18} className="text-primary" /> Panduan Terminal Scalping XAU/USD</h2>
-        <p className="text-[12px] text-white/60">Terminal ini dirancang untuk <b className="text-primary">scalping emas</b> — fokus di timeframe kecil <b>M5, M15, H1</b>. XAU/USD = harga emas dalam dolar AS. Emas cenderung <b className="text-emerald-400">naik (bullish)</b> saat dolar & suku bunga melemah, inflasi mereda, atau pasar takut (risk-off); dan <b className="text-red-400">turun (bearish)</b> saat sebaliknya. Semua data disatukan agar kamu selalu punya <b>satu arah bias yang jelas</b>.</p>
+    <div className="space-y-4">
+      {/* Intro */}
+      <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-transparent p-5">
+        <h2 className="text-base font-black flex items-center gap-2 mb-1.5"><BookOpen size={18} className="text-primary" /> Cara Baca Terminal Scalping XAU/USD</h2>
+        <p className="text-[12px] text-white/60 leading-relaxed">Terminal ini menyatukan semua data jadi <b className="text-white/85">satu arah bias yang jelas</b> untuk <b className="text-primary">scalping emas</b> (fokus M5, M15, H1). XAU/USD = harga emas dalam dolar. Emas cenderung <b className="text-emerald-400">naik</b> saat dolar & suku bunga melemah / pasar takut, dan <b className="text-red-400">turun</b> saat sebaliknya.</p>
       </div>
-      <div className="grid md:grid-cols-2 gap-3">
-        <GuideCard title="Istilah Dasar" icon={Info}>
-          <p>• <b className="text-emerald-400">Bullish</b> = perkiraan harga naik. <b className="text-red-400">Bearish</b> = perkiraan turun. <b>Netral</b> = seimbang.</p>
-          <p>• <b>Support (S)</b> = level bawah tempat harga sering memantul naik. <b>Resistance (R)</b> = level atas tempat harga sering tertahan.</p>
-          <p>• <b>Timeframe scalping</b>: M5 (5 menit) & M15 (15 menit) = tempat entry/exit. H1 (1 jam) = konteks arah intraday. H4/Daily hanya angin latar, bukan penghalang setup scalping.</p>
-        </GuideCard>
-        <GuideCard title="Signal Meter & Bias/Confidence" icon={Compass}>
-          <p>Jarum meter ke <b className="text-emerald-400">kanan = bullish</b>, ke <b className="text-red-400">kiri = bearish</b>. Ini rangkuman dari 3 pilar:</p>
-          <p>• <b>Makro</b> (dolar/yield/inflasi/Fed), <b>Teknikal</b> (chart), <b>Sentimen</b> (berita & pasar).</p>
-          <p>• <b>Confidence</b> = seberapa sepakat ketiga pilar. Makin tinggi (&gt;66%) = sinyal makin bisa dipercaya. Rendah = pilar bertentangan, kecilkan lot.</p>
-        </GuideCard>
-        <GuideCard title="Arah & Ringkasan per Sesi" icon={Clock}>
-          <p>Di tab <b>Ringkasan</b> ada panel <b>Asia · London · New York</b> (jam UTC) yang <b>reset tiap hari</b>.</p>
-          <p>• Tiap sesi menampilkan status (berlangsung/selesai/belum), arah (bullish/bearish/flat), poin & range, serta open→harga sekarang.</p>
-          <p>• Berguna untuk scalping: tahu sesi mana yang sedang bergerak & searah bias-mu.</p>
-        </GuideCard>
-        <GuideCard title="Teknikal (tab Teknikal)" icon={Activity}>
-          <p>• <b>Chart</b> TradingView: bisa di-zoom/drag, klik "Perbesar" untuk layar penuh.</p>
-          <p>• <b>Konfluensi M5/M15/H1</b>: kalau ketiganya searah = momentum scalping lebih kuat.</p>
-          <p>• <b>RSI</b>: &gt;70 jenuh beli (rawan turun), &lt;30 jenuh jual (rawan naik).</p>
-          <p>• <b>ADX</b> (Kekuatan Tren): &gt;25 tren kuat, &lt;20 sideways (rawan tipu-tipu). <b>+DI vs -DI</b> = arah.</p>
-          <p>• <b>ATR/Volatilitas</b>: besar pergerakan — patokan jarak SL/TP scalping.</p>
-        </GuideCard>
-        <GuideCard title="Makro (tab Makro)" icon={Landmark}>
-          <p>• <b>Kesimpulan Makro → XAU/USD</b>: kartu ringkas — makro sedang dukung atau tekan emas + pendorong utamanya.</p>
-          <p>• <b>Indeks Dolar & US10Y (yield)</b>: naik → tekan emas; turun → dukung emas.</p>
-          <p>• <b>CPI / Core PCE</b> (inflasi): mereda → peluang Fed pangkas bunga → bullish emas.</p>
-          <p>• <b>Fed Funds Rate</b>: suku bunga acuan. Turun = bullish emas.</p>
-          <p>• <b>Kalender Ekonomi</b>: rilis high-impact = volatilitas tinggi. Bukan larangan — pakai tab <b className="text-primary">Analisa News</b> untuk menyiasatinya.</p>
-        </GuideCard>
-        <GuideCard title="Sentimen (tab Sentimen)" icon={Users}>
-          <p>• <b>Kesimpulan Sentimen → XAU/USD</b> + <b>Peta Sentimen</b>: bar tiap faktor (mood pasar, VIX, COT, saham) mendorong emas bullish/bearish.</p>
-          <p>• <b>COT</b> (mingguan, CFTC): <b>Funds/Institusi</b> = smart money; <b>Retail</b> sering salah di titik ekstrem (kontrarian).</p>
-          <p>• Kalau institusi & retail berlawanan → cenderung ikuti institusi.</p>
-        </GuideCard>
-        <GuideCard title="Analisa AI (tab Ringkasan)" icon={Brain}>
-          <p>Klik <b className="text-primary">Jalankan Analisa AI</b> — Datalitiq AI membaca SEMUA data + berita lalu memberi:</p>
-          <p>• <b>Satu keputusan & arah</b> (Beli/Jual/Tunggu) + alasan + keyakinan. Selalu ada 1 arah bias, tidak menghindar.</p>
-          <p>• <b>Strip M5/M15/H1</b> untuk cek keselarasan scalping; toggle <b>Ringkas/Lengkap</b> untuk detail.</p>
-          <p>• <b>Tambah konteks</b> untuk menyesuaikan (mis. "scalping sesi London, fokus level entry").</p>
-        </GuideCard>
-        <GuideCard title="Analisa News (tab Analisa News)" icon={Newspaper}>
-          <p>Untuk menyiasati rilis berita — <b>bukan menghindarinya</b>.</p>
-          <p>• Pilih event (CPI, NFP, FOMC…), isi angka <b>Actual · Forecast · Previous</b> ala forexfactory.</p>
-          <p>• AI memberi <b>prediksi arah emas</b> + rekomendasi pre-news (Long/Short/Tunggu), skenario reaksi + probabilitas, dan level kunci.</p>
-          <p className="text-amber-400/80">⚠ Masuk sebelum berita = risiko tinggi (whipsaw). Pakai SL rapat / lot kecil.</p>
-        </GuideCard>
+
+      {/* Stepper: cara baca dalam 4 langkah */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2.5 px-1">Baca dalam 4 Langkah</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {STEPS.map((s, i) => (
+            <div key={s.t} className="relative rounded-2xl border border-white/[0.06] bg-[#0b100e] p-4">
+              <span className="absolute top-3 right-3 text-[11px] font-black text-white/15">{i + 1}</span>
+              <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/12 ring-1 ring-primary/25 mb-2.5"><s.icon size={16} className="text-primary" /></span>
+              <p className="text-[13px] font-bold mb-1">{s.t}</p>
+              <p className="text-[11px] text-white/50 leading-snug">{s.d}</p>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e] p-4">
-        <h3 className="flex items-center gap-2 text-sm font-black mb-2"><CheckCircle2 size={15} className="text-primary" /> Alur Scalping yang Disarankan</h3>
+
+      {/* Legenda 3 pilar */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2.5 px-1">Signal Meter = 3 Pilar</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {PILLARS.map(p => (
+            <div key={p.t} className={`rounded-2xl border p-4 ${p.bg}`}>
+              <p className={`flex items-center gap-2 text-sm font-black ${p.c}`}><p.icon size={15} /> {p.t}</p>
+              <p className="text-[11px] text-white/55 mt-1">{p.d}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-white/45 mt-2 px-1"><b className="text-white/70">Confidence</b> = seberapa sepakat ketiga pilar. Tinggi (&gt;66%) = sinyal lebih bisa dipercaya; rendah = pilar bertentangan, kecilkan lot.</p>
+      </div>
+
+      {/* Accordion detail per bagian */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2.5 px-1">Pelajari Tiap Bagian <span className="text-white/25 normal-case font-medium">· klik untuk buka</span></p>
+        <div className="space-y-2">
+          <GuideAccordion title="Istilah Dasar" icon={Info} open={open === 'istilah'} onToggle={() => toggle('istilah')}>
+            <p>• <b className="text-emerald-400">Bullish</b> = perkiraan harga naik. <b className="text-red-400">Bearish</b> = perkiraan turun. <b>Netral</b> = seimbang.</p>
+            <p>• <b>Support (S)</b> = level bawah tempat harga sering memantul naik. <b>Resistance (R)</b> = level atas tempat harga sering tertahan.</p>
+            <p>• <b>Timeframe scalping</b>: M5 & M15 = tempat entry/exit. H1 = konteks arah intraday. H4/Daily hanya angin latar, bukan penghalang setup scalping.</p>
+            <p>• <b>Pips</b>: satuan gerak. Untuk XAU/USD, 1 pip = $0.10.</p>
+          </GuideAccordion>
+          <GuideAccordion title="Arah & Ringkasan per Sesi" icon={Clock} open={open === 'sesi'} onToggle={() => toggle('sesi')}>
+            <p>Di tab <b>Ringkasan</b> ada panel <b>Asia · London · New York</b> (jam WIB) yang <b>reset tiap hari</b>.</p>
+            <p>• Tiap sesi menampilkan status (berlangsung/selesai/belum), arah (bullish/bearish/flat), <b>range dalam pips</b>, dan <b>Open → harga sekarang</b>.</p>
+            <p>• Berguna untuk scalping: tahu sesi mana yang sedang bergerak & searah bias-mu.</p>
+          </GuideAccordion>
+          <GuideAccordion title="Teknikal" icon={Activity} open={open === 'teknikal'} onToggle={() => toggle('teknikal')}>
+            <p>• <b>Chart</b> TradingView: bisa di-zoom/drag, klik "Perbesar" untuk layar penuh.</p>
+            <p>• <b>Konfluensi M5/M15/H1</b>: kalau ketiganya searah = momentum scalping lebih kuat.</p>
+            <p>• <b>Kekuatan tren</b>: makin kuat & searah = sinyal makin bisa diikuti; lemah/sideways = rawan tipu-tipu.</p>
+            <p>• <b>Volatilitas</b>: besar pergerakan — jadi patokan jarak SL/TP scalping.</p>
+          </GuideAccordion>
+          <GuideAccordion title="Makro" icon={Landmark} open={open === 'makro'} onToggle={() => toggle('makro')}>
+            <p>• <b>Kesimpulan Makro → XAU/USD</b>: kartu ringkas — makro sedang dukung atau tekan emas + pendorong utamanya.</p>
+            <p>• <b>Indeks Dolar & yield</b>: naik → tekan emas; turun → dukung emas.</p>
+            <p>• <b>Inflasi (CPI/Core PCE)</b>: mereda → peluang Fed pangkas bunga → bullish emas.</p>
+            <p>• <b>Kalender Ekonomi</b>: rilis high-impact = volatilitas tinggi. Bukan larangan — pakai tab <b className="text-primary">Analisa News</b> untuk menyiasatinya.</p>
+          </GuideAccordion>
+          <GuideAccordion title="Sentimen" icon={Users} open={open === 'sentimen'} onToggle={() => toggle('sentimen')}>
+            <p>• <b>Kesimpulan Sentimen → XAU/USD</b> + <b>Peta Sentimen</b>: bar tiap faktor (mood pasar, VIX, COT, saham) mendorong emas bullish/bearish.</p>
+            <p>• <b>COT</b> (mingguan, CFTC): <b>Funds/Institusi</b> = smart money; <b>Retail</b> sering salah di titik ekstrem (kontrarian).</p>
+            <p>• Kalau institusi & retail berlawanan → cenderung ikuti institusi.</p>
+          </GuideAccordion>
+          <GuideAccordion title="Analisa AI" icon={Brain} open={open === 'ai'} onToggle={() => toggle('ai')}>
+            <p>Klik <b className="text-primary">Jalankan Analisa AI</b> — Datalitiq AI membaca SEMUA data + berita lalu memberi:</p>
+            <p>• <b>Satu keputusan & arah</b> (Beli/Jual/Tunggu) + alasan + keyakinan. Selalu ada 1 arah, tidak menghindar.</p>
+            <p>• <b>Strip M5/M15/H1</b> untuk cek keselarasan scalping; toggle <b>Ringkas/Lengkap</b> untuk detail.</p>
+            <p>• <b>Tambah konteks</b> untuk menyesuaikan (mis. "scalping sesi London, fokus level entry").</p>
+          </GuideAccordion>
+          <GuideAccordion title="Analisa News" icon={Newspaper} open={open === 'news'} onToggle={() => toggle('news')}>
+            <p>Untuk menyiasati rilis berita — <b>bukan menghindarinya</b>.</p>
+            <p>• Pilih event (CPI, NFP, FOMC…), isi angka <b>Actual · Forecast · Previous</b> ala forexfactory.</p>
+            <p>• AI memberi <b>prediksi arah emas</b> + rekomendasi pre-news (Long/Short/Tunggu), skenario reaksi + probabilitas, dan level kunci.</p>
+            <p className="text-amber-400/80">⚠ Masuk sebelum berita = risiko tinggi (whipsaw). Pakai SL rapat / lot kecil.</p>
+          </GuideAccordion>
+        </div>
+      </div>
+
+      {/* Alur + disclaimer */}
+      <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e] p-5">
+        <h3 className="flex items-center gap-2 text-sm font-black mb-2.5"><CheckCircle2 size={15} className="text-primary" /> Alur Scalping yang Disarankan</h3>
         <ol className="text-[12px] text-white/65 leading-relaxed space-y-1 list-decimal list-inside">
-          <li>Buka <b>Ringkasan</b> → lihat Signal Meter, Confidence & panel <b>per Sesi</b> (sesi mana yang aktif?).</li>
+          <li>Buka <b>Ringkasan</b> → lihat Signal Meter, Confidence & panel <b>per Sesi</b>.</li>
           <li>Klik <b>Jalankan Analisa AI</b> → dapat 1 arah bias + strip M5/M15/H1.</li>
-          <li>Konfirmasi di <b>Teknikal</b> (M5/M15/H1 searah? ADX kuat?) & cek kartu <b>Kesimpulan Makro/Sentimen</b>.</li>
+          <li>Konfirmasi di <b>Teknikal</b> & cek kartu <b>Kesimpulan Makro/Sentimen</b>.</li>
           <li>Kalau ada rilis besar dekat → mampir <b>Analisa News</b> untuk rencananya.</li>
-          <li>Eksekusi dengan <b>SL selalu terpasang</b> & jarak sesuai ATR. Keputusan akhir di tanganmu.</li>
+          <li>Eksekusi dengan <b>SL selalu terpasang</b> & jarak sesuai volatilitas.</li>
         </ol>
-        <p className="text-[11px] text-amber-400/80 mt-2">⚠ Terminal ini alat bantu analisa, <b>bukan nasihat keuangan</b>. Kelola risiko dengan disiplin.</p>
+        <p className="text-[11px] text-amber-400/80 mt-2.5">⚠ Terminal ini alat bantu analisa, <b>bukan nasihat keuangan</b>. Kelola risiko dengan disiplin.</p>
       </div>
     </div>
   )
