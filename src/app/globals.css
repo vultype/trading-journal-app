@@ -129,3 +129,18 @@
   }
   html { @apply font-sans; font-size: 15px; }
 }
+
+/* ── Animasi bento fitur landing (float + glow) ── */
+@keyframes tl-float  { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+@keyframes tl-float2 { 0%,100% { transform: translateY(0) } 50% { transform: translateY(7px) } }
+@keyframes tl-glow   { 0%,100% { opacity: .5 } 50% { opacity: .95 } }
+@keyframes tl-bolt   { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+@keyframes tl-ring   { 0% { transform: scale(.6); opacity: .5 } 100% { transform: scale(1.5); opacity: 0 } }
+.tl-float  { animation: tl-float  5s ease-in-out infinite }
+.tl-float2 { animation: tl-float2 6.5s ease-in-out infinite }
+.tl-glow   { animation: tl-glow   4s ease-in-out infinite }
+.tl-bolt   { animation: tl-bolt   1.8s ease-in-out infinite }
+.tl-ring   { animation: tl-ring   3s ease-out infinite }
+@media (prefers-reduced-motion: reduce) {
+  .tl-float, .tl-float2, .tl-glow, .tl-bolt, .tl-ring { animation: none }
+}
