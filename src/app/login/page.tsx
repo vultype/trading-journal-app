@@ -9,13 +9,14 @@ import { Label } from '@/components/ui/label'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { TrendingUp, Lock, Mail, AlertCircle, Loader2, User } from 'lucide-react'
 
-// Origin kanonik untuk redirect OAuth/konfirmasi email. Pakai NEXT_PUBLIC_SITE_URL
-// (mis. https://www.datalitiq.com) bila diset agar TIDAK mendarat di domain Vercel
-// walau user mengakses lewat URL Vercel. Fallback ke origin browser (dev/lokal).
+// Origin untuk redirect OAuth/konfirmasi email.
+// WAJIB = origin tempat login DIMULAI: PKCE menyimpan "code verifier" per-origin
+// (cookie/localStorage host-only), jadi callback harus mendarat di origin yang sama.
+// Memaksa domain lain (mis. apex → www) bikin verifier tak ketemu → error PKCE.
+// Fallback NEXT_PUBLIC_SITE_URL hanya untuk konteks non-browser (SSR, tak dipakai di sini).
 function siteOrigin() {
-  const env = process.env.NEXT_PUBLIC_SITE_URL
-  if (env) return env.replace(/\/$/, '')
-  return typeof window !== 'undefined' ? window.location.origin : ''
+  if (typeof window !== 'undefined') return window.location.origin
+  return (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')
 }
 
 export default function LoginPage() {
