@@ -43,6 +43,22 @@ async function fetchSeries(s: FredSeries): Promise<MacroPoint | null> {
   return { key: s.key, value: parseFloat(valid[0].value), prior: parseFloat((valid[1] ?? valid[0]).value), date: valid[0].date, history }
 }
 
+export type MacroHistoryPoint = { date: string; value: number }
+
+// History panjang (mis. 90 hari) untuk halaman detail per-indikator — panggilan
+// terpisah dari fetchSeries (limit=6) karena kebutuhannya beda: sparkline kecil
+// vs chart tren penuh.
+export async function fetchSeriesHistory(key: string, limit = 90): Promise<MacroHistoryPoint[]> {
+  const s = FRED_SERIES.find(x => x.key === key)
+  if (!s) throw new Error(`Series makro "${key}" tidak dikenal`)
+  const url = `${BASE}?series_id=${s.id}&api_key=${keyParam()}&file_type=json&sort_order=desc&limit=${limit}${s.units ? `&units=${s.units}` : ''}`
+  const res = await fetch(url, { cache: 'no-store' })
+  const j = await res.json()
+  const obs = (j.observations ?? []) as { date: string; value: string }[]
+  const valid = obs.filter(o => o.value !== '.' && o.value !== '' && !isNaN(parseFloat(o.value)))
+  return valid.slice().reverse().map(o => ({ date: o.date, value: parseFloat(o.value) }))
+}
+
 export async function fetchMacro(): Promise<MacroPoint[]> {
   const results = await Promise.all(FRED_SERIES.map(s => fetchSeries(s).catch(() => null)))
   return results.filter((r): r is MacroPoint => r !== null)

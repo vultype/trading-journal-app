@@ -1754,6 +1754,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                       <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-white/[0.05]"><span className="text-[10px] text-white/35">Tren beberapa rilis terakhir</span><Sparkline data={macro.dollar.history} color="#60a5fa" w={70} h={20} /></div>
                     )}
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Emas dihargakan dalam dolar — dolar menguat = emas relatif lebih mahal buat pemegang mata uang lain, biasanya menekan harga.</p>
+                    <Link href="/terminal/data/dxy" onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline mt-2.5">Lihat detail penuh (chart & tren 90 hari) →</Link>
                   </>} />
                 <StatTile icon={GitBranch} label="Yield 10Y" value={macro?.us10y ? `${macro.us10y.value}%` : '—'} sub={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'naik → tekan emas' : 'turun → dukung emas') : 'memuat'} tone={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'bear' : 'bull') : 'neutral'} info="Yield Treasury 10 tahun. Naik = biaya peluang memegang emas naik."
                   detail={<>
