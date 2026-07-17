@@ -13,8 +13,8 @@ import {
   Activity, Gauge as GaugeIcon, Newspaper, Layers, Radio, ArrowLeft, Clock, Wifi, WifiOff,
   Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
-  LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle,
-  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight, ArrowRight,
+  LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle, LineChart,
+  Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight,
   Lock, Crown, Check,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
@@ -25,6 +25,7 @@ import { BrandLogo } from '@/components/layout/BrandLogo'
 import { AiLoading } from './AiLoading'
 import { TerminalAiPanel } from './TerminalAiPanel'
 import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
+import { MacroComparisonChart, LintasAsetSection, InflasiSection, CotSection } from './MacroDeepDive'
 import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
 import { type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 import {
@@ -38,7 +39,8 @@ const HTFS: HTF[] = ['H4', 'D1']
 type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
 type MacroPoint = { key: string; value: number; prior: number; date: string; history: number[] }
 type CotGroup = { long: number; short: number; net: number; deltaNet: number }
-type Cot = { date: string; funds: CotGroup; commercials: CotGroup; retail: CotGroup; fundsHistory: number[]; retailHistory: number[] }
+type CotHistPoint = { date: string; value: number }
+type Cot = { date: string; funds: CotGroup; commercials: CotGroup; retail: CotGroup; fundsHistory: number[]; retailHistory: number[]; fundsHistoryFull: CotHistPoint[]; commercialsHistoryFull: CotHistPoint[]; retailHistoryFull: CotHistPoint[] }
 // Indikator, regime, confidence & risk-on dari @/lib/terminal-signal (dipakai bersama cron notifikasi).
 
 // ─────────────────────────── hooks (data real) ───────────────────────────
@@ -611,7 +613,7 @@ function RiskMeter({ riskOn }: { riskOn: number }) {
 }
 
 // ─────────────────────────── TAB ───────────────────────────
-type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'sentimen' | 'berita' | 'status' | 'panduan'
+type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'makro-lintas' | 'makro-inflasi' | 'makro-cot' | 'sentimen' | 'berita' | 'status' | 'panduan'
 const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string; pro?: boolean }[] = [
   { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard, group: 'Analisa' },
   { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa', pro: true },
@@ -621,6 +623,29 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string; p
   { id: 'status', label: 'Status Server', icon: Server, group: 'Sistem' },
   { id: 'panduan', label: 'Panduan', icon: BookOpen, group: 'Sistem' },
 ]
+// Sub-menu (dropdown) di bawah item "Makro" — halaman makro mendalam.
+const MACRO_SUBTABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: 'makro', label: 'Ringkasan Makro', icon: Landmark },
+  { id: 'makro-lintas', label: 'Lintas Aset', icon: LineChart },
+  { id: 'makro-inflasi', label: 'Inflasi & Fed', icon: Flame },
+  { id: 'makro-cot', label: 'Institusi vs Retail', icon: Users },
+]
+const MACRO_TAB_IDS = MACRO_SUBTABS.map(s => s.id)
+// Pill bar sub-menu makro — tampil di atas konten tiap sub-tab (nav utama di mobile).
+function MacroSubNav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      {MACRO_SUBTABS.map(s => {
+        const on = tab === s.id
+        return (
+          <button key={s.id} onClick={() => setTab(s.id)} className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold whitespace-nowrap transition-colors shrink-0 ${on ? 'bg-primary/15 text-primary ring-1 ring-primary/25' : 'text-white/45 hover:text-white/80 bg-white/[0.03] hover:bg-white/[0.06]'}`}>
+            <s.icon size={13} /> {s.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 // ─────────────────────────── GATE PRO/FREE ───────────────────────────
 // Konten DUMMY (angka/meter palsu) untuk latar panel terkunci — data ASLI tak
@@ -727,6 +752,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const [spread, setSpread] = useState<number>(() => { if (typeof window === 'undefined') return 0; const v = parseFloat(localStorage.getItem('dtq_spread') || '0'); return Number.isFinite(v) && v >= 0 ? v : 0 })
   const saveSpread = (v: number) => { setSpread(v); try { localStorage.setItem('dtq_spread', String(v)) } catch { } }
   const [tab, setTab] = useState<Tab>('ringkasan')
+  const [macroOpen, setMacroOpen] = useState(false)
   const [chartFull, setChartFull] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [showPrompt, setShowPrompt] = useState(false)  // form konteks AI tersembunyi secara default
@@ -1659,6 +1685,33 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                 <p className="px-2 mb-1.5 text-[9px] font-bold uppercase tracking-widest text-white/25">{g}</p>
                 <div className="space-y-0.5">
                   {visibleTabs.filter(t => (t.group ?? 'Menu') === g).map(t => {
+                    // Item "Makro" = dropdown dengan sub-menu (makro mendalam)
+                    if (t.id === 'makro') {
+                      const activeInMacro = (MACRO_TAB_IDS as Tab[]).includes(tab)
+                      const expanded = macroOpen || activeInMacro
+                      return (
+                        <div key="makro-group">
+                          <button onClick={() => { setMacroOpen(o => !o); if (!activeInMacro) setTab('makro') }}
+                            className={`relative w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${activeInMacro ? 'text-white bg-gradient-to-r from-primary/20 to-primary/5' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
+                            {activeInMacro && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary shadow-[0_0_8px_rgba(52,211,153,0.6)]" />}
+                            <t.icon size={15} className={activeInMacro ? 'text-primary' : ''} /> {t.label}
+                            {!isPro ? <Lock size={11} className="ml-auto text-primary/60" /> : <ChevronDown size={13} className={`ml-auto transition-transform ${expanded ? 'rotate-180' : ''}`} />}
+                          </button>
+                          {expanded && isPro && (
+                            <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-white/[0.08] pl-2">
+                              {MACRO_SUBTABS.map(s => {
+                                const son = tab === s.id
+                                return (
+                                  <button key={s.id} onClick={() => setTab(s.id)} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${son ? 'bg-primary/10 text-primary' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
+                                    <s.icon size={13} /> {s.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
                     const on = tab === t.id
                     return (
                       <button key={t.id} onClick={() => setTab(t.id)} className={`relative w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12px] font-semibold transition-colors ${on ? 'text-white bg-gradient-to-r from-primary/20 to-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]' : 'text-white/45 hover:text-white/80 hover:bg-white/[0.04]'}`}>
@@ -1747,12 +1800,16 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
             </div>)}
 
             {tab === 'makro' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
-              {/* Masuk ke hub makro mendalam (multi-halaman + chart komparasi) */}
-              <Link href="/terminal/macro" className="group flex items-center gap-3 rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.08] to-transparent px-4 py-3 hover:border-primary/40 transition-colors">
-                <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/15 ring-1 ring-primary/30 text-primary shrink-0"><LayoutDashboard size={17} /></span>
-                <div className="flex-1 min-w-0"><p className="text-[13px] font-bold">Makro Mendalam</p><p className="text-[11px] text-white/50 leading-snug">Summary + chart komparasi, lintas aset, inflasi & Fed, institusi vs retail.</p></div>
-                <ArrowRight size={16} className="text-white/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-              </Link>
+              <MacroSubNav tab={tab} setTab={setTab} />
+              {/* Chart komparasi: XAU/USD vs makro utama (ternormalisasi, fokus XAU) */}
+              <MacroComparisonChart title="Perbandingan Makro vs Emas" note="Semua data disamakan ke % perubahan agar bisa dibandingkan. Klik chip untuk tampil/sembunyikan."
+                defs={[
+                  { name: 'XAU/USD', color: '#fbbf24', main: true, type: 'mkt', id: 'XAU/USD' },
+                  { name: 'DXY', color: '#60a5fa', default: true, type: 'fred', id: 'dollar' },
+                  { name: 'Yield 10Y', color: '#f472b6', default: true, type: 'fred', id: 'us10y' },
+                  { name: 'Real Yield', color: '#34d399', type: 'fred', id: 'realyield' },
+                  { name: 'CPI', color: '#f87171', type: 'fred', id: 'cpi' },
+                ]} />
               <TerminalScopeAnalysis scope="makro" hidePrompt title="Analisa Makro AI" subtitle="Dampak dolar, yield, inflasi & Fed ke XAU/USD — bias % + tiap faktor." snapshot={snapshot}
                 suggestions={[]} />
               {/* Statistik makro kunci (termasuk COT — posisi institusi/retail juga bagian makro) */}
@@ -1842,6 +1899,20 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               {CalendarPanel}
             </div>)}
 
+            {/* Sub-tab makro mendalam */}
+            {tab === 'makro-lintas' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+              <MacroSubNav tab={tab} setTab={setTab} />
+              <LintasAsetSection macro={macro} cross={cross} />
+            </div>)}
+            {tab === 'makro-inflasi' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+              <MacroSubNav tab={tab} setTab={setTab} />
+              <InflasiSection macro={macro} />
+            </div>)}
+            {tab === 'makro-cot' && (!isPro ? <LockedTab icon={Users} {...LOCKED_TAB_META.sentimen} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
+              <MacroSubNav tab={tab} setTab={setTab} />
+              <CotSection cot={cot} />
+            </div>)}
+
             {tab === 'sentimen' && (!isPro ? <LockedTab icon={Users} {...LOCKED_TAB_META.sentimen} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
               <TerminalScopeAnalysis scope="sentimen" hidePrompt title="Analisa Sentimen AI" subtitle="Dampak risk-on/off & berita ke XAU/USD — bias % + headline mendukung/menekan." snapshot={snapshot}
                 suggestions={[]} />
@@ -1884,7 +1955,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       {/* Bottom nav (mobile) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#080d0b]/95 backdrop-blur border-t border-white/[0.06] flex items-center overflow-x-auto">
         {visibleTabs.map(t => {
-          const on = tab === t.id
+          const on = tab === t.id || (t.id === 'makro' && (MACRO_TAB_IDS as Tab[]).includes(tab))
           return (
             <button key={t.id} onClick={() => setTab(t.id)} className={`relative flex flex-col items-center gap-0.5 px-3 py-2 shrink-0 ${on ? 'text-primary' : 'text-white/40'}`}>
               {!isPro && t.pro && <Lock size={9} className="absolute top-1 right-1.5 text-primary/60" />}
