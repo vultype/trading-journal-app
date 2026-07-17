@@ -185,14 +185,11 @@ export function scores(tf: Record<TF, TFData>, macro: Record<string, MacroPoint>
 // Dampak-ke-emas per timeframe, dari bias.score TFData (rentang kira-kira -3..+3 → diskalakan -100..100).
 // UUP naik = dolar menguat → BEARISH emas (dibalik). IEF naik = harga obligasi naik = yield turun → BULLISH emas (searah).
 const tfImpact = (d: TFData, invert: boolean) => clamp(d.bias.score / 3, -1, 1) * 100 * (invert ? -1 : 1)
-export type MacroCandleTF = { dollarImpact: number; yieldImpact: number; conflict: boolean }
+export type MacroCandleTF = { dollarImpact: number; yieldImpact: number }
 export function macroCandleImpact(uup: TFData, ief: TFData): MacroCandleTF {
   const dollarImpact = tfImpact(uup, true)
   const yieldImpact = tfImpact(ief, false)
-  // Konflik: kedua sinyal cukup kuat (bukan netral, >20) TAPI berlawanan arah → tarik-menarik,
-  // berpotensi ranging meski Regime (ADX) teknikal sedang bilang trending.
-  const conflict = Math.abs(dollarImpact) > 20 && Math.abs(yieldImpact) > 20 && Math.sign(dollarImpact) !== Math.sign(yieldImpact)
-  return { dollarImpact, yieldImpact, conflict }
+  return { dollarImpact, yieldImpact }
 }
 // Rata-rata M5/M15/H1 → dipakai sebagai fastMacro di scores() (konsisten dgn cara `tech` dirata-ratakan).
 export function macroCandleBlend(uup: Record<TF, TFData>, ief: Record<TF, TFData>): { dollarImpact: number; yieldImpact: number } {

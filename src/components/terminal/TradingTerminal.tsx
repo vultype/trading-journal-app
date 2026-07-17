@@ -20,6 +20,8 @@ import {
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
+import { createClient } from '@/lib/supabase'
+import { BrandLogo } from '@/components/layout/BrandLogo'
 import { AiLoading } from './AiLoading'
 import { TerminalAiPanel } from './TerminalAiPanel'
 import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
@@ -195,6 +197,17 @@ function useAiAnalysis() {
   }
   return { data, loading, error, insufficient, run }
 }
+// Logo branding (upload admin) untuk navbar terminal — sama seperti Hub.
+function useAppConfigLogo() {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let s = false
+    createClient().from('app_config').select('logo_url').eq('id', 1).maybeSingle()
+      .then(({ data }) => { if (!s) setLogoUrl((data?.logo_url as string | null) ?? null) })
+    return () => { s = true }
+  }, [])
+  return logoUrl
+}
 type NewsItem = { text: string; source: string; time: string; link: string }
 function useNews() {
   const [data, setData] = useState<NewsItem[] | null>(null)
@@ -223,26 +236,29 @@ function usePredictions() {
   useEffect(() => { let s = false; const poll = async () => { try { const j = await (await fetch('/api/terminal/predictions')).json(); if (!s && Array.isArray(j)) setRows(j) } catch { } }; poll(); const id = setInterval(poll, 300_000); return () => { s = true; clearInterval(id) } }, [])
   return rows
 }
-// Arah & ringkasan per sesi HARI INI (Asia/London/NY, UTC) — reset otomatis tiap hari.
+// Arah & ringkasan per sesi HARI INI (Asia/London/NY, WIB) — reset otomatis tiap hari.
 // Dihitung dari candle M15 (tertutup) yang jatuh di jendela sesi hari berjalan.
+const WIB_OFFSET_MS = 7 * 3_600_000
 const SESSIONS = [
-  { name: 'Asia', s: 0, e: 7 },
-  { name: 'London', s: 7, e: 13 },
-  { name: 'New York', s: 13, e: 21 },
+  { name: 'Asia', s: 6, e: 11 },
+  { name: 'London', s: 14, e: 18 },
+  { name: 'New York', s: 19, e: 23 },
 ] as const
-type SessionRow = { name: string; status: 'belum' | 'berlangsung' | 'selesai'; arah: 'Bullish' | 'Bearish' | 'Flat' | null; chg: number; range: number; open: number; close: number }
+type SessionRow = { name: string; status: 'belum' | 'berlangsung' | 'selesai'; arah: 'Bullish' | 'Bearish' | 'Flat' | null; open: number; close: number; low: number; high: number; rangePips: number }
 function sessionSummary(candles: Candle[], now: number): SessionRow[] {
-  const dayStart = Math.floor(now / 86_400_000) * 86_400_000
+  // Batas hari & jam sesi dihitung dalam WIB (bukan UTC) — geser +7 jam, bulatkan ke hari, geser balik.
+  const dayStart = Math.floor((now + WIB_OFFSET_MS) / 86_400_000) * 86_400_000 - WIB_OFFSET_MS
   return SESSIONS.map(x => {
     const from = dayStart + x.s * 3_600_000, to = dayStart + x.e * 3_600_000
     const status: SessionRow['status'] = now < from ? 'belum' : now >= to ? 'selesai' : 'berlangsung'
     const cs = candles.filter(c => c.t >= from && c.t < to)
-    if (!cs.length) return { name: x.name, status, arah: null, chg: 0, range: 0, open: 0, close: 0 }
+    if (!cs.length) return { name: x.name, status, arah: null, open: 0, close: 0, low: 0, high: 0, rangePips: 0 }
     const open = cs[0].o, close = cs[cs.length - 1].c
     const hi = Math.max(...cs.map(c => c.h)), lo = Math.min(...cs.map(c => c.l))
     const chg = close - open
     const arah: SessionRow['arah'] = chg > 1.5 ? 'Bullish' : chg < -1.5 ? 'Bearish' : 'Flat'
-    return { name: x.name, status, arah, chg, range: hi - lo, open, close }
+    // Konvensi XAU/USD: 1 pip = $0.10
+    return { name: x.name, status, arah, open, close, low: lo, high: hi, rangePips: Math.round((hi - lo) * 10) }
   })
 }
 
@@ -637,6 +653,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   const { cot, updatedAt: cotAt } = useCot()
   const ai = useAiAnalysis()
   const credits = useCredits()
+  const logoUrl = useAppConfigLogo()
   const { data: newsItems, updatedAt: newsAt } = useNews()
   const accuracy = useAccuracy()
   const calEvents = useCalendar()
@@ -688,7 +705,6 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
     M15: macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15),
     H1: macroCandleImpact(macroTech.uup!.H1, macroTech.ief!.H1),
     blend: fastMacro,
-    conflict: macroM15?.conflict ?? false,
   } : null
   const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null, fastMacro)
   const conf = confluence(feed.tf)
@@ -779,13 +795,12 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
     pivots: pivotsLive ? { P: +pivotsLive.P.toFixed(2), R1: +pivotsLive.R1.toFixed(2), R2: +pivotsLive.R2.toFixed(2), S1: +pivotsLive.S1.toFixed(2), S2: +pivotsLive.S2.toFixed(2) } : null,
     macro: macro ? Object.fromEntries(Object.entries(macro).map(([k, v]) => [k, { value: v.value, prior: v.prior }])) : null,
     // Makro PER-CANDLE (proxy UUP=dolar, IEF=yield 10Y terbalik): dampak-ke-emas -100..100 per TF.
-    // Sebanding horizon waktunya dgn teknikal M5/M15/H1. conflict = dolar & yield bertentangan → potensi ranging.
+    // Sebanding horizon waktunya dgn teknikal M5/M15/H1.
     macroCandle: macroCandleSnap ? {
       M5: { dolar: Math.round(macroCandleSnap.M5.dollarImpact), yield: Math.round(macroCandleSnap.M5.yieldImpact) },
       M15: { dolar: Math.round(macroCandleSnap.M15.dollarImpact), yield: Math.round(macroCandleSnap.M15.yieldImpact) },
       H1: { dolar: Math.round(macroCandleSnap.H1.dollarImpact), yield: Math.round(macroCandleSnap.H1.yieldImpact) },
       blend: macroCandleSnap.blend ? { dolar: Math.round(macroCandleSnap.blend.dollarImpact), yield: Math.round(macroCandleSnap.blend.yieldImpact) } : null,
-      conflict: macroCandleSnap.conflict,
     } : null,
     cot: cot ? { date: cot.date, funds: { net: cot.funds.net, deltaNet: cot.funds.deltaNet }, commercials: { net: cot.commercials.net }, retail: { net: cot.retail.net, deltaNet: cot.retail.deltaNet } } : null,
     btc: cross.btc ? { price: Math.round(cross.btc.price), changePct: +cross.btc.changePct.toFixed(2) } : null,
@@ -1149,7 +1164,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   )
   const InsightStrip = (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={macroM15?.conflict ? `${regime.desc} · ⚠️ DXY/Yield bertentangan — waspada ranging` : regime.desc} tone={macroM15?.conflict ? 'warn' : 'neutral'} info="3 kondisi pasar dari ADX/DI M15. ⚠️ muncul saat dolar (UUP) & yield (IEF) per-candle saling melawan arah — tarik-menarik makro bisa bikin tren teknikal berpotensi ranging/berbalik, meski ADX masih bilang trending." />
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi pasar dari ADX/DI M15." />
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
@@ -1157,22 +1172,50 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   )
   // Arah & ringkasan per sesi (Asia/London/NY) — reset otomatis tiap hari
   const SesiPanel = (
-    <Panel title="Arah & Ringkasan per Sesi" icon={Clock} info="Ringkasan pergerakan XAU/USD per sesi HARI INI (jam UTC: Asia 00-07, London 07-13, New York 13-21). Arah = harga penutupan vs pembukaan sesi. Reset otomatis setiap pergantian hari." right={<span className="text-[10px] text-white/35">reset harian · UTC</span>}>
+    <Panel title="Arah & Ringkasan per Sesi" icon={Clock} info="Ringkasan pergerakan XAU/USD per sesi HARI INI (jam WIB: Asia 06-11, London 14-18, New York 19-23). Arah = harga penutupan vs pembukaan sesi. Reset otomatis setiap pergantian hari." right={<span className="text-[10px] text-white/35">reset harian · WIB</span>}>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {sesi.map(s => {
           const clr = s.arah === 'Bullish' ? 'text-emerald-400' : s.arah === 'Bearish' ? 'text-red-400' : 'text-white/60'
+          const dot = s.arah === 'Bullish' ? 'bg-emerald-400' : s.arah === 'Bearish' ? 'bg-red-400' : 'bg-white/40'
           const box = s.arah === 'Bullish' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : s.arah === 'Bearish' ? 'border-red-500/25 bg-red-500/[0.06]' : 'border-white/10 bg-white/[0.02]'
+          const span = s.high - s.low
+          const openPct = span > 0 ? ((s.open - s.low) / span) * 100 : 50
+          const closePct = span > 0 ? ((s.close - s.low) / span) * 100 : 50
+          const live = s.status === 'berlangsung'
           return (
             <div key={s.name} className={`rounded-xl border p-3.5 ${s.status === 'belum' ? 'border-white/[0.07] bg-white/[0.015] opacity-60' : box}`}>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold text-white/85">{s.name}</p>
-                <span className={`text-[9px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 ${s.status === 'berlangsung' ? 'bg-primary/15 text-primary' : s.status === 'selesai' ? 'bg-white/10 text-white/50' : 'bg-white/5 text-white/35'}`}>{s.status === 'berlangsung' ? '● Berlangsung' : s.status === 'selesai' ? 'Selesai' : 'Belum mulai'}</span>
+                <span className={`text-[9px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 ${live ? 'bg-primary/15 text-primary' : s.status === 'selesai' ? 'bg-white/10 text-white/50' : 'bg-white/5 text-white/35'}`}>{live ? '● Berlangsung' : s.status === 'selesai' ? 'Selesai' : 'Belum mulai'}</span>
               </div>
               {s.arah ? (
                 <>
                   <p className={`text-lg font-black leading-none ${clr}`}>{s.arah === 'Bullish' ? '↗ Bullish' : s.arah === 'Bearish' ? '↘ Bearish' : '→ Flat'}</p>
-                  <p className="text-[11px] text-white/55 mt-1.5 tabular-nums">{s.chg >= 0 ? '+' : ''}{s.chg.toFixed(1)} poin · range ${s.range.toFixed(1)}</p>
-                  <p className="text-[10px] text-white/35 mt-0.5 tabular-nums">O {f2(s.open)} → {s.status === 'berlangsung' ? 'Skrg' : 'C'} {f2(s.close)}</p>
+
+                  {/* Open vs Sekarang — kartu berdampingan */}
+                  <div className="flex items-center gap-1.5 mt-2.5">
+                    <div className="flex-1 rounded-lg bg-white/[0.03] border border-white/[0.06] px-2 py-1.5 min-w-0">
+                      <p className="text-[8px] font-bold uppercase tracking-wider text-white/35">Open</p>
+                      <p className="text-[11px] font-bold text-white/70 tabular-nums truncate">{f2(s.open)}</p>
+                    </div>
+                    <span className="text-white/25 text-xs shrink-0">→</span>
+                    <div className={`flex-1 rounded-lg border px-2 py-1.5 min-w-0 ${live ? 'bg-primary/10 border-primary/25' : 'bg-white/[0.03] border-white/[0.06]'}`}>
+                      <p className={`text-[8px] font-bold uppercase tracking-wider flex items-center gap-1 ${live ? 'text-primary' : 'text-white/35'}`}>
+                        {live && <span className="w-1 h-1 rounded-full bg-primary animate-pulse shrink-0" />}{live ? 'Sekarang' : 'Close'}
+                      </p>
+                      <p className={`text-[11px] font-bold tabular-nums truncate ${clr}`}>{f2(s.close)}</p>
+                    </div>
+                  </div>
+
+                  {/* Range visual (low → high) dengan penanda posisi Open & Sekarang, dalam pips */}
+                  <div className="mt-2.5">
+                    <div className="relative h-1.5 rounded-full bg-white/[0.06]">
+                      <div className={`absolute inset-y-0 rounded-full opacity-60 ${dot}`} style={{ left: `${Math.min(openPct, closePct)}%`, width: `${Math.max(2, Math.abs(closePct - openPct))}%` }} />
+                      <span className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/60 ring-2 ring-[#0b0f0e]" style={{ left: `calc(${openPct}% - 3px)` }} title={`Open ${f2(s.open)}`} />
+                      <span className={`absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ring-2 ring-[#0b0f0e] ${dot} ${live ? 'animate-pulse' : ''}`} style={{ left: `calc(${closePct}% - 3px)` }} title={`${live ? 'Sekarang' : 'Close'} ${f2(s.close)}`} />
+                    </div>
+                    <p className="text-[10px] text-white/35 mt-1.5 tabular-nums">Range {s.rangePips} pips</p>
+                  </div>
                 </>
               ) : (
                 <p className="text-sm text-white/30 py-2">{s.status === 'belum' ? 'Menunggu sesi dimulai…' : 'Data belum tersedia'}</p>
@@ -1338,12 +1381,6 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
           <p className="text-[11px] text-white/45 mt-1.5">Skor pilar makro {sc.macro >= 0 ? '+' : ''}{Math.round(sc.macro)} dari −100…+100</p>
         </div>
       </div>
-      {macroM15?.conflict && (
-        <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2 mb-3">
-          <span className="text-amber-400 text-xs mt-0.5">⚠</span>
-          <p className="text-[11px] text-amber-200/90 leading-snug">Dolar & Yield per-candle (M15) sedang <b>berlawanan arah</b> — tarik-menarik makro, berpotensi bikin harga ranging meski Teknikal menunjukkan tren.</p>
-        </div>
-      )}
       <div className="space-y-1.5">
         {makroDrivers.map(d => (
           <div key={d.l} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">
@@ -1546,7 +1583,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
         <aside className="hidden md:flex flex-col w-52 shrink-0 h-screen sticky top-0 border-r border-white/[0.06] bg-[#080d0b]">
           <div className="h-14 flex items-center gap-2 px-4 border-b border-white/[0.06] shrink-0">
             <Link href="/hub" className="text-white/50 hover:text-white shrink-0" title="Ganti tools"><ArrowLeft size={17} /></Link>
-            <span className="font-black tracking-tight">Datalitiq</span>
+            <BrandLogo url={logoUrl} />
             <span className="ml-auto text-[8px] font-bold uppercase tracking-wider text-primary/70">XAU</span>
           </div>
           <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-4">
