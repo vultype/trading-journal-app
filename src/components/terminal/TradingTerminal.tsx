@@ -599,13 +599,54 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string; p
 ]
 
 // ─────────────────────────── GATE PRO/FREE ───────────────────────────
-// Bungkus panel bernilai: isinya di-blur & tak bisa diklik, di atasnya overlay
-// dengan nama kategori (label tetap kebaca) + CTA upgrade. Klik → /upgrade.
-function LockedWrap({ title, children, blur = 5 }: { title: string; children: React.ReactNode; blur?: number }) {
+// Konten DUMMY (angka/meter palsu) untuk latar panel terkunci — data ASLI tak
+// pernah dirender ke DOM untuk user Free, jadi tak ada info yang bocor lewat blur.
+function LockedDummy() {
+  const bars: [string, string, string][] = [['w-[72%]', 'bg-emerald-400/40', 'w-10'], ['w-[54%]', 'bg-emerald-400/35', 'w-8'], ['w-[38%]', 'bg-red-400/40', 'w-9']]
   return (
-    <div className="relative overflow-hidden rounded-2xl">
-      <div className="pointer-events-none select-none saturate-[.6] opacity-60" style={{ filter: `blur(${blur}px)` }} aria-hidden>{children}</div>
-      <Link href="/upgrade" className="group absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-[#060a09]/45 to-[#060a09]/75 hover:from-[#060a09]/35 hover:to-[#060a09]/70 transition-colors">
+    <div className="p-4">
+      <div className="flex items-center gap-4 mb-4">
+        <div className="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90">
+            <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" />
+            <circle cx="18" cy="18" r="15" fill="none" stroke="#34d399" strokeWidth="3.5" strokeDasharray="66 94" strokeLinecap="round" />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-emerald-400">72</span>
+        </div>
+        <div className="flex-1 space-y-2">
+          <div className="h-3 w-28 rounded bg-white/15" />
+          <div className="h-2.5 w-40 rounded bg-white/[0.08]" />
+          <div className="h-2.5 w-24 rounded bg-white/[0.08]" />
+        </div>
+      </div>
+      <div className="space-y-2 mb-4">
+        {bars.map(([w, c], i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="h-2.5 w-14 rounded bg-white/10 shrink-0" />
+            <div className="flex-1 h-2.5 rounded-full bg-white/[0.06] overflow-hidden"><div className={`h-full rounded-full ${c} ${w}`} /></div>
+            <div className={`h-2.5 ${bars[i][2]} rounded bg-white/10`} />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2 space-y-1.5">
+            <div className="h-2 w-10 rounded bg-white/8" />
+            <div className={`h-3 w-12 rounded ${i % 3 === 2 ? 'bg-red-400/30' : 'bg-emerald-400/30'}`} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+// Bungkus panel bernilai: latar = konten DUMMY di-blur kuat & tak bisa diklik,
+// di atasnya overlay nama kategori + CTA upgrade. Klik → /upgrade.
+// children SENGAJA diabaikan (data asli tak dirender untuk Free).
+function LockedWrap({ title }: { title: string; children?: React.ReactNode; blur?: number }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0b100e] min-h-[190px]">
+      <div className="pointer-events-none select-none" style={{ filter: 'blur(11px)' }} aria-hidden><LockedDummy /></div>
+      <Link href="/upgrade" className="group absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-[#060a09]/70 to-[#060a09]/85 hover:from-[#060a09]/60 hover:to-[#060a09]/80 transition-colors">
         <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 ring-1 ring-primary/30 text-primary"><Lock size={17} /></span>
         <p className="text-[13px] font-bold text-white/90 text-center px-4">{title}</p>
         <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-[11px] font-bold group-hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"><Crown size={12} /> Buka dengan Pro</span>

@@ -105,8 +105,10 @@ export default function HubPage() {
                   </Link>
                 ) : (
                   <div className="space-y-2">
-                    <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"><Sparkles size={15} /> Langganan Pro</Link>
-                    <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Perlu langganan aktif</p>
+                    <Link href="/terminal" className="group w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-lg shadow-primary/25">
+                      Akses Terminal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                    </Link>
+                    <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Mode gratis · fitur terbatas</p>
                   </div>
                 )}
               </div>
