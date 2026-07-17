@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search } from 'lucide-react'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
 
@@ -439,6 +439,103 @@ function PaymentLogosManager() {
   )
 }
 
+// ── Meta Pixel (Facebook/Instagram Ads) — set Pixel ID + on/off dari sini ──
+// Disimpan di app_config (meta_pixel_id, meta_pixel_enabled). Pixel ID bersifat PUBLIK
+// (memang ditanam di setiap halaman) — tak ada rahasia di sini.
+const PIXEL_EVENTS: { ev: string; when: string }[] = [
+  { ev: 'PageView', when: 'Setiap halaman dibuka (otomatis)' },
+  { ev: 'ViewContent', when: 'Buka halaman upgrade / penawaran Pro' },
+  { ev: 'Lead', when: 'Sampai di halaman checkout (intent beli)' },
+  { ev: 'CompleteRegistration', when: 'Pendaftaran akun berhasil' },
+  { ev: 'InitiateCheckout', when: 'Klik tombol Bayar' },
+  { ev: 'Purchase', when: 'Pembayaran aktif (nilai + IDR, anti-dobel)' },
+]
+function MetaPixelManager() {
+  const [pixelId, setPixelId] = useState('')
+  const [enabled, setEnabled] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+
+  useEffect(() => {
+    createClient().from('app_config').select('meta_pixel_id, meta_pixel_enabled').eq('id', 1).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { setNeedsMigration(true); setLoading(false); return }
+        setPixelId((data?.meta_pixel_id as string | null) ?? '')
+        setEnabled(!!data?.meta_pixel_enabled)
+        setLoading(false)
+      })
+  }, [])
+
+  async function save() {
+    const id = pixelId.trim()
+    if (enabled && !/^\d{6,20}$/.test(id)) { toast.error('Pixel ID harus berupa angka (6–20 digit).'); return }
+    setSaving(true)
+    const { error } = await createClient().from('app_config')
+      .upsert({ id: 1, meta_pixel_id: id || null, meta_pixel_enabled: enabled, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    setSaving(false)
+    if (error) { toast.error('Gagal menyimpan: ' + error.message); return }
+    toast.success('Pengaturan Meta Pixel disimpan. Perubahan aktif ≤30 detik.')
+  }
+
+  const active = enabled && /^\d{6,20}$/.test(pixelId.trim())
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone size={15} className="text-primary" /> Meta Pixel — Facebook / Instagram Ads</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        {needsMigration ? (
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-4 space-y-2">
+            <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5"><AlertTriangle size={13} /> Perlu migrasi database sekali</p>
+            <p className="text-xs text-amber-200/80">Jalankan SQL ini di Supabase (SQL Editor), lalu muat ulang halaman:</p>
+            <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config
+  add column if not exists meta_pixel_id text,
+  add column if not exists meta_pixel_enabled boolean not null default false;</code>
+          </div>
+        ) : loading ? (
+          <div className="flex justify-center py-6"><Loader2 className="animate-spin text-primary" size={18} /></div>
+        ) : (
+          <>
+            {/* Status */}
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/10 text-white/50'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-white/40'}`} />{active ? 'Terpasang & aktif' : 'Nonaktif'}
+              </span>
+            </div>
+
+            {/* Pixel ID */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Pixel ID (dari Meta Events Manager)</label>
+              <input value={pixelId} onChange={e => setPixelId(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" placeholder="mis. 1234567890123456"
+                className="mt-1.5 w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50 tabular-nums" />
+              <p className="text-[11px] text-muted-foreground/70 mt-1.5">Meta Events Manager → Data Sources → pilih pixel → salin <strong>Dataset/Pixel ID</strong> (hanya angka).</p>
+            </div>
+
+            {/* Toggle aktif */}
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-4 py-3 cursor-pointer">
+              <span className="text-sm"><strong>Aktifkan pelacakan</strong><br /><span className="text-xs text-muted-foreground">Matikan kapan saja tanpa menghapus Pixel ID.</span></span>
+              <button type="button" onClick={() => setEnabled(v => !v)} className={`relative w-11 h-6 rounded-full transition-colors ${enabled ? 'bg-primary' : 'bg-white/15'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </label>
+
+            <Button onClick={save} disabled={saving} size="sm" className="gap-1.5">{saving ? <><Loader2 size={14} className="animate-spin" /> Menyimpan…</> : 'Simpan Pengaturan'}</Button>
+
+            {/* Daftar event */}
+            <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Event yang otomatis terkirim</p>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                {PIXEL_EVENTS.map(e => <li key={e.ev} className="flex gap-2"><code className="text-emerald-300 text-xs shrink-0 w-40">{e.ev}</code><span className="text-xs">{e.when}</span></li>)}
+              </ul>
+              <p className="text-[11px] text-muted-foreground/70 mt-3 leading-relaxed">Uji dengan ekstensi <strong>Meta Pixel Helper</strong> (Chrome) atau tab <strong>Test Events</strong> di Events Manager. Catatan: pelacakan browser bisa terpengaruh ad-blocker/iOS — sebagian konversi mungkin tak tercatat (batasan wajar pixel client-side).</p>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -537,7 +634,7 @@ export default function AdminPage() {
   const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<'users' | 'content'>('users')
+  const [tab, setTab] = useState<'users' | 'content' | 'marketing'>('users')
 
   useEffect(() => {
     if (!sub.loading && !sub.isAdmin) router.replace('/hub')
@@ -653,6 +750,7 @@ export default function AdminPage() {
         <div className="flex gap-2 mb-5">
           <button onClick={() => setTab('users')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'users' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Pengguna & Langganan</button>
           <button onClick={() => setTab('content')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'content' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Konten & Branding</button>
+          <button onClick={() => setTab('marketing')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'marketing' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Marketing & Iklan</button>
         </div>
 
         {loading ? (
@@ -704,13 +802,17 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : tab === 'content' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <LogoManager />
             <LoginImageManager />
             <ClientLogosManager />
             <PaymentLogosManager />
             <FeatureImagesManager />
+          </div>
+        ) : (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <MetaPixelManager />
           </div>
         )}
       </main>

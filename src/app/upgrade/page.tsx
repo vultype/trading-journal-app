@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { rp, BASE } from '@/lib/pricing'
+import { track } from '@/lib/pixel'
 import {
   Crown, ArrowLeft, ArrowRight, Check, X, Brain, Landmark, Users, Newspaper,
   Gauge, Bell, BookOpen, FlaskConical, ShieldCheck, Sparkles, Zap,
@@ -43,6 +44,9 @@ const COMPARE: { label: string; free: boolean; pro: boolean }[] = [
 export default function UpgradePage() {
   const router = useRouter()
   const [logoChecked, setLogoChecked] = useState(false)
+
+  // Meta Pixel — ViewContent: pengguna melihat halaman penawaran/harga Pro.
+  useEffect(() => { track('ViewContent', { content_name: 'Upgrade Terminal Pro', value: PRICE, currency: 'IDR' }) }, [])
 
   useEffect(() => {
     // Kalau sudah Pro, tak perlu di halaman ini — arahkan ke terminal.

@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
 import { DURATIONS, pkgPrice, planBase, planName, rp, type PlanId } from '@/lib/pricing'
 import { Confetti } from '@/components/ui/Confetti'
+import { track, trackPurchaseOnce } from '@/lib/pixel'
 import {
   Crown, Sparkles, ShieldCheck, ArrowLeft, Loader2, CreditCard, Wallet, Check, ArrowRight, AlertCircle, PartyPopper,
 } from 'lucide-react'
@@ -56,6 +57,15 @@ function CheckoutInner() {
     })
   }, [router, params])
 
+  // Meta Pixel — Lead: pengguna sampai di halaman checkout (intent beli kuat). Sekali per load.
+  useEffect(() => { track('Lead', { content_name: `Paket ${planName(plan)}`, value: base, currency: 'IDR' }) }, [plan, base])
+
+  // Meta Pixel — Purchase: begitu status order 'aktif' (step success), kirim sekali per invoice.
+  useEffect(() => {
+    if (step !== 'success') return
+    trackPurchaseOnce(params.get('inv') || `${plan}-${dur.months}`, base)
+  }, [step, params, plan, dur.months, base])
+
   // Setelah kembali dari pembayaran (?status=finish&inv=…): pantau status order.
   // Begitu 'aktif' → tampilkan popup selamat + confetti. Aktivasi async via webhook.
   useEffect(() => {
@@ -86,6 +96,7 @@ function CheckoutInner() {
 
   async function payWithMidtrans() {
     if (!userId) return
+    track('InitiateCheckout', { content_name: `Paket ${planName(plan)}`, value: base, currency: 'IDR' })
     setBusy(true)
     try {
       const sb = createClient()
@@ -115,6 +126,7 @@ function CheckoutInner() {
   // DOKU: redirect-based. Buat order + sesi checkout di server → arahkan ke halaman DOKU.
   async function payWithDoku() {
     if (!userId) return
+    track('InitiateCheckout', { content_name: `Paket ${planName(plan)}`, value: base, currency: 'IDR' })
     setBusy(true)
     try {
       const sb = createClient()

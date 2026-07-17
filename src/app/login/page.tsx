@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { Lock, Mail, AlertCircle, Loader2, User, Eye, EyeOff, ArrowLeft, Activity, Check } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { track } from '@/lib/pixel'
 
 // Origin untuk redirect OAuth/konfirmasi email.
 // WAJIB = origin tempat login DIMULAI: PKCE menyimpan "code verifier" per-origin
@@ -86,6 +87,7 @@ export default function LoginPage() {
           options: { data: { full_name: name.trim() }, emailRedirectTo: `${siteOrigin()}/auth/callback` },
         })
         if (err) { setError(err.message); setBusy(false); return }
+        track('CompleteRegistration', { content_name: 'Daftar Datalitiq' })
         if (data.session) { router.replace(nextTarget()); return }
         setDone(true); setBusy(false); return
       }
