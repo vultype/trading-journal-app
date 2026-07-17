@@ -8,10 +8,12 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
 import { useSubscription } from '@/hooks/useSubscription'
-import { rp, planName } from '@/lib/pricing'
+import { useCredits } from '@/hooks/useCredits'
+import { rp } from '@/lib/pricing'
+import { AI_ACTION_LABEL, type AiAction } from '@/lib/ai-credits'
 import {
   ArrowLeft, Loader2, UserCog, Mail, Lock, Crown, Calendar, Receipt, ShieldCheck,
-  Save, LogOut, CheckCircle2, Sparkles, ArrowRight,
+  Save, LogOut, CheckCircle2, Sparkles, ArrowRight, Coins, Zap, Plus, Infinity as InfinityIcon,
 } from 'lucide-react'
 
 const fmtDate = (d: Date | null) => d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'
@@ -19,6 +21,9 @@ const fmtDate = (d: Date | null) => d ? d.toLocaleDateString('id-ID', { day: 'nu
 export default function AccountPage() {
   const router = useRouter()
   const sub = useSubscription()
+  const credits = useCredits()
+  const [topupBusy, setTopupBusy] = useState<string | null>(null)
+  const [topupFinish, setTopupFinish] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [origEmail, setOrigEmail] = useState('')
@@ -59,6 +64,36 @@ export default function AccountPage() {
     setSavingPw(false)
     if (error) { toast.error('Gagal: ' + error.message); return }
     setPw1(''); setPw2(''); toast.success('Password berhasil diubah')
+  }
+
+  // Kembali dari pembayaran topup DOKU (?topup=finish) — tampilkan notice & refresh saldo.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (new URLSearchParams(window.location.search).get('topup') === 'finish') {
+      setTopupFinish(true)
+      const iv = setInterval(() => credits.refresh(), 4000)
+      const stop = setTimeout(() => clearInterval(iv), 30000)
+      return () => { clearInterval(iv); clearTimeout(stop) }
+    }
+  }, [credits])
+
+  async function buyTopup(packageId: string) {
+    setTopupBusy(packageId)
+    try {
+      const sb = createClient()
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { toast.error('Sesi habis, login ulang'); setTopupBusy(null); return }
+      const res = await fetch('/api/credits/topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ packageId, origin: window.location.origin }),
+      })
+      const j = await res.json()
+      if (!res.ok || !j.paymentUrl) { toast.error(j.error || 'Gagal memulai pembayaran'); setTopupBusy(null); return }
+      window.location.href = j.paymentUrl
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan'); setTopupBusy(null)
+    }
   }
 
   async function logout() {
@@ -122,6 +157,85 @@ export default function AccountPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Token AI — saldo & top up */}
+        <div id="token" className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 scroll-mt-20">
+          <div className="flex items-center gap-2 mb-4">
+            <Coins size={17} className="text-primary" />
+            <h2 className="text-sm font-black uppercase tracking-widest text-white/70">Token AI</h2>
+            {credits.unlimited
+              ? <span className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase rounded-full px-2.5 py-1 bg-primary/15 text-primary"><InfinityIcon size={11} /> UNLIMITED</span>
+              : <span className="ml-auto text-[10px] font-bold uppercase rounded-full px-2.5 py-1 bg-white/10 text-white/60 tabular-nums">{credits.loading ? '…' : `${credits.total} kredit`}</span>}
+          </div>
+
+          {topupFinish && (
+            <div className="flex items-start gap-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 p-3.5 mb-4">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-200/90 leading-relaxed">Pembayaran top up sedang dikonfirmasi. Saldo kredit akan bertambah otomatis dalam beberapa detik setelah pembayaran berhasil.</p>
+            </div>
+          )}
+
+          {credits.unlimited ? (
+            <p className="text-sm text-white/55 leading-relaxed">Sebagai admin, kamu punya akses AI tak terbatas — tidak ada pemotongan kredit.</p>
+          ) : (
+            <>
+              <p className="text-xs text-white/50 leading-relaxed mb-4">Setiap analisa AI di Terminal memakai kredit. Langganan Pro sudah termasuk <b className="text-white/75">jatah bulanan</b>; kalau habis, kamu bisa top up kredit yang <b className="text-white/75">tidak pernah hangus</b>.</p>
+
+              {/* Dua bucket saldo */}
+              <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">
+                  <p className="flex items-center gap-1.5 text-[11px] text-white/45 uppercase tracking-wider mb-1.5"><Zap size={12} className="text-primary" /> Jatah Bulanan</p>
+                  <p className="text-xl font-black tabular-nums">{credits.loading ? '…' : credits.allowance}<span className="text-sm text-white/40 font-semibold"> / {credits.allowanceCap} kredit</span></p>
+                  {credits.allowanceCap > 0 ? (
+                    <>
+                      <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.min(100, Math.round((credits.allowance / Math.max(1, credits.allowanceCap)) * 100))}%` }} />
+                      </div>
+                      <p className="text-[10px] text-white/40 mt-1.5">Reset tiap bulan mengikuti siklus langganan. Sisa tidak roll-over.</p>
+                    </>
+                  ) : <p className="text-[10px] text-white/40 mt-1.5">Aktif saat langganan Pro berjalan.</p>}
+                </div>
+                <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">
+                  <p className="flex items-center gap-1.5 text-[11px] text-white/45 uppercase tracking-wider mb-1.5"><Coins size={12} className="text-primary" /> Saldo Top Up</p>
+                  <p className="text-xl font-black tabular-nums">{credits.loading ? '…' : credits.topup}<span className="text-sm text-white/40 font-semibold"> kredit</span></p>
+                  <p className="text-[10px] text-white/40 mt-1.5">Permanen — tidak pernah hangus. Dipakai setelah jatah bulanan habis.</p>
+                </div>
+              </div>
+
+              {/* Tabel biaya per aksi */}
+              <div className="rounded-xl bg-black/20 border border-white/[0.06] p-4 mb-4">
+                <p className="text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-2.5">Biaya per Analisa</p>
+                <div className="space-y-1.5">
+                  {(Object.keys(AI_ACTION_LABEL) as AiAction[]).map(a => (
+                    <div key={a} className="flex items-center justify-between text-xs">
+                      <span className="text-white/60">{AI_ACTION_LABEL[a]}</span>
+                      <span className="tabular-nums font-semibold text-white/80">{credits.cost[a] || '—'} kredit</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Paket top up */}
+              <p className="text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-2.5">Top Up Kredit</p>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {credits.packages?.length ? credits.packages.map(pkg => (
+                  <button key={pkg.id} onClick={() => buyTopup(pkg.id)} disabled={!!topupBusy}
+                    className={`relative rounded-2xl border p-4 text-left transition-all disabled:opacity-50 ${pkg.popular ? 'border-primary/40 bg-primary/[0.06] hover:border-primary/60' : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}>
+                    {pkg.popular && <span className="absolute -top-2 right-3 text-[8px] font-bold uppercase bg-primary text-primary-foreground rounded-full px-2 py-0.5">Populer</span>}
+                    <p className="text-lg font-black tabular-nums">{pkg.credits} <span className="text-xs font-semibold text-white/45">kredit</span></p>
+                    <p className="text-sm font-bold text-primary mt-0.5">{rp(pkg.price)}</p>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white/70 mt-2.5">
+                      {topupBusy === pkg.id ? <><Loader2 size={12} className="animate-spin" /> Mengalihkan…</> : <><Plus size={12} /> Top Up</>}
+                    </span>
+                  </button>
+                )) : (
+                  <p className="sm:col-span-3 text-xs text-white/40">Paket top up belum tersedia.</p>
+                )}
+              </div>
+              <p className="flex items-center gap-1.5 text-[11px] text-white/35 mt-3"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via DOKU · kredit masuk otomatis setelah lunas.</p>
+            </>
+          )}
         </div>
 
         {/* Profil */}

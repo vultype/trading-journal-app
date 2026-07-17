@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchHeadlineLines } from '@/lib/news'
+import { beginAiCharge } from '@/lib/credits-server'
 
 // Analisa AI terstruktur per-menu (makro / sentimen) yang FOKUS ke DAMPAK ke XAU/USD.
 // Output JSON untuk ditampilkan interaktif: bias % bullish/bearish emas, tiap faktor +
@@ -27,6 +28,8 @@ const FOCUS: Record<string, string> = {
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Fitur AI belum aktif — ANTHROPIC_API_KEY belum diset' }, { status: 503 })
+  const gate = await beginAiCharge(req, 'scope')
+  if (!gate.ok) return gate.response
   try {
     const { scope, snapshot } = await req.json()
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
@@ -98,6 +101,7 @@ faktor 4-6 item (arah = dampak ke EMAS). ${scope === 'sentimen' ? 'sentimenBerit
       risiko: strArr(p.risiko, 3),
       fetchedAt: new Date().toISOString(),
     }
+    await gate.commit().catch(() => {})
     return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal menganalisa' }, { status: 502 })

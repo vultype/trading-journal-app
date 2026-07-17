@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import {
   Newspaper, Loader2, RefreshCw, Wand2, Plus, X,
-  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks, Link2,
+  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks, Link2, Coins, Sparkles,
 } from 'lucide-react'
 import { BiasBar, DirIcon, Section, NewsSentimentColumns, FaktorRow, dirColor, dirBg, type Dir } from './aiViz'
 import { AiLoading } from './AiLoading'
+import { aiFetch } from '@/lib/ai-fetch'
 
 // Preset komponen umum tiap rilis (auto-isi label saat pilih event).
 const PRESETS: Record<string, string[]> = {
@@ -48,6 +50,7 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<Analysis | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [low, setLow] = useState(false)
 
   function pickEvent(e: string) { setEvent(e); setRows((PRESETS[e] ?? ['']).map(l => emptyRow(l))) }
   const setRow = (i: number, key: keyof Row, val: string) => setRows(rs => rs.map((r, j) => j === i ? { ...r, [key]: val } : r))
@@ -56,12 +59,10 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
 
   async function run() {
     if (!event.trim()) { setError('Pilih atau tulis nama berita/event dulu.'); return }
-    setLoading(true); setError(null)
+    setLoading(true); setError(null); setLow(false)
     try {
-      const j = await (await fetch('/api/terminal/news-analysis', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snapshot, event, rows, notes }),
-      })).json()
+      const { data: j, insufficient } = await aiFetch<{ error?: string } & Analysis>('/api/terminal/news-analysis', { snapshot, event, rows, notes })
+      if (insufficient) { setLow(true); setError(j.error || 'Kredit AI tidak cukup.'); return }
       if (j.error) throw new Error(j.error)
       setData(j)
     } catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') }
@@ -127,7 +128,8 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
           {loading ? <><Loader2 size={16} className="animate-spin" /> Menganalisa semua parameter…</> : <><Wand2 size={16} /> Analisa Dampak ke Emas</>}
           {data && !loading && <RefreshCw size={13} className="ml-1 opacity-70" />}
         </button>
-        {error && !loading && <p className="mt-2 text-xs text-red-400 text-center">{error}</p>}
+        {error && !loading && low && <div className="mt-2 text-center"><p className="flex items-center justify-center gap-1.5 text-xs text-amber-400"><Coins size={13} /> {error}</p><Link href="/account#token" className="inline-flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3 py-1.5 mt-2 hover:opacity-90 transition-opacity"><Sparkles size={12} /> Top Up Kredit</Link></div>}
+        {error && !loading && !low && <p className="mt-2 text-xs text-red-400 text-center">{error}</p>}
       </div>
 
       {loading && <div className="rounded-2xl border border-white/[0.06] bg-[#0b100e]"><AiLoading steps={['Menimbang komponen & makro…', 'Menganalisa teknikal & headline…', 'Menyusun dampak ke emas…']} /></div>}

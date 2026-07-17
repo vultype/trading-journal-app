@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyDokuNotification, mapDokuStatus } from '@/lib/doku'
+import { grantTopup } from '@/lib/credits-server'
 
 // Webhook DOKU (HTTP Notification). URL ini di-set via override_notification_url saat
 // membuat transaksi. Verifikasi signature → update status payment_orders by invoice_number.
@@ -32,10 +33,18 @@ export async function POST(req: Request) {
 
     const status = mapDokuStatus(txStatus)
     const sb = createClient(SUPA_URL, SERVICE_KEY, { auth: { persistSession: false } })
-    const { error } = await sb.from('payment_orders')
+    const { data: updated, error } = await sb.from('payment_orders')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('invoice_number', invoice)
+      .select('id, user_id, plan, credits')
+      .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Order TOPUP yang lunas → grant kredit ke saldo topup (permanen). Idempoten:
+    // unique index (ref_order_id where reason='topup') menahan grant ganda dari notifikasi berulang.
+    if (updated && updated.plan === 'topup' && status === 'aktif' && updated.credits && updated.credits > 0) {
+      await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+    }
 
     return NextResponse.json({ ok: true, invoice, status })
   } catch (err) {

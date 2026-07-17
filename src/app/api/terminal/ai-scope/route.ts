@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchHeadlineLines } from '@/lib/news'
+import { beginAiCharge } from '@/lib/credits-server'
 
 // Analisa AI terminal per-menu (teknikal / makro / sentimen) + analisa dampak berita.
 // Client kirim snapshot terminal lengkap + scope + prompt opsional. Balas Markdown.
@@ -28,6 +29,8 @@ Aturan:
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Fitur AI belum aktif — ANTHROPIC_API_KEY belum diset' }, { status: 503 })
+  const gate = await beginAiCharge(req, 'scope')
+  if (!gate.ok) return gate.response
   try {
     const { scope, snapshot, extra, prompt, mode } = await req.json()
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
@@ -62,6 +65,7 @@ export async function POST(req: Request) {
 
     const text = msg.content.find(b => b.type === 'text')?.text ?? ''
     if (!text.trim()) throw new Error('AI tidak mengembalikan jawaban')
+    await gate.commit().catch(() => {})
     return NextResponse.json({ text, scope, mode: isCustom ? 'custom' : 'auto', at: new Date().toISOString() })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal menganalisa' }, { status: 502 })

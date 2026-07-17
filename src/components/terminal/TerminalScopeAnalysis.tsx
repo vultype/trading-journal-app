@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Brain, Loader2, RefreshCw, Send, Wand2, Gauge, Target, Eye, ShieldAlert, ListChecks, Newspaper, Coins, Sparkles, Clapperboard, Landmark } from 'lucide-react'
 import { AiLoading } from './AiLoading'
 import { Markdown } from '@/components/ui/markdown'
 import { BiasBar, DirIcon, Section, NewsSentimentColumns, dirColor, dirBg, FaktorRow, type Dir } from './aiViz'
+import { aiFetch } from '@/lib/ai-fetch'
 
 export type ScopeKind = 'makro' | 'sentimen'
 type Analysis = {
@@ -25,20 +27,23 @@ export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, sugges
   const [data, setData] = useState<Analysis | null>(null)
   const [qa, setQa] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [low, setLow] = useState(false)
 
   async function runAuto() {
-    setLoading('auto'); setError(null)
+    setLoading('auto'); setError(null); setLow(false)
     try {
-      const j = await (await fetch('/api/terminal/scope-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope, snapshot }) })).json()
+      const { data: j, insufficient } = await aiFetch<{ error?: string } & Analysis>('/api/terminal/scope-analysis', { scope, snapshot })
+      if (insufficient) { setLow(true); setError(j.error || 'Kredit AI tidak cukup.'); return }
       if (j.error) throw new Error(j.error)
       setData(j)
     } catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') } finally { setLoading(false) }
   }
   async function runCustom() {
     if (!prompt.trim()) return
-    setLoading('custom'); setError(null)
+    setLoading('custom'); setError(null); setLow(false)
     try {
-      const j = await (await fetch('/api/terminal/ai-scope', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope, snapshot, prompt, mode: 'custom' }) })).json()
+      const { data: j, insufficient } = await aiFetch<{ error?: string; text: string }>('/api/terminal/ai-scope', { scope, snapshot, prompt, mode: 'custom' })
+      if (insufficient) { setLow(true); setError(j.error || 'Kredit AI tidak cukup.'); return }
       if (j.error) throw new Error(j.error)
       setQa(j.text)
     } catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') } finally { setLoading(false) }
@@ -81,7 +86,8 @@ export function TerminalScopeAnalysis({ scope, title, subtitle, snapshot, sugges
       </div>
 
       {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menimbang faktor & dampak ke emas…', 'Menyusun bias & narasi…']} />}
-      {error && !loading && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p></div>}
+      {error && !loading && low && <div className="mt-3 rounded-lg bg-amber-500/8 border border-amber-500/25 p-3 text-center"><p className="flex items-center justify-center gap-1.5 text-xs text-amber-400"><Coins size={13} /> {error}</p><Link href="/account#token" className="inline-flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3 py-1.5 mt-2 hover:opacity-90 transition-opacity"><Sparkles size={12} /> Top Up Kredit</Link></div>}
+      {error && !loading && !low && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p></div>}
 
       {/* Jawaban prompt (markdown) */}
       {qa && !loading && (

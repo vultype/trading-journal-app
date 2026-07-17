@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchHeadlineLines } from '@/lib/news'
 import { getAccuracy, getLastAiAnalysis, setLastAiAnalysis } from '@/lib/alert-state'
+import { beginAiCharge } from '@/lib/credits-server'
 
 // Analisa AI MENYELURUH: gabungkan seluruh data terminal (teknikal, makro, COT, BTC)
 // + headline berita multi-sumber → Datalitiq AI susun analisa lengkap. On-demand (POST).
@@ -65,6 +66,9 @@ const arr = (v: unknown, n = 4): string[] => Array.isArray(v) ? v.filter(x => ty
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Fitur AI belum aktif — API key Anthropic belum diset' }, { status: 503 })
+  // Gate kredit: cek saldo dulu; debit hanya setelah analisa sukses.
+  const gate = await beginAiCharge(req, 'analysis')
+  if (!gate.ok) return gate.response
   try {
     const snap = await req.json()
     const userPrompt = typeof snap.userPrompt === 'string' ? snap.userPrompt.trim() : ''
@@ -196,6 +200,7 @@ PENTING untuk chartLevels: isi dengan ANGKA harga bersih (bukan teks/range), kon
     if (typeof snap.price === 'number') {
       await setLastAiAnalysis({ verdict: result.verdict, confidence: result.confidence, keputusan: result.keputusan, price: snap.price, at: nowMs })
     }
+    await gate.commit().catch(() => {}) // debit best-effort (analisa sudah sukses)
     return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal analisa' }, { status: 502 })

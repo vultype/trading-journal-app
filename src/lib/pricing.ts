@@ -1,7 +1,5 @@
 // Harga & paket langganan (dipakai subscription, checkout, billing)
-// ⚠️ SEMENTARA: terminal diturunkan ke Rp15.000 untuk uji coba live DOKU (uang asli, nominal kecil,
-// minimal transfer TF Rp10rb). KEMBALIKAN ke 179000 setelah selesai testing.
-export const BASE = { standar: 59000, pro: 129000, terminal: 15000 } as const
+export const BASE = { standar: 59000, pro: 129000, terminal: 179000 } as const
 
 export type PlanId = 'standar' | 'pro' | 'terminal'
 

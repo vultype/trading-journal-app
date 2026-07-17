@@ -18,6 +18,8 @@ import {
   Lock, Crown, Check,
 } from 'lucide-react'
 import { TradingViewChart } from './TradingViewChart'
+import { aiFetch } from '@/lib/ai-fetch'
+import { useCredits } from '@/hooks/useCredits'
 import { AiLoading } from './AiLoading'
 import { TerminalAiPanel } from './TerminalAiPanel'
 import { TerminalScopeAnalysis } from './TerminalScopeAnalysis'
@@ -180,12 +182,18 @@ function useAiAnalysis() {
   const [data, setData] = useState<AiAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [insufficient, setInsufficient] = useState(false)
   const run = async (snapshot: Record<string, unknown>, userPrompt = '') => {
-    setLoading(true); setError(null)
-    try { const j = await (await fetch('/api/terminal/ai-analysis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...snapshot, userPrompt }) })).json(); if (j.error) throw new Error(j.error); setData(j) }
+    setLoading(true); setError(null); setInsufficient(false)
+    try {
+      const { data: j, insufficient: low } = await aiFetch<{ error?: string } & AiAnalysis>('/api/terminal/ai-analysis', { ...snapshot, userPrompt })
+      if (low) { setInsufficient(true); setError(j.error || 'Kredit AI tidak cukup. Silakan top up.'); return }
+      if (j.error) throw new Error(j.error)
+      setData(j)
+    }
     catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') } finally { setLoading(false) }
   }
-  return { data, loading, error, run }
+  return { data, loading, error, insufficient, run }
 }
 type NewsItem = { text: string; source: string; time: string; link: string }
 function useNews() {
@@ -628,6 +636,7 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
   const { p: pivotsLive, updatedAt: pivotAt } = usePivots()
   const { cot, updatedAt: cotAt } = useCot()
   const ai = useAiAnalysis()
+  const credits = useCredits()
   const { data: newsItems, updatedAt: newsAt } = useNews()
   const accuracy = useAccuracy()
   const calEvents = useCalendar()
@@ -1410,9 +1419,19 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
           <button onClick={() => setShowPrompt(v => !v)} disabled={ai.loading} className={`flex items-center gap-1.5 text-[11px] font-semibold rounded-lg px-3 py-2 border transition-colors disabled:opacity-50 ${showPrompt ? 'border-primary/40 text-primary bg-primary/10' : 'border-white/15 text-white/55 hover:text-white hover:border-white/30'}`}>
             <MessageSquarePlus size={13} /> {showPrompt ? 'Tutup konteks' : 'Tambah konteks'}{aiPrompt.trim() && !showPrompt ? ' •' : ''}
           </button>
-          <button onClick={() => ai.run(snapshot, aiPrompt)} disabled={ai.loading} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity">{ai.loading ? <><Loader2 size={14} className="animate-spin" /> Menganalisa…</> : ai.data ? <><RefreshCw size={13} /> Analisa Ulang</> : <><Sparkles size={14} /> Jalankan Analisa AI</>}</button>
+          <button onClick={async () => { await ai.run(snapshot, aiPrompt); credits.refresh() }} disabled={ai.loading} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity">{ai.loading ? <><Loader2 size={14} className="animate-spin" /> Menganalisa…</> : ai.data ? <><RefreshCw size={13} /> Analisa Ulang</> : <><Sparkles size={14} /> Jalankan Analisa AI</>}</button>
         </div>
       </div>
+      {/* Saldo kredit AI — sembunyikan untuk admin/unlimited */}
+      {credits.configured && !credits.unlimited && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-black/20 border border-white/[0.06] px-3 py-2 mb-3 text-[10px]">
+          <span className="flex items-center gap-1.5 text-white/55"><Coins size={12} className="text-primary" /> Biaya analisa ini: <b className="text-white/80">{credits.cost.analysis} kredit</b></span>
+          <span className="flex items-center gap-2">
+            <span className="text-white/45">Saldo: <b className={`tabular-nums ${credits.total < credits.cost.analysis ? 'text-amber-400' : 'text-white/80'}`}>{credits.loading ? '…' : credits.total}</b> kredit</span>
+            <Link href="/account#token" className="font-semibold text-primary hover:underline">Top Up</Link>
+          </span>
+        </div>
+      )}
       {/* Form konteks — tersembunyi secara default */}
       {showPrompt && (
         <div className="rounded-xl border border-white/10 bg-black/20 p-3 mb-3">
@@ -1429,7 +1448,13 @@ export function TradingTerminal({ plan = 'pro' }: { plan?: 'free' | 'pro' }) {
       )}
       {!ai.data && !ai.loading && !ai.error && <div className="py-4 text-center"><p className="text-[11px] text-white/45">Klik <b className="text-primary">Jalankan Analisa AI</b> — Datalitiq AI membaca seluruh data terminal + berita terkini {aiPrompt.trim() ? '+ konteks darimu ' : ''}lalu memberi <b>keputusan (Beli/Jual/Tunggu)</b> beserta alasan, confluence, rencana, & risiko.</p></div>}
       {ai.loading && <AiLoading steps={['Membaca harga, candle & indikator…', 'Menimbang makro, COT & berita…', 'Mengecek konfluensi timeframe…', 'Menyusun keputusan & level…']} />}
-      {ai.error && !ai.loading && <div className="py-6 text-center"><p className="text-[11px] text-red-400 mb-1">Gagal: {ai.error}</p><button onClick={() => ai.run(snapshot, aiPrompt)} className="text-[11px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
+      {ai.error && !ai.loading && ai.insufficient && (
+        <div className="py-6 text-center">
+          <p className="flex items-center justify-center gap-1.5 text-[11px] text-amber-400 mb-2"><Coins size={13} /> Kredit AI tidak cukup untuk analisa ini ({credits.cost.analysis} kredit). Saldo: {credits.total}.</p>
+          <Link href="/account#token" className="inline-flex items-center gap-1.5 text-[11px] font-semibold bg-primary text-primary-foreground rounded-lg px-4 py-2 hover:opacity-90 transition-opacity"><Sparkles size={12} /> Top Up Kredit</Link>
+        </div>
+      )}
+      {ai.error && !ai.loading && !ai.insufficient && <div className="py-6 text-center"><p className="text-[11px] text-red-400 mb-1">Gagal: {ai.error}</p><button onClick={() => ai.run(snapshot, aiPrompt)} className="text-[11px] font-semibold text-primary hover:underline">Coba lagi</button></div>}
       {ai.data && !ai.loading && (() => {
         const a = ai.data
         const decColor = a.keputusan === 'BELI' ? 'bg-emerald-500 text-black' : a.keputusan === 'JUAL' ? 'bg-red-500 text-white' : 'bg-white/15 text-white'

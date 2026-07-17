@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { fetchHeadlineLines } from '@/lib/news'
+import { beginAiCharge } from '@/lib/credits-server'
 
 // Analisa dampak berita/rilis data ke XAU/USD — output TERSTRUKTUR (JSON) untuk
 // ditampilkan interaktif: bias %, rekomendasi pre-news, skenario, sentimen berita
@@ -24,6 +25,8 @@ const clampPct = (v: unknown) => Math.max(0, Math.min(100, Math.round(Number(v) 
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'Fitur AI belum aktif — ANTHROPIC_API_KEY belum diset' }, { status: 503 })
+  const gate = await beginAiCharge(req, 'news')
+  if (!gate.ok) return gate.response
   try {
     const { snapshot, event, rows, notes } = await req.json()
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
@@ -126,6 +129,7 @@ prioritasKomponen 2-4 item. dataPendukung 3-5 item (WAJIB, lihat aturan di atas)
       risiko: strArr(p.risiko, 3),
       fetchedAt: new Date().toISOString(),
     }
+    await gate.commit().catch(() => {})
     return NextResponse.json(result)
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal menganalisa' }, { status: 502 })

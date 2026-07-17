@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Brain, Sparkles, Loader2, RefreshCw, Send, Wand2 } from 'lucide-react'
+import Link from 'next/link'
+import { Brain, Sparkles, Loader2, RefreshCw, Send, Wand2, Coins } from 'lucide-react'
 import { AiLoading } from './AiLoading'
 import { Markdown } from '@/components/ui/markdown'
+import { aiFetch } from '@/lib/ai-fetch'
 
 export type AiScope = 'teknikal' | 'makro' | 'sentimen'
 
@@ -15,15 +17,14 @@ export function TerminalAiPanel({ scope, title, subtitle, snapshot, suggestions 
   const [loading, setLoading] = useState<false | 'auto' | 'custom'>(false)
   const [result, setResult] = useState<{ text: string; mode: string; at: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [low, setLow] = useState(false)
 
   async function run(mode: 'auto' | 'custom') {
     if (mode === 'custom' && !prompt.trim()) return
-    setLoading(mode); setError(null)
+    setLoading(mode); setError(null); setLow(false)
     try {
-      const j = await (await fetch('/api/terminal/ai-scope', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope, snapshot, prompt, mode }),
-      })).json()
+      const { data: j, insufficient } = await aiFetch<{ error?: string; text: string; mode: string; at: string }>('/api/terminal/ai-scope', { scope, snapshot, prompt, mode })
+      if (insufficient) { setLow(true); setError(j.error || 'Kredit AI tidak cukup.'); return }
       if (j.error) throw new Error(j.error)
       setResult(j)
     } catch (e) { setError(e instanceof Error ? e.message : 'gagal menganalisa') }
@@ -66,7 +67,8 @@ export function TerminalAiPanel({ scope, title, subtitle, snapshot, suggestions 
       </div>
 
       {loading && <AiLoading steps={[`Membaca data ${scope}…`, 'Menghitung indikator & struktur…', 'Menyusun arah & level…']} />}
-      {error && !loading && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p><button onClick={() => run(result?.mode === 'custom' ? 'custom' : 'auto')} className="text-xs font-semibold text-primary hover:underline mt-1">Coba lagi</button></div>}
+      {error && !loading && low && <div className="mt-3 rounded-lg bg-amber-500/8 border border-amber-500/25 p-3 text-center"><p className="flex items-center justify-center gap-1.5 text-xs text-amber-400"><Coins size={13} /> {error}</p><Link href="/account#token" className="inline-flex items-center gap-1.5 text-xs font-semibold bg-primary text-primary-foreground rounded-lg px-3 py-1.5 mt-2 hover:opacity-90 transition-opacity"><Sparkles size={12} /> Top Up Kredit</Link></div>}
+      {error && !loading && !low && <div className="mt-3 rounded-lg bg-red-500/8 border border-red-500/25 p-3 text-center"><p className="text-xs text-red-400">Gagal: {error}</p><button onClick={() => run(result?.mode === 'custom' ? 'custom' : 'auto')} className="text-xs font-semibold text-primary hover:underline mt-1">Coba lagi</button></div>}
       {result && !loading && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
