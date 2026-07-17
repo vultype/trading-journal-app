@@ -34,6 +34,11 @@ export default function LoginPage() {
   useEffect(() => {
     createClient().from('app_config').select('logo_url').eq('id', 1).maybeSingle()
       .then(({ data }) => setLogoUrl((data?.logo_url as string | null) ?? null))
+    // Tampilkan pesan bila callback OAuth gagal (di-redirect ke /login?error=…)
+    if (typeof window !== 'undefined') {
+      const err = new URLSearchParams(window.location.search).get('error')
+      if (err) setError(err === 'missing_code' ? 'Login gagal — kode otorisasi tidak ada. Coba lagi.' : `Login gagal: ${err}`)
+    }
   }, [])
 
   // Tujuan redirect setelah login (mis. dari tombol checkout di homepage).
