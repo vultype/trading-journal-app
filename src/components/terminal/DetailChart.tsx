@@ -205,6 +205,43 @@ export function CompareBars({ items, refValue, refLabel, suffix = '%' }: { items
   )
 }
 
+// ── Diverging bars (nilai bertanda, dari tengah) — korelasi / performa % ──
+export function DivergingBars({ items, fmt, posColor = '#34d399', negColor = '#f87171' }: { items: { label: string; value: number }[]; fmt?: (v: number) => string; posColor?: string; negColor?: string }) {
+  const max = Math.max(...items.map(i => Math.abs(i.value)), 0.001)
+  return (
+    <div className="space-y-2">
+      {items.map(it => {
+        const pos = it.value >= 0
+        const w = (Math.abs(it.value) / max) * 48
+        return (
+          <div key={it.label} className="flex items-center gap-2">
+            <span className="w-24 shrink-0 text-right text-[11px] text-white/60 truncate">{it.label}</span>
+            <div className="relative flex-1 h-4 rounded bg-white/[0.03]">
+              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20" />
+              <div className="absolute top-0.5 bottom-0.5 rounded-sm transition-all" style={{ left: pos ? '50%' : `${50 - w}%`, width: `${Math.max(1, w)}%`, background: pos ? posColor : negColor, opacity: 0.85 }} />
+            </div>
+            <span className="w-11 shrink-0 text-[11px] font-bold tabular-nums" style={{ color: pos ? posColor : negColor }}>{fmt ? fmt(it.value) : it.value.toFixed(2)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Meter horizontal (mis. selera risiko: risk-off ↔ risk-on) ──
+export function Meter({ value, leftLabel, rightLabel, leftColor = '#34d399', rightColor = '#f87171', caption }: { value: number; leftLabel: string; rightLabel: string; leftColor?: string; rightColor?: string; caption?: string }) {
+  const v = Math.min(100, Math.max(0, value))
+  return (
+    <div>
+      <div className="relative h-3 rounded-full mb-1.5" style={{ background: `linear-gradient(90deg, ${leftColor}66, rgba(255,255,255,0.08) 50%, ${rightColor}66)` }}>
+        <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white ring-2 ring-[#0b100e] shadow" style={{ left: `${v}%` }} />
+      </div>
+      <div className="flex justify-between text-[10px] font-semibold"><span style={{ color: leftColor }}>◀ {leftLabel}</span><span style={{ color: rightColor }}>{rightLabel} ▶</span></div>
+      {caption && <p className="text-[11px] text-white/55 leading-relaxed mt-2">{caption}</p>}
+    </div>
+  )
+}
+
 // ── Split long vs short (COT) — bar terbagi hijau/merah ──
 export function LongShortSplit({ rows, fmt }: { rows: { label: string; long: number; short: number }[]; fmt: (n: number) => string }) {
   return (

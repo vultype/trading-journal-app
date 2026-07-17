@@ -3,9 +3,9 @@
 // Komponen "Makro Mendalam" yang dirender DI DALAM terminal (tab Makro & sub-tab
 // Lintas Aset / Inflasi / Institusi). Chart komparasi ternormalisasi (fokus XAU)
 // + kartu indikator + section COT. Data dari endpoint yang sudah ada.
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { DetailLineChart, DetailMultiLineChart, DetailBarChart, CompareBars, LongShortSplit, Stat, fmtDate, fmtDateShort, type ChartPoint } from './DetailChart'
+import { DetailLineChart, DetailMultiLineChart, DetailBarChart, CompareBars, LongShortSplit, DivergingBars, Meter, Stat, fmtDate, fmtDateShort, type ChartPoint } from './DetailChart'
 import { Loader2, ExternalLink, TrendingUp, TrendingDown, Minus, ArrowRight } from 'lucide-react'
 
 type MacroPoint = { value: number; prior: number }
@@ -43,6 +43,32 @@ function alignNormalize(named: { name: string; color: string; main?: boolean; ra
     return { name: s.name, color: s.color, main: s.main, values }
   })
   return { dates, series }
+}
+
+// Align level ke tanggal-union (forward-fill) → dipakai utk hitung korelasi returns.
+function alignLevels(list: Series[], windowDays = 90): (number | null)[][] {
+  const maps = list.map(s => new Map(s.map(p => [p.date, p.value])))
+  const dates = Array.from(new Set(list.flatMap(s => s.map(p => p.date)))).sort().slice(-windowDays)
+  return list.map((s, i) => {
+    let last: number | null = null
+    for (const p of s) { if (dates.length && p.date <= dates[0]) last = p.value; else break }
+    return dates.map(d => { if (maps[i].has(d)) last = maps[i].get(d)!; return last })
+  })
+}
+// Korelasi Pearson dari RETURNS harian (bukan level) — hindari korelasi semu antar-tren.
+function correlate(aLvl: (number | null)[], bLvl: (number | null)[]): number {
+  const ar: number[] = [], br: number[] = []
+  for (let i = 1; i < aLvl.length; i++) {
+    const a0 = aLvl[i - 1], a1 = aLvl[i], b0 = bLvl[i - 1], b1 = bLvl[i]
+    if (a0 == null || a1 == null || b0 == null || b1 == null || a0 === 0 || b0 === 0) continue
+    ar.push((a1 - a0) / a0); br.push((b1 - b0) / b0)
+  }
+  const n = ar.length
+  if (n < 5) return 0
+  const ma = ar.reduce((x, y) => x + y, 0) / n, mb = br.reduce((x, y) => x + y, 0) / n
+  let num = 0, da = 0, db = 0
+  for (let i = 0; i < n; i++) { const x = ar[i] - ma, y = br[i] - mb; num += x * y; da += x * x; db += y * y }
+  return da && db ? Math.max(-1, Math.min(1, num / Math.sqrt(da * db))) : 0
 }
 
 // ── Chart komparasi interaktif (filter + fokus XAU) ──
@@ -216,6 +242,20 @@ function MiniAsset({ label, current, data, href, reading }: { label: string; cur
   )
 }
 
+// ── Kartu bacaan RINGKAS tanpa chart (kurangi jumlah line chart) ──
+function CompactRead({ label, current, chg, href, reading }: { label: string; current: string; chg?: string; href: string; reading: Reading }) {
+  const bar = reading.tone === 'bull' ? '#34d399' : reading.tone === 'bear' ? '#f87171' : 'rgba(255,255,255,0.3)'
+  return (
+    <Link href={href} className="group relative rounded-xl border border-white/[0.07] bg-[#0b100e] p-3.5 hover:border-primary/25 transition-colors block overflow-hidden">
+      <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: bar }} />
+      <div className="flex items-center justify-between mb-2 pl-1.5"><p className="text-[12px] font-bold text-white/80">{label}</p><ExternalLink size={11} className="text-white/25 group-hover:text-primary transition-colors" /></div>
+      <div className="flex items-baseline gap-2 mb-2 pl-1.5"><span className="text-lg font-black tabular-nums leading-none">{current}</span>{chg && <span className="text-[11px] font-semibold tabular-nums text-white/45">{chg}</span>}</div>
+      <div className="pl-1.5"><ReadingBadge r={reading} /></div>
+      <p className="text-[10px] text-white/40 leading-snug mt-2 pl-1.5">{reading.note}</p>
+    </Link>
+  )
+}
+
 function GroupHead({ emoji, title, intro }: { emoji: string; title: string; intro: string }) {
   return (
     <div className="pt-1">
@@ -242,6 +282,31 @@ export function LintasAsetSection({ macro, cross }: { macro: MacroMap; cross: Cr
   const pct = (q: Q) => q ? `${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%` : ''
   const num = (q: Q, dec = 2) => q ? q.price.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) : '—'
   const fdir = (k: string): number => { const p = macro?.[k]; return p ? p.value - p.prior : 0 }
+
+  // Korelasi returns 90-hari tiap aset ↔ XAU (bukan level → hindari korelasi semu).
+  const corr = useMemo(() => {
+    if (!h?.xau?.length) return null
+    const defs: { name: string; key: string }[] = [
+      { name: 'DXY', key: 'dollar' }, { name: 'Yield 10Y', key: 'us10y' }, { name: 'Real Yield', key: 'realyield' },
+      { name: 'S&P 500', key: 'spy' }, { name: 'Nasdaq', key: 'qqq' }, { name: 'VIX', key: 'vix' },
+      { name: 'Bitcoin', key: 'btc' }, { name: 'Silver', key: 'xag' },
+    ].filter(d => h[d.key]?.length)
+    const items = defs.map(d => {
+      const [ax, bx] = alignLevels([h.xau, h[d.key]], 90)
+      return { label: d.name, value: correlate(ax, bx) }
+    }).sort((a, b) => a.value - b.value)
+    return items
+  }, [h])
+
+  // Meter selera risiko dari perubahan hari ini (risk-on = tekan emas).
+  const riskScore = useMemo(() => {
+    if (!cross) return null
+    const eq = [cross.spy?.changePct, cross.qqq?.changePct, cross.btc?.changePct].filter((v): v is number => v != null)
+    const avgEq = eq.length ? eq.reduce((a, b) => a + b, 0) / eq.length : 0
+    const vix = cross.vixy?.changePct ?? 0
+    const signal = avgEq - vix * 0.4 // saham naik & VIX turun → risk-on
+    return Math.min(100, Math.max(0, 50 + signal * 12))
+  }, [cross])
 
   // Bacaan per aset
   const rDollar: Reading = { tone: upDown(fdir('dollar')), label: fdir('dollar') > 0 ? 'Tekan emas' : 'Dukung emas', note: fdir('dollar') > 0 ? 'Dolar menguat dari rilis lalu — biasanya menekan harga emas.' : 'Dolar melemah — angin positif buat emas.' }
@@ -276,49 +341,65 @@ export function LintasAsetSection({ macro, cross }: { macro: MacroMap; cross: Cr
           ]} />
       ) : <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] h-[360px] flex items-center justify-center"><Loader2 size={22} className="animate-spin text-white/30" /></div>}
 
-      {/* Pergerakan hari ini (bar chart — konteks perubahan diskret, bukan tren) */}
-      {cross && (
-        <InsightCard title="Pergerakan Hari Ini (% perubahan)">
-          <DetailBarChart height={170} fmt={v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`}
-            data={[
-              { label: 'S&P 500', value: cross.spy?.changePct ?? 0 },
-              { label: 'Nasdaq', value: cross.qqq?.changePct ?? 0 },
-              { label: 'Bitcoin', value: cross.btc?.changePct ?? 0 },
-              { label: 'VIX', value: cross.vixy?.changePct ?? 0 },
-              { label: 'Silver', value: cross.xag?.changePct ?? 0 },
-              { label: 'Dolar', value: cross.uup?.changePct ?? 0 },
-            ]} />
-          <p className="text-[11px] text-white/45 leading-relaxed mt-2">Hijau = naik hari ini, merah = turun. Saham & Bitcoin hijau serentak = selera risiko tinggi (kurang bersahabat buat emas); VIX & dolar hijau = mode defensif.</p>
+      {/* Dua panel analitik: korelasi (diverging bars) + selera risiko (meter) — bukan line chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <InsightCard title="Korelasi 90 Hari ke Emas">
+          {corr ? (
+            <>
+              <DivergingBars items={corr} fmt={v => (v >= 0 ? '+' : '') + v.toFixed(2)} posColor="#34d399" negColor="#f87171" />
+              <p className="text-[11px] text-white/45 leading-relaxed mt-3">Dihitung dari <b className="text-white/70">return harian</b> 90 hari terakhir. <span className="text-emerald-400 font-semibold">Positif (kanan)</span> = bergerak searah emas; <span className="text-red-400 font-semibold">negatif (kiri)</span> = berlawanan. Real yield & dolar biasanya paling negatif — itulah lawan struktural emas.</p>
+            </>
+          ) : <div className="h-[200px] flex items-center justify-center"><Loader2 size={18} className="animate-spin text-white/25" /></div>}
         </InsightCard>
-      )}
 
-      {/* Grup 1: Dolar & Suku Bunga */}
+        <InsightCard title="Termometer Selera Risiko Pasar">
+          {riskScore != null ? (
+            <div className="pt-2">
+              <Meter value={riskScore} leftLabel="Risk-off · dukung emas" rightLabel="Risk-on · tekan emas" leftColor="#34d399" rightColor="#f87171"
+                caption={riskScore < 42 ? 'Pasar sedang defensif — saham lemah / VIX naik. Kondisi klasik yang mendukung emas sebagai pelabuhan aman.' : riskScore > 58 ? 'Selera risiko tinggi — saham & kripto reli, VIX kalem. Uang cenderung menjauh dari aset aman seperti emas.' : 'Selera risiko netral — belum ada dorongan risk-on/off yang jelas untuk emas hari ini.'} />
+              <div className="mt-4 pt-4 border-t border-white/[0.06]">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Pergerakan Hari Ini</p>
+                <DetailBarChart height={150} fmt={v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`}
+                  data={[
+                    { label: 'S&P 500', value: cross?.spy?.changePct ?? 0 },
+                    { label: 'Nasdaq', value: cross?.qqq?.changePct ?? 0 },
+                    { label: 'Bitcoin', value: cross?.btc?.changePct ?? 0 },
+                    { label: 'VIX', value: cross?.vixy?.changePct ?? 0 },
+                    { label: 'Silver', value: cross?.xag?.changePct ?? 0 },
+                    { label: 'Dolar', value: cross?.uup?.changePct ?? 0 },
+                  ]} />
+              </div>
+            </div>
+          ) : <div className="h-[200px] flex items-center justify-center"><Loader2 size={18} className="animate-spin text-white/25" /></div>}
+        </InsightCard>
+      </div>
+
+      {/* Grup 1: Dolar & Suku Bunga — 1 featured (DXY) + 3 kartu ringkas TANPA chart */}
       <GroupHead emoji="💵" title="Dolar & Suku Bunga AS" intro="Ini 'lawan utama' emas. Emas dihargakan dalam dolar dan tidak memberi bunga — jadi saat dolar & yield naik, emas kehilangan daya tarik relatif. Real yield (yield dikurangi inflasi) adalah penggerak paling konsisten." />
       <FeaturedAsset label="Indeks Dolar (DXY)" sub="Broad USD Index · Federal Reserve" current={macro?.dollar ? macro.dollar.value.toFixed(2) : '—'} chg={macro?.dollar ? `dari ${macro.dollar.prior.toFixed(2)}` : ''} data={h?.dollar} color="#60a5fa" href="/terminal/data/macro/dollar" reading={rDollar}
         body="Dolar adalah cerminan kekuatan ekonomi & kebijakan Fed. Ketika investor global memburu aset AS (yield tinggi, ekonomi kuat), dolar menguat dan emas — yang dihargakan dalam dolar — jadi relatif lebih mahal bagi pemegang mata uang lain, sehingga permintaan cenderung turun." />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <MiniAsset label="Yield 10Y" current={macro?.us10y ? `${macro.us10y.value}%` : '—'} data={h?.us10y} href="/terminal/data/macro/us10y" reading={r10} />
-        <MiniAsset label="Yield 2Y" current={macro?.us02y ? `${macro.us02y.value}%` : '—'} data={h?.us02y} href="/terminal/data/macro/us02y" reading={r2} />
-        <MiniAsset label="Real Yield 10Y" current={macro?.realyield ? `${macro.realyield.value}%` : '—'} data={h?.realyield} href="/terminal/data/macro/realyield" reading={rReal} />
+        <CompactRead label="Yield 10Y" current={macro?.us10y ? `${macro.us10y.value}%` : '—'} chg={macro?.us10y ? `dari ${macro.us10y.prior}%` : ''} href="/terminal/data/macro/us10y" reading={r10} />
+        <CompactRead label="Yield 2Y" current={macro?.us02y ? `${macro.us02y.value}%` : '—'} chg={macro?.us02y ? `dari ${macro.us02y.prior}%` : ''} href="/terminal/data/macro/us02y" reading={r2} />
+        <CompactRead label="Real Yield 10Y" current={macro?.realyield ? `${macro.realyield.value}%` : '—'} chg={macro?.realyield ? `dari ${macro.realyield.prior}%` : ''} href="/terminal/data/macro/realyield" reading={rReal} />
       </div>
 
-      {/* Grup 2: Selera Risiko */}
+      {/* Grup 2: Selera Risiko — kartu ringkas TANPA chart (meter di atas sudah jadi visual utama) */}
       <GroupHead emoji="😨" title="Selera Risiko Pasar" intro="Emas adalah 'aset aman'. Saat pasar panik (risk-off) — saham anjlok, VIX melonjak — dana sering mengalir ke emas. Sebaliknya, saat pasar berani (risk-on), uang lebih memilih aset berisiko." />
-      <FeaturedAsset label="VIX — Indeks Ketakutan" sub="Proxy VIXY · volatilitas S&P 500" current={cross?.vixy ? cross.vixy.price.toFixed(2) : '—'} chg={pct(cross?.vixy ?? null)} data={h?.vix} color="#a78bfa" href="/terminal/data/market/vix" reading={rVix}
-        body="VIX mengukur ekspektasi gejolak pasar saham 30 hari ke depan. Lonjakan tajam biasanya menandai kepanikan (krisis, kejutan geopolitik) — dan di momen itulah emas paling sering diburu sebagai pelabuhan aman. VIX yang rendah & tenang menandakan pasar percaya diri, kurang menguntungkan emas." />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <MiniAsset label="S&P 500" current={num(cross?.spy ?? null)} data={h?.spy} href="/terminal/data/market/spx" reading={rSpy} />
-        <MiniAsset label="Nasdaq 100" current={num(cross?.qqq ?? null)} data={h?.qqq} href="/terminal/data/market/ndx" reading={rQqq} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <CompactRead label="VIX (Ketakutan)" current={cross?.vixy ? cross.vixy.price.toFixed(2) : '—'} chg={pct(cross?.vixy ?? null)} href="/terminal/data/market/vix" reading={rVix} />
+        <CompactRead label="S&P 500" current={num(cross?.spy ?? null)} chg={pct(cross?.spy ?? null)} href="/terminal/data/market/spx" reading={rSpy} />
+        <CompactRead label="Nasdaq 100" current={num(cross?.qqq ?? null)} chg={pct(cross?.qqq ?? null)} href="/terminal/data/market/ndx" reading={rQqq} />
       </div>
 
-      {/* Grup 3: Aset Alternatif */}
+      {/* Grup 3: Aset Alternatif — kartu ringkas TANPA chart */}
       <GroupHead emoji="🪙" title="Aset Alternatif" intro="Bitcoin & perak sering dibandingkan dengan emas. Perak bergerak searah (logam mulia), sementara Bitcoin lebih sebagai barometer selera risiko modern — korelasinya ke emas naik-turun." />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <MiniAsset label="Bitcoin (BTC/USD)" current={cross?.btc ? Math.round(cross.btc.price).toLocaleString('en-US') : '—'} data={h?.btc} href="/terminal/data/market/btc" reading={rBtc} />
-        <MiniAsset label="Perak (XAG/USD)" current={num(cross?.xag ?? null, 3)} data={h?.xag} href="/terminal/data/market/xag" reading={rXag} />
+        <CompactRead label="Bitcoin (BTC/USD)" current={cross?.btc ? Math.round(cross.btc.price).toLocaleString('en-US') : '—'} chg={pct(cross?.btc ?? null)} href="/terminal/data/market/btc" reading={rBtc} />
+        <CompactRead label="Perak (XAG/USD)" current={num(cross?.xag ?? null, 3)} chg={pct(cross?.xag ?? null)} href="/terminal/data/market/xag" reading={rXag} />
       </div>
 
-      <p className="text-[11px] text-white/30 leading-relaxed pt-2 border-t border-white/[0.06]">Bacaan di atas dihitung otomatis dari data terbaru (arah rilis / perubahan harga) & kaidah korelasi umum ke emas — bersifat konteks, bukan sinyal entry. Data: Federal Reserve (FRED) & Twelve Data.</p>
+      <p className="text-[11px] text-white/30 leading-relaxed pt-2 border-t border-white/[0.06]">Bacaan & korelasi di atas dihitung otomatis dari data terbaru (return harian / arah rilis / perubahan harga) & kaidah korelasi umum ke emas — bersifat konteks, bukan sinyal entry. Data: Federal Reserve (FRED) & Twelve Data.</p>
     </div>
   )
 }
@@ -429,7 +510,7 @@ export function CotSection({ cot }: { cot: CotData }) {
       <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent p-5">
         <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1.5">Commitment of Traders · Laporan Posisi</p>
         <h2 className="text-xl font-black tracking-tight">Di Mana Uang Besar Bertaruh?</h2>
-        <p className="text-[13px] text-white/60 leading-relaxed mt-2 max-w-3xl">Tiap Jumat, CFTC merilis posisi semua trader di futures emas COMEX. Ini "kartu terbuka" pasar: <b className="text-emerald-400">Funds</b> (hedge fund/spekulan besar, smart money), <b className="text-sky-400">Commercials</b> (produsen & bank), dan <b className="text-violet-400">Retail</b> (trader kecil, sering kontrarian di titik ekstrem). Membandingkan posisi mereka membantu menilai apakah tren didukung uang besar — atau justru rentan berbalik.</p>
+        <p className="text-[13px] text-white/60 leading-relaxed mt-2 max-w-3xl">Tiap Jumat, CFTC merilis posisi semua trader di futures emas COMEX. Ini “kartu terbuka” pasar: <b className="text-emerald-400">Funds</b> (hedge fund/spekulan besar, smart money), <b className="text-sky-400">Commercials</b> (produsen & bank), dan <b className="text-violet-400">Retail</b> (trader kecil, sering kontrarian di titik ekstrem). Membandingkan posisi mereka membantu menilai apakah tren didukung uang besar — atau justru rentan berbalik.</p>
       </div>
 
       {/* Komparasi harga vs posisi (line) */}
@@ -484,7 +565,7 @@ export function CotSection({ cot }: { cot: CotData }) {
       <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
         <p className="text-[12px] font-black mb-2">📌 Cara Membacanya</p>
         <ul className="text-[12px] text-white/60 leading-relaxed space-y-1.5 list-disc list-inside">
-          <li><b className="text-emerald-400">Funds</b> = trend-follower profesional. Net-long meningkat = keyakinan bullish; ekstrem tinggi bisa berarti "sudah terlalu ramai".</li>
+          <li><b className="text-emerald-400">Funds</b> = trend-follower profesional. Net-long meningkat = keyakinan bullish; ekstrem tinggi bisa berarti “sudah terlalu ramai”.</li>
           <li><b className="text-sky-400">Commercials</b> = hedger, sering di sisi berlawanan Funds. Ekstrem posisi mereka kadang jadi sinyal kontrarian kuat.</li>
           <li><b className="text-violet-400">Retail</b> = sering salah di titik ekstrem. Berlawanan dengan Funds → condong ikuti Funds.</li>
           <li>Data mingguan (rilis Jumat, lagging) — konteks strategis, <b>bukan sinyal entry harian</b>.</li>
