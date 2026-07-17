@@ -5,7 +5,7 @@
 // + kartu indikator + section COT. Data dari endpoint yang sudah ada.
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { DetailLineChart, DetailMultiLineChart, Row, Stat, fmtDate, fmtDateShort, type ChartPoint } from './DetailChart'
+import { DetailLineChart, DetailMultiLineChart, DetailBarChart, CompareBars, LongShortSplit, Stat, fmtDate, fmtDateShort, type ChartPoint } from './DetailChart'
 import { Loader2, ExternalLink, TrendingUp, TrendingDown, Minus, ArrowRight } from 'lucide-react'
 
 type MacroPoint = { value: number; prior: number }
@@ -154,20 +154,6 @@ export function MacroComparisonChart({ title, note, defs, height = 340 }: { titl
   )
 }
 
-// ── Kartu indikator kecil (mini chart + nilai + link detail) ──
-function IndicatorCard({ label, type, id, current, href, color = '#60a5fa' }: { label: string; type: 'fred' | 'mkt'; id: string; current: string; href: string; color?: string }) {
-  const [hist, setHist] = useState<Series | null>(null)
-  useEffect(() => { let stop = false; fetchHistory(type, id, 90).then(s => { if (!stop) setHist(s) }); return () => { stop = true } }, [type, id])
-  const data: ChartPoint[] | null = hist ? hist.map(p => ({ label: fmtDateShort(p.date), value: p.value })) : null
-  return (
-    <Link href={href} className="group rounded-2xl border border-white/[0.07] bg-[#0b100e] p-4 hover:border-primary/25 transition-colors block">
-      <div className="flex items-center justify-between mb-1"><p className="text-[12px] font-bold text-white/80">{label}</p><ExternalLink size={12} className="text-white/25 group-hover:text-primary transition-colors" /></div>
-      <p className="text-lg font-black tabular-nums mb-1">{current}</p>
-      {data ? <DetailLineChart data={data} height={90} /> : <div className="h-[90px] flex items-center justify-center"><Loader2 size={14} className="animate-spin text-white/25" /></div>}
-    </Link>
-  )
-}
-
 // ── util: fetch banyak history sekali dgn CONCURRENCY terbatas (cegah rate-limit
 // Twelve Data yg bikin sebagian chart kosong) + dedupe (1 simbol = 1 request) ──
 async function fetchMany(defs: { key: string; type: 'fred' | 'mkt'; id: string }[], concurrency = 3): Promise<Record<string, Series>> {
@@ -290,6 +276,22 @@ export function LintasAsetSection({ macro, cross }: { macro: MacroMap; cross: Cr
           ]} />
       ) : <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] h-[360px] flex items-center justify-center"><Loader2 size={22} className="animate-spin text-white/30" /></div>}
 
+      {/* Pergerakan hari ini (bar chart — konteks perubahan diskret, bukan tren) */}
+      {cross && (
+        <InsightCard title="Pergerakan Hari Ini (% perubahan)">
+          <DetailBarChart height={170} fmt={v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`}
+            data={[
+              { label: 'S&P 500', value: cross.spy?.changePct ?? 0 },
+              { label: 'Nasdaq', value: cross.qqq?.changePct ?? 0 },
+              { label: 'Bitcoin', value: cross.btc?.changePct ?? 0 },
+              { label: 'VIX', value: cross.vixy?.changePct ?? 0 },
+              { label: 'Silver', value: cross.xag?.changePct ?? 0 },
+              { label: 'Dolar', value: cross.uup?.changePct ?? 0 },
+            ]} />
+          <p className="text-[11px] text-white/45 leading-relaxed mt-2">Hijau = naik hari ini, merah = turun. Saham & Bitcoin hijau serentak = selera risiko tinggi (kurang bersahabat buat emas); VIX & dolar hijau = mode defensif.</p>
+        </InsightCard>
+      )}
+
       {/* Grup 1: Dolar & Suku Bunga */}
       <GroupHead emoji="💵" title="Dolar & Suku Bunga AS" intro="Ini 'lawan utama' emas. Emas dihargakan dalam dolar dan tidak memberi bunga — jadi saat dolar & yield naik, emas kehilangan daya tarik relatif. Real yield (yield dikurangi inflasi) adalah penggerak paling konsisten." />
       <FeaturedAsset label="Indeks Dolar (DXY)" sub="Broad USD Index · Federal Reserve" current={macro?.dollar ? macro.dollar.value.toFixed(2) : '—'} chg={macro?.dollar ? `dari ${macro.dollar.prior.toFixed(2)}` : ''} data={h?.dollar} color="#60a5fa" href="/terminal/data/macro/dollar" reading={rDollar}
@@ -321,48 +323,144 @@ export function LintasAsetSection({ macro, cross }: { macro: MacroMap; cross: Cr
   )
 }
 
-// ── Section: Inflasi & Kebijakan Fed ──
-export function InflasiSection({ macro }: { macro: MacroMap }) {
+// ── Kartu featured generik (chart bebas: line/bar/dll) ──
+function FeatureCard({ label, sub, current, chg, reading, body, href, chart, color = '#60a5fa' }: {
+  label: string; sub: string; current: string; chg?: string; reading: Reading; body: string; href: string; chart: React.ReactNode; color?: string
+}) {
   return (
-    <div className="space-y-4">
-      <MacroComparisonChart title="Inflasi, Suku Bunga & Emas" note="XAU/USD vs inflasi (CPI/PCE), Fed Funds & Yield — pendorong terbesar emas jangka menengah."
-        defs={[
-          { name: 'XAU/USD', color: '#fbbf24', main: true, type: 'mkt', id: 'XAU/USD' },
-          { name: 'CPI', color: '#f87171', default: true, type: 'fred', id: 'cpi' },
-          { name: 'Core PCE', color: '#fb923c', type: 'fred', id: 'corepce' },
-          { name: 'Fed Funds', color: '#60a5fa', default: true, type: 'fred', id: 'fedfunds' },
-          { name: 'Yield 10Y', color: '#f472b6', type: 'fred', id: 'us10y' },
-        ]} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <IndicatorCard label="CPI (Headline)" type="fred" id="cpi" current={macro?.cpi ? `${macro.cpi.value}%` : '—'} href="/terminal/data/macro/cpi" color="#f87171" />
-        <IndicatorCard label="Core CPI" type="fred" id="corecpi" current={macro?.corecpi ? `${macro.corecpi.value}%` : '—'} href="/terminal/data/macro/corecpi" color="#f87171" />
-        <IndicatorCard label="Core PCE (favorit Fed)" type="fred" id="corepce" current={macro?.corepce ? `${macro.corepce.value}%` : '—'} href="/terminal/data/macro/corepce" color="#fb923c" />
-        <IndicatorCard label="Ekspektasi Inflasi (breakeven)" type="fred" id="breakeven" current={macro?.breakeven ? `${macro.breakeven.value}%` : '—'} href="/terminal/data/macro/breakeven" color="#fbbf24" />
-        <IndicatorCard label="Fed Funds Rate" type="fred" id="fedfunds" current={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} href="/terminal/data/macro/fedfunds" color="#60a5fa" />
-        <IndicatorCard label="Pengangguran" type="fred" id="unrate" current={macro?.unrate ? `${macro.unrate.value}%` : '—'} href="/terminal/data/macro/unrate" color="#34d399" />
-        <IndicatorCard label="NFP (Payrolls)" type="fred" id="nfp" current={macro?.nfp ? `${macro.nfp.value >= 0 ? '+' : ''}${macro.nfp.value}K` : '—'} href="/terminal/data/macro/nfp" color="#34d399" />
-        <IndicatorCard label="Pertumbuhan Upah" type="fred" id="wagegrowth" current={macro?.wagegrowth ? `${macro.wagegrowth.value}%` : '—'} href="/terminal/data/macro/wagegrowth" color="#a78bfa" />
+    <div className="rounded-2xl border border-white/[0.08] bg-[#0b100e] overflow-hidden grid md:grid-cols-2">
+      <div className="p-5 flex flex-col">
+        <div className="flex items-center justify-between gap-2 mb-1"><p className="text-[13px] font-black">{label}</p><ReadingBadge r={reading} /></div>
+        <p className="text-[10px] text-white/40 mb-3">{sub}</p>
+        <div className="flex items-baseline gap-2 mb-3"><span className="text-2xl font-black tabular-nums">{current}</span>{chg && <span className="text-xs font-bold tabular-nums text-white/50">{chg}</span>}</div>
+        <p className="text-[12px] text-white/60 leading-relaxed flex-1">{body}</p>
+        <p className="text-[11px] font-semibold mt-3" style={{ color: reading.tone === 'bull' ? '#34d399' : reading.tone === 'bear' ? '#f87171' : 'rgba(255,255,255,0.6)' }}>→ {reading.note}</p>
+        <Link href={href} className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline mt-3">Detail & tren panjang <ArrowRight size={12} /></Link>
       </div>
+      <div className="relative p-3 border-t md:border-t-0 md:border-l border-white/[0.06] flex items-center" style={{ background: `linear-gradient(180deg, ${color}0a, transparent)` }}>{chart}</div>
+    </div>
+  )
+}
+function InsightCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] p-5"><p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3">{title}</p>{children}</div>
+}
+const lineNode = (s: Series | undefined, h = 190) => s && s.length ? <div className="w-full"><DetailLineChart data={s.map(p => ({ label: fmtDateShort(p.date), value: p.value }))} height={h} /></div> : <div className="w-full flex items-center justify-center text-[11px] text-white/25" style={{ height: h }}>Memuat chart…</div>
+
+// ── Section: Inflasi & Kebijakan Fed (artikel + chart beragam) ──
+export function InflasiSection({ macro }: { macro: MacroMap }) {
+  const [h, setH] = useState<Record<string, Series> | null>(null)
+  useEffect(() => {
+    let stop = false
+    fetchMany([
+      { key: 'xau', type: 'mkt', id: 'XAU/USD' }, { key: 'cpi', type: 'fred', id: 'cpi' }, { key: 'corecpi', type: 'fred', id: 'corecpi' },
+      { key: 'corepce', type: 'fred', id: 'corepce' }, { key: 'breakeven', type: 'fred', id: 'breakeven' }, { key: 'fedfunds', type: 'fred', id: 'fedfunds' },
+      { key: 'unrate', type: 'fred', id: 'unrate' }, { key: 'nfp', type: 'fred', id: 'nfp' }, { key: 'wage', type: 'fred', id: 'wagegrowth' }, { key: 'us10y', type: 'fred', id: 'us10y' },
+    ], 3).then(r => { if (!stop) setH(r) })
+    return () => { stop = true }
+  }, [])
+  const fdir = (k: string) => { const p = macro?.[k]; return p ? p.value - p.prior : 0 }
+  const rCpi: Reading = { tone: fdir('cpi') <= 0 ? 'bull' : 'bear', label: fdir('cpi') <= 0 ? 'Dukung emas' : 'Tekan emas', note: fdir('cpi') <= 0 ? 'Inflasi mereda → peluang Fed pangkas bunga → bullish emas.' : 'Inflasi masih panas → Fed tahan bunga tinggi → tekan emas.' }
+  const rNfp: Reading = { tone: macro?.nfp ? (macro.nfp.value < macro.nfp.prior ? 'bull' : 'bear') : 'neutral', label: macro?.nfp && macro.nfp.value < macro.nfp.prior ? 'Melambat (dovish)' : 'Kuat (hawkish)', note: 'Lapangan kerja melemah = sinyal dovish = bullish emas; kuat = hawkish = tekan emas.' }
+  const rFed: Reading = { tone: fdir('fedfunds') < 0 ? 'bull' : fdir('fedfunds') > 0 ? 'bear' : 'neutral', label: fdir('fedfunds') < 0 ? 'Memangkas (bullish)' : fdir('fedfunds') > 0 ? 'Menaikkan' : 'Ditahan', note: 'Ekspektasi pemangkasan bunga = bullish emas; higher-for-longer = bearish.' }
+  const gaugeItems = macro ? [
+    macro.cpi && { label: 'CPI (Headline)', value: macro.cpi.value, color: '#f87171' },
+    macro.corecpi && { label: 'Core CPI', value: macro.corecpi.value, color: '#fb7185' },
+    macro.corepce && { label: 'Core PCE (favorit Fed)', value: macro.corepce.value, color: '#fb923c' },
+    macro.breakeven && { label: 'Ekspektasi Inflasi 10Y', value: macro.breakeven.value, color: '#fbbf24' },
+  ].filter(Boolean) as { label: string; value: number; color: string }[] : []
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1.5">Inflasi & Kebijakan Fed · Laporan</p>
+        <h2 className="text-xl font-black tracking-tight">Kompas Suku Bunga Emas</h2>
+        <p className="text-[13px] text-white/60 leading-relaxed mt-2 max-w-3xl">Emas paling terpengaruh oleh satu hal jangka menengah: <b className="text-white/85">ke mana arah suku bunga The Fed</b>. Dan itu ditentukan oleh dua data — <b>inflasi</b> (apakah cukup rendah untuk memangkas bunga?) dan <b>ketenagakerjaan</b> (apakah ekonomi cukup lemah?). Inflasi mereda + pasar kerja melemah = ruang pemangkasan bunga = <span className="text-emerald-400 font-semibold">bullish emas</span>.</p>
+      </div>
+
+      {h ? (
+        <MacroComparisonChart title="Inflasi, Suku Bunga & Emas" note="XAU/USD (garis utama) vs CPI, Core PCE, Fed Funds & Yield — disamakan ke % perubahan."
+          defs={[
+            { name: 'XAU/USD', color: '#fbbf24', main: true, raw: h.xau ?? [] },
+            { name: 'CPI', color: '#f87171', default: true, raw: h.cpi ?? [] },
+            { name: 'Core PCE', color: '#fb923c', raw: h.corepce ?? [] },
+            { name: 'Fed Funds', color: '#60a5fa', default: true, raw: h.fedfunds ?? [] },
+            { name: 'Yield 10Y', color: '#f472b6', raw: h.us10y ?? [] },
+          ]} />
+      ) : <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] h-[360px] flex items-center justify-center"><Loader2 size={22} className="animate-spin text-white/30" /></div>}
+
+      {/* Grup 1: Inflasi */}
+      <GroupHead emoji="🔥" title="Seberapa Panas Inflasi?" intro="Target The Fed adalah 2% (Core PCE). Selama inflasi di atas itu, Fed enggan memangkas bunga — kurang bersahabat buat emas. Makin mendekati/di bawah 2%, makin terbuka jalan pemangkasan." />
+      <FeatureCard label="CPI — Inflasi Headline (YoY)" sub="Consumer Price Index · FRED" current={macro?.cpi ? `${macro.cpi.value}%` : '—'} chg={macro?.cpi ? `dari ${macro.cpi.prior}%` : ''} color="#f87171" href="/terminal/data/macro/cpi" reading={rCpi} chart={lineNode(h?.cpi)}
+        body="CPI adalah ukuran inflasi paling banyak diliput. Angkanya sering menggerakkan pasar saat rilis, meski The Fed sebenarnya lebih memantau Core PCE. Tren yang menurun konsisten adalah kabar baik buat emas karena membuka ruang pemangkasan bunga." />
+      {gaugeItems.length > 0 && (
+        <InsightCard title="Bandingkan Ukuran Inflasi vs Target Fed 2%">
+          <CompareBars items={gaugeItems} refValue={2} refLabel="Target The Fed" suffix="%" />
+          <p className="text-[11px] text-white/45 leading-relaxed mt-3">Core PCE (garis oranye) adalah acuan RESMI Fed — bukan CPI. Selama masih jauh di atas 2%, sikap Fed cenderung hawkish (menekan emas).</p>
+        </InsightCard>
+      )}
+
+      {/* Grup 2: Ketenagakerjaan */}
+      <GroupHead emoji="👷" title="Pasar Tenaga Kerja" intro="Mandat ganda Fed: stabilitas harga + lapangan kerja. Pasar kerja yang melemah memberi Fed alasan untuk melonggarkan kebijakan (dovish) — bullish buat emas." />
+      <FeatureCard label="NFP — Perubahan Lapangan Kerja Bulanan" sub="Nonfarm Payrolls · ribu pekerja/bulan" current={macro?.nfp ? `${macro.nfp.value >= 0 ? '+' : ''}${macro.nfp.value}K` : '—'} color="#34d399" href="/terminal/data/macro/nfp" reading={rNfp}
+        chart={h?.nfp?.length ? <div className="w-full"><DetailBarChart data={h.nfp.map(p => ({ label: fmtDateShort(p.date), value: p.value }))} height={190} fmt={v => `${v >= 0 ? '+' : ''}${Math.round(v)}K`} /></div> : <div className="w-full h-[190px] flex items-center justify-center text-[11px] text-white/25">Memuat chart…</div>}
+        body="Perubahan jumlah pekerjaan tiap bulan — salah satu rilis paling menggerakkan pasar. Batang di atas nol = ekonomi menambah pekerjaan (kuat/hawkish), makin tinggi makin menekan emas. Batang mengecil/negatif = melambat (dovish) = mendukung emas." />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <MiniAsset label="Tingkat Pengangguran" current={macro?.unrate ? `${macro.unrate.value}%` : '—'} data={h?.unrate} href="/terminal/data/macro/unrate" reading={{ tone: fdir('unrate') > 0 ? 'bull' : 'bear', label: fdir('unrate') > 0 ? 'Dovish' : 'Hawkish', note: 'Pengangguran naik = ekonomi melambat = ruang pangkas bunga = bullish emas.' }} />
+        <MiniAsset label="Pertumbuhan Upah (YoY)" current={macro?.wagegrowth ? `${macro.wagegrowth.value}%` : '—'} data={h?.wage} href="/terminal/data/macro/wagegrowth" reading={{ tone: fdir('wagegrowth') <= 0 ? 'bull' : 'bear', label: fdir('wagegrowth') <= 0 ? 'Mereda' : 'Tekanan inflasi', note: 'Upah naik cepat = tekanan inflasi bertahan lama = hawkish = tekan emas.' }} />
+      </div>
+
+      {/* Grup 3: Kebijakan Fed */}
+      <GroupHead emoji="🏛️" title="Arah Kebijakan Fed" intro="Muara dari semua data di atas: suku bunga acuan. Ekspektasi pemangkasan adalah pendorong bullish emas paling kuat." />
+      <FeatureCard label="Fed Funds Rate" sub="Suku bunga acuan · Federal Reserve" current={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} chg={macro?.fedfunds ? `dari ${macro.fedfunds.prior}%` : ''} color="#60a5fa" href="/terminal/data/macro/fedfunds" reading={rFed} chart={lineNode(h?.fedfunds)}
+        body="Suku bunga acuan yang menjadi dasar hampir semua biaya pinjaman di ekonomi AS. Emas tidak memberi bunga, jadi saat suku bunga tinggi, memegang emas 'mahal' secara biaya peluang. Ekspektasi pasar terhadap ARAH bunga ke depan lebih penting dari angka saat ini." />
+
+      <p className="text-[11px] text-white/30 leading-relaxed pt-2 border-t border-white/[0.06]">Bacaan dihitung otomatis dari arah rilis terbaru & kaidah umum — konteks, bukan sinyal entry. Data: Federal Reserve (FRED).</p>
     </div>
   )
 }
 
-// ── Section: Institusi vs Retail (COT) ──
+// ── Section: Institusi vs Retail (COT) — artikel + chart beragam ──
 export function CotSection({ cot }: { cot: CotData }) {
   if (!cot) return <div className="h-64 flex items-center justify-center"><Loader2 className="animate-spin text-white/30" /></div>
+  const conflict = cot.funds.net * cot.retail.net < 0
   return (
-    <div className="space-y-4">
-      {/* Komparasi: harga XAU vs posisi net institusi/retail (ternormalisasi) */}
-      <MacroComparisonChart title="Harga Emas vs Posisi COT" note="XAU/USD vs posisi net Funds/Retail — apakah institusi memimpin atau mengikuti harga?"
+    <div className="space-y-6">
+      {/* Intro artikel */}
+      <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.06] to-transparent p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1.5">Commitment of Traders · Laporan Posisi</p>
+        <h2 className="text-xl font-black tracking-tight">Di Mana Uang Besar Bertaruh?</h2>
+        <p className="text-[13px] text-white/60 leading-relaxed mt-2 max-w-3xl">Tiap Jumat, CFTC merilis posisi semua trader di futures emas COMEX. Ini "kartu terbuka" pasar: <b className="text-emerald-400">Funds</b> (hedge fund/spekulan besar, smart money), <b className="text-sky-400">Commercials</b> (produsen & bank), dan <b className="text-violet-400">Retail</b> (trader kecil, sering kontrarian di titik ekstrem). Membandingkan posisi mereka membantu menilai apakah tren didukung uang besar — atau justru rentan berbalik.</p>
+      </div>
+
+      {/* Komparasi harga vs posisi (line) */}
+      <MacroComparisonChart title="Harga Emas vs Posisi COT" note="XAU/USD (garis utama) vs posisi net Funds/Retail — apakah institusi memimpin atau mengikuti harga?"
         defs={[
           { name: 'XAU/USD', color: '#fbbf24', main: true, type: 'mkt', id: 'XAU/USD' },
           { name: 'Funds (Institusi)', color: '#34d399', default: true, raw: cot.fundsHistoryFull },
           { name: 'Retail', color: '#a78bfa', default: true, raw: cot.retailHistoryFull },
         ]} />
-      {/* Chart absolut 3-jalur */}
+
+      {/* Long vs Short (split bar) — konteks bar, bukan line */}
+      <GroupHead emoji="⚖️" title="Long vs Short — Siapa Bertaruh ke Mana" intro="Tiap kelompok punya posisi beli (long) & jual (short). Selisihnya = posisi net. Funds yang sangat net-long menandakan smart money bullish; Retail yang ekstrem sering jadi sinyal kontrarian." />
+      <InsightCard title={`Komposisi Posisi · rilis ${fmtDate(cot.date)}`}>
+        <LongShortSplit fmt={kfmt} rows={[
+          { label: 'Funds (Institusi)', long: cot.funds.long, short: cot.funds.short },
+          { label: 'Commercials (Hedger)', long: cot.commercials.long, short: cot.commercials.short },
+          { label: 'Retail', long: cot.retail.long, short: cot.retail.short },
+        ]} />
+      </InsightCard>
+      {conflict && (
+        <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 p-4">
+          <span className="text-amber-400 text-sm mt-0.5">⚠</span>
+          <p className="text-[12px] text-amber-200/90 leading-relaxed">Institusi & Retail sedang <b>berlawanan arah</b> — institusi {cot.funds.net >= 0 ? 'net long' : 'net short'}, retail {cot.retail.net >= 0 ? 'net long' : 'net short'}. Historisnya condong mengikuti arah institusi (smart money).</p>
+        </div>
+      )}
+
+      {/* Tren posisi net 1 tahun (multi-line) */}
+      <GroupHead emoji="📈" title="Tren Posisi Net — 1 Tahun" intro="Bukan cuma posisi saat ini, tapi ARAH-nya. Funds yang terus menambah long = keyakinan bullish menguat. Perhatikan juga saat Funds & Commercials bergerak berlawanan — titik ekstrem sering jadi sinyal balik arah." />
       <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] flex-wrap gap-2">
-          <p className="text-sm font-bold flex items-center gap-2">Posisi Net (kontrak) — 1 Tahun <span className="text-[9px] font-semibold text-white/30 normal-case">CFTC · mingguan</span></p>
+          <p className="text-sm font-bold flex items-center gap-2">Posisi Net (kontrak) <span className="text-[9px] font-semibold text-white/30 normal-case">CFTC · mingguan · 1 tahun</span></p>
           <div className="flex items-center gap-3 text-[10px]">
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" />Funds</span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-400" />Commercials</span>
@@ -382,22 +480,15 @@ export function CotSection({ cot }: { cot: CotData }) {
         <Stat label="Commercials (Hedger)" value={kfmt(cot.commercials.net)} tone={cot.commercials.net >= 0 ? 'up' : 'down'} sub={`Δ${kfmt(cot.commercials.deltaNet)}/mgg`} />
         <Stat label="Retail" value={kfmt(cot.retail.net)} tone="neutral" sub={`Δ${kfmt(cot.retail.deltaNet)}/mgg · kontrarian`} />
       </div>
-      {cot.funds.net * cot.retail.net < 0 && (
-        <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 p-4">
-          <span className="text-amber-400 text-sm mt-0.5">⚠</span>
-          <p className="text-[12px] text-amber-200/90 leading-relaxed">Institusi & Retail sedang <b>berlawanan arah</b> — historisnya condong mengikuti arah institusi (smart money).</p>
-        </div>
-      )}
-      <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] p-5">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3">Rincian Posisi (kontrak) · rilis {fmtDate(cot.date)}</p>
-        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
-          <Row l="Funds — Long" v={cot.funds.long.toLocaleString('id-ID')} />
-          <Row l="Funds — Short" v={cot.funds.short.toLocaleString('id-ID')} />
-          <Row l="Commercials — Long" v={cot.commercials.long.toLocaleString('id-ID')} />
-          <Row l="Commercials — Short" v={cot.commercials.short.toLocaleString('id-ID')} />
-          <Row l="Retail — Long" v={cot.retail.long.toLocaleString('id-ID')} />
-          <Row l="Retail — Short" v={cot.retail.short.toLocaleString('id-ID')} />
-        </div>
+
+      <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+        <p className="text-[12px] font-black mb-2">📌 Cara Membacanya</p>
+        <ul className="text-[12px] text-white/60 leading-relaxed space-y-1.5 list-disc list-inside">
+          <li><b className="text-emerald-400">Funds</b> = trend-follower profesional. Net-long meningkat = keyakinan bullish; ekstrem tinggi bisa berarti "sudah terlalu ramai".</li>
+          <li><b className="text-sky-400">Commercials</b> = hedger, sering di sisi berlawanan Funds. Ekstrem posisi mereka kadang jadi sinyal kontrarian kuat.</li>
+          <li><b className="text-violet-400">Retail</b> = sering salah di titik ekstrem. Berlawanan dengan Funds → condong ikuti Funds.</li>
+          <li>Data mingguan (rilis Jumat, lagging) — konteks strategis, <b>bukan sinyal entry harian</b>.</li>
+        </ul>
       </div>
     </div>
   )

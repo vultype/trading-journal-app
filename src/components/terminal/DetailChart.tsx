@@ -155,6 +155,79 @@ export function DetailMultiLineChart({ series, height = 340 }: { series: { name:
   )
 }
 
+// ── Bar chart (vertikal) — cocok utk data diskret/perubahan (NFP bulanan, % move) ──
+export function DetailBarChart({ data, height = 200, posColor = '#34d399', negColor = '#f87171', fmt = (v: number) => v.toFixed(2) }: { data: ChartPoint[]; height?: number; posColor?: string; negColor?: string; fmt?: (v: number) => string }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [w, setW] = useState(600)
+  const [hover, setHover] = useState<number | null>(null)
+  useEffect(() => { const el = wrapRef.current; if (!el) return; const m = () => setW(el.clientWidth || 600); m(); const ro = new ResizeObserver(m); ro.observe(el); return () => ro.disconnect() }, [])
+  const padL = 42, padR = 10, padT = 12, padB = 22
+  const cw = Math.max(1, w - padL - padR), ch = Math.max(1, height - padT - padB)
+  if (data.length < 1) return <div style={{ height }} className="flex items-center justify-center text-white/30 text-sm">Data belum cukup</div>
+  const vals = data.map(d => d.value)
+  const min = Math.min(...vals, 0), max = Math.max(...vals, 0), range = max - min || 1
+  const y = (v: number) => padT + ch - ((v - min) / range) * ch
+  const zeroY = y(0)
+  const bw = cw / data.length
+  const onMove = (clientX: number) => { const el = wrapRef.current; if (!el) return; const r = el.getBoundingClientRect(); const i = Math.floor((clientX - r.left - padL) / bw); setHover(i >= 0 && i < data.length ? i : null) }
+  const grid = min < 0 ? [max, 0, min] : [max, min + range / 2, min]
+  const hd = hover != null ? data[hover] : null
+  const tipLeft = hover != null ? Math.min(Math.max(padL + hover * bw + bw / 2, 55), w - 55) : 0
+  return (
+    <div ref={wrapRef} className="relative select-none" onMouseMove={e => onMove(e.clientX)} onMouseLeave={() => setHover(null)}
+      onTouchStart={e => onMove(e.touches[0].clientX)} onTouchMove={e => onMove(e.touches[0].clientX)}>
+      <svg width={w} height={height} className="block">
+        {grid.map((gv, i) => (<g key={i}><line x1={padL} y1={y(gv)} x2={padL + cw} y2={y(gv)} stroke={gv === 0 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)'} strokeDasharray={gv === 0 ? '2 3' : ''} /><text x={padL - 6} y={y(gv) + 3} textAnchor="end" fontSize="10" fill="rgba(255,255,255,0.35)">{fmt(gv)}</text></g>))}
+        {data.map((d, i) => { const x0 = padL + i * bw + bw * 0.16, bw2 = bw * 0.68, yv = y(d.value); const barY = d.value >= 0 ? yv : zeroY, barH = Math.max(1, Math.abs(zeroY - yv)); return <rect key={i} x={x0} y={barY} width={bw2} height={barH} rx={1.5} fill={d.value >= 0 ? posColor : negColor} opacity={hover == null || hover === i ? 0.9 : 0.4} /> })}
+        {[0, Math.floor((data.length - 1) / 2), data.length - 1].map(i => (<text key={i} x={padL + i * bw + bw / 2} y={height - 6} textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'} fontSize="10" fill="rgba(255,255,255,0.35)">{data[i].label}</text>))}
+      </svg>
+      {hd && (<div className="pointer-events-none absolute -top-1 rounded-lg border border-white/15 bg-[#0e1513] px-2.5 py-1.5 shadow-xl -translate-x-1/2" style={{ left: tipLeft }}><p className="text-[9px] text-white/45 whitespace-nowrap">{hd.label}</p><p className="text-[12px] font-black tabular-nums" style={{ color: hd.value >= 0 ? posColor : negColor }}>{fmt(hd.value)}</p></div>)}
+    </div>
+  )
+}
+
+// ── Bar horizontal komparasi level (mis. inflasi CPI/PCE + target Fed) ──
+export function CompareBars({ items, refValue, refLabel, suffix = '%' }: { items: { label: string; value: number; color?: string }[]; refValue?: number; refLabel?: string; suffix?: string }) {
+  const max = Math.max(...items.map(i => Math.abs(i.value)), refValue ? Math.abs(refValue) : 0) * 1.12 || 1
+  return (
+    <div className="space-y-2.5">
+      {items.map(it => (
+        <div key={it.label}>
+          <div className="flex items-center justify-between text-[11px] mb-1"><span className="text-white/60">{it.label}</span><span className="font-bold tabular-nums text-white/85">{it.value}{suffix}</span></div>
+          <div className="relative h-2.5 rounded-full bg-white/[0.05] overflow-hidden">
+            <div className="h-full rounded-full transition-all" style={{ width: `${(Math.abs(it.value) / max) * 100}%`, background: it.color ?? '#60a5fa' }} />
+            {refValue != null && <span className="absolute top-0 bottom-0 w-px bg-amber-400/80" style={{ left: `${(refValue / max) * 100}%` }} />}
+          </div>
+        </div>
+      ))}
+      {refValue != null && refLabel && <p className="text-[10px] text-amber-400/80 flex items-center gap-1"><span className="inline-block w-2 h-px bg-amber-400/80" /> {refLabel} ({refValue}{suffix})</p>}
+    </div>
+  )
+}
+
+// ── Split long vs short (COT) — bar terbagi hijau/merah ──
+export function LongShortSplit({ rows, fmt }: { rows: { label: string; long: number; short: number }[]; fmt: (n: number) => string }) {
+  return (
+    <div className="space-y-3">
+      {rows.map(r => {
+        const total = r.long + r.short || 1
+        const lp = (r.long / total) * 100
+        const net = r.long - r.short
+        return (
+          <div key={r.label}>
+            <div className="flex items-center justify-between text-[11px] mb-1"><span className="text-white/70 font-semibold">{r.label}</span><span className={`tabular-nums font-bold ${net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>net {fmt(net)}</span></div>
+            <div className="flex h-5 rounded-lg overflow-hidden text-[9px] font-bold ring-1 ring-white/[0.06]">
+              <div className="bg-emerald-500/70 flex items-center px-2 text-emerald-50 whitespace-nowrap overflow-hidden" style={{ width: `${lp}%` }}>{lp > 18 ? `Long ${fmt(r.long)}` : ''}</div>
+              <div className="bg-red-500/70 flex items-center justify-end px-2 text-red-50 whitespace-nowrap overflow-hidden" style={{ width: `${100 - lp}%` }}>{(100 - lp) > 18 ? `Short ${fmt(r.short)}` : ''}</div>
+            </div>
+          </div>
+        )
+      })}
+      <div className="flex items-center gap-3 text-[9px] text-white/40 pt-0.5"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/70" />Long</span><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-500/70" />Short</span></div>
+    </div>
+  )
+}
+
 export function Row({ l, v, c }: { l: string; v: React.ReactNode; c?: string }) {
   return <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2.5"><span className="text-[12px] text-white/60">{l}</span><span className={`text-[13px] font-bold tabular-nums ${c ?? 'text-white/85'}`}>{v}</span></div>
 }
