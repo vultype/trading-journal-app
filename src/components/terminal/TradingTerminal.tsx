@@ -241,9 +241,10 @@ function usePredictions() {
 // Arah & ringkasan per sesi HARI INI (Asia/London/NY, WIB) — reset otomatis tiap hari.
 // Dihitung dari candle M15 (tertutup) yang jatuh di jendela sesi hari berjalan.
 const WIB_OFFSET_MS = 7 * 3_600_000
+// Jendela WIB kontigu (tanpa jam kosong), tetap dalam 1 hari agar reset harian sederhana.
 const SESSIONS = [
-  { name: 'Asia', s: 6, e: 11 },
-  { name: 'London', s: 14, e: 18 },
+  { name: 'Asia', s: 6, e: 14 },
+  { name: 'London', s: 14, e: 19 },
   { name: 'New York', s: 19, e: 23 },
 ] as const
 type SessionRow = { name: string; status: 'belum' | 'berlangsung' | 'selesai'; arah: 'Bullish' | 'Bearish' | 'Flat' | null; open: number; close: number; low: number; high: number; rangePips: number }
@@ -1263,16 +1264,19 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   )
   // Arah & ringkasan per sesi (Asia/London/NY) — reset otomatis tiap hari
   const SesiPanel = (
-    <Panel title="Arah & Ringkasan per Sesi" icon={Clock} info="Ringkasan pergerakan XAU/USD per sesi HARI INI (jam WIB: Asia 06-11, London 14-18, New York 19-23). Arah = harga penutupan vs pembukaan sesi. Reset otomatis setiap pergantian hari." right={<span className="text-[10px] text-white/35">reset harian · WIB</span>}>
+    <Panel title="Arah & Ringkasan per Sesi" icon={Clock} info="Ringkasan pergerakan XAU/USD per sesi HARI INI (jam WIB: Asia 06-14, London 14-19, New York 19-23). Arah (bullish/bearish) hanya muncul setelah sesi SELESAI — sesi yang masih berjalan ditandai 'masih berjalan' agar tidak menyesatkan. Reset otomatis setiap pergantian hari." right={<span className="text-[10px] text-white/35">reset harian · WIB</span>}>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {sesi.map(s => {
-          const clr = s.arah === 'Bullish' ? 'text-emerald-400' : s.arah === 'Bearish' ? 'text-red-400' : 'text-white/60'
-          const dot = s.arah === 'Bullish' ? 'bg-emerald-400' : s.arah === 'Bearish' ? 'bg-red-400' : 'bg-white/40'
-          const box = s.arah === 'Bullish' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : s.arah === 'Bearish' ? 'border-red-500/25 bg-red-500/[0.06]' : 'border-white/10 bg-white/[0.02]'
+          const live = s.status === 'berlangsung'
+          // Verdict arah HANYA untuk sesi yang sudah selesai — sesi berjalan dibiarkan netral
+          // supaya pembacaan tidak bingung (arah belum final).
+          const verdict = live ? null : s.arah
+          const clr = verdict === 'Bullish' ? 'text-emerald-400' : verdict === 'Bearish' ? 'text-red-400' : 'text-white/60'
+          const dot = verdict === 'Bullish' ? 'bg-emerald-400' : verdict === 'Bearish' ? 'bg-red-400' : 'bg-white/40'
+          const box = verdict === 'Bullish' ? 'border-emerald-500/25 bg-emerald-500/[0.06]' : verdict === 'Bearish' ? 'border-red-500/25 bg-red-500/[0.06]' : live ? 'border-primary/20 bg-primary/[0.04]' : 'border-white/10 bg-white/[0.02]'
           const span = s.high - s.low
           const openPct = span > 0 ? ((s.open - s.low) / span) * 100 : 50
           const closePct = span > 0 ? ((s.close - s.low) / span) * 100 : 50
-          const live = s.status === 'berlangsung'
           return (
             <div key={s.name} className={`rounded-xl border p-3.5 ${s.status === 'belum' ? 'border-white/[0.07] bg-white/[0.015] opacity-60' : box}`}>
               <div className="flex items-center justify-between mb-2">
@@ -1281,7 +1285,11 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               </div>
               {s.arah ? (
                 <>
-                  <p className={`text-lg font-black leading-none ${clr}`}>{s.arah === 'Bullish' ? '↗ Bullish' : s.arah === 'Bearish' ? '↘ Bearish' : '→ Flat'}</p>
+                  {verdict ? (
+                    <p className={`text-lg font-black leading-none ${clr}`}>{verdict === 'Bullish' ? '↗ Bullish' : verdict === 'Bearish' ? '↘ Bearish' : '→ Flat'}</p>
+                  ) : (
+                    <p className="text-sm font-bold text-primary flex items-center gap-1.5 leading-none py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shrink-0" /> Sesi masih berjalan</p>
+                  )}
 
                   {/* Open vs Sekarang — kartu berdampingan */}
                   <div className="flex items-center gap-1.5 mt-2.5">
@@ -2051,7 +2059,7 @@ function PanduanContent() {
           </GuideAccordion>
           <GuideAccordion title="Arah & Ringkasan per Sesi" icon={Clock} open={open === 'sesi'} onToggle={() => toggle('sesi')}>
             <p>Di tab <b>Ringkasan</b> ada panel <b>Asia · London · New York</b> (jam WIB) yang <b>reset tiap hari</b>.</p>
-            <p>• Tiap sesi menampilkan status (berlangsung/selesai/belum), arah (bullish/bearish/flat), <b>range dalam pips</b>, dan <b>Open → harga sekarang</b>.</p>
+            <p>• Tiap sesi menampilkan status (berlangsung/selesai/belum), <b>range dalam pips</b>, dan <b>Open → harga sekarang</b>. Arah (bullish/bearish) baru muncul saat sesi <b>selesai</b> — sesi yang masih berjalan ditandai &quot;masih berjalan&quot; agar tidak menyesatkan.</p>
             <p>• Berguna untuk scalping: tahu sesi mana yang sedang bergerak & searah bias-mu.</p>
           </GuideAccordion>
           <GuideAccordion title="Teknikal" icon={Activity} open={open === 'teknikal'} onToggle={() => toggle('teknikal')}>
