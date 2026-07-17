@@ -53,7 +53,7 @@ const FEATURES_X: { icon: React.ElementType; t: string; d: string; visual: strin
   { icon: Landmark, t: 'Makro Real-Time', d: 'Dolar, yield & kebijakan Fed dari sumber resmi, diterjemahkan dampaknya ke emas.', visual: 'macro' },
   { icon: Newspaper, t: 'Posisi Institusi', d: 'Lihat ke mana uang besar bergerak setiap minggu — jangan berdiri di sisi yang salah.', visual: 'sentiment' },
   { icon: MessageSquare, t: 'Tanya AI', d: 'Ajukan pertanyaan spesifik, dijawab dari data pasar saat itu juga.', visual: 'chat' },
-  { icon: Bell, t: 'Alert Telegram', d: 'Pasar dipantau untukmu — notifikasi hanya saat kondisi benar-benar berubah.', visual: 'notif' },
+  { icon: Bell, t: 'Alert Telegram', d: 'Sinyal & perubahan arah pasar dikirim langsung ke Telegram-mu — tak perlu terus memantau layar.', visual: 'notif' },
 ]
 
 const BONUS = [
@@ -175,7 +175,8 @@ function HeroChart() {
 }
 
 // Kartu kaca melayang (glass) — wadah tiap mockup, gaya referensi.
-function Glass({ children, className = '', float = 'tl-float' }: { children: React.ReactNode; className?: string; float?: string }) {
+// Animasi float hanya jalan saat kartu (.tl-card) di-hover.
+function Glass({ children, className = '', float = 'tl-h-float' }: { children: React.ReactNode; className?: string; float?: string }) {
   return (
     <div className={`${float} rounded-2xl border border-white/10 bg-white/[0.045] backdrop-blur-md ring-1 ring-emerald-400/10 shadow-[0_12px_45px_-8px_rgba(0,0,0,0.7)] ${className}`}>
       {children}
@@ -194,7 +195,7 @@ function FGauge() {
         <defs><linearGradient id="tlgg" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#f87171" /><stop offset="55%" stopColor="#9ca3af" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
         <path d="M14 84 A66 66 0 0 1 146 84" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" strokeLinecap="round" />
         <path d="M14 84 A66 66 0 0 1 132 44" fill="none" stroke="url(#tlgg)" strokeWidth="8" strokeLinecap="round" />
-        <line x1="80" y1="84" x2="120" y2="42" stroke="#fff" strokeWidth="3" strokeLinecap="round" /><circle cx="80" cy="84" r="5" fill="#fff" />
+        <g className="tl-h-sweep"><line x1="80" y1="84" x2="120" y2="42" stroke="#fff" strokeWidth="3" strokeLinecap="round" /><circle cx="80" cy="84" r="5" fill="#fff" /></g>
       </svg>
       <div className="flex items-center justify-center gap-2 -mt-2">
         <span className="text-base font-black text-emerald-400">BULLISH</span>
@@ -220,7 +221,7 @@ function FDecision() {
           </div>
         </div>
       </Glass>
-      <Glass float="tl-float2" className="absolute -bottom-5 -right-3 px-3 py-2 flex items-center gap-1.5">
+      <Glass float="tl-h-float2" className="absolute -bottom-5 -right-3 px-3 py-2 flex items-center gap-1.5 tl-h-pop">
         <span className="flex items-center justify-center w-5 h-5 rounded-md bg-emerald-500/20"><TrendingUp size={11} className="text-emerald-400" /></span>
         <span className="text-[11px] font-black text-emerald-400">BELI</span>
       </Glass>
@@ -234,7 +235,7 @@ function FMacro() {
     <Glass className="w-full max-w-[250px] p-3.5">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[9px] font-semibold text-white/45 uppercase tracking-wider">Makro → Emas</span>
-        <svg viewBox="0 0 60 16" className="w-14 h-4"><path d="M0,12 L12,9 L24,11 L36,5 L48,7 L60,2" fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" /></svg>
+        <svg viewBox="0 0 60 16" className="w-14 h-4"><path className="tl-h-draw" d="M0,12 L12,9 L24,11 L36,5 L48,7 L60,2" fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round" /></svg>
       </div>
       <div className="space-y-1.5">{rows.map(r => <div key={r.l} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-2.5 py-1.5"><span className="text-[10px] text-white/70">{r.l}</span><span className={`text-[9px] font-bold ${r.c}`}>{r.v}</span></div>)}</div>
     </Glass>
@@ -245,8 +246,8 @@ function FSentiment() {
   return (
     <Glass className="w-full max-w-[250px] p-4 space-y-3">
       <span className="text-[9px] font-semibold text-white/45 uppercase tracking-wider">Posisi Uang Besar</span>
-      <div><div className="flex items-center justify-between mb-1"><span className="text-[9px] text-white/55">Institusi</span><span className="text-[9px] font-bold text-emerald-400">net long</span></div><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full w-4/5 rounded-full bg-emerald-400/70" /></div></div>
-      <div><div className="flex items-center justify-between mb-1"><span className="text-[9px] text-white/55">Retail</span><span className="text-[9px] font-bold text-red-400">net short</span></div><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full w-1/3 rounded-full bg-red-400/70" /></div></div>
+      <div><div className="flex items-center justify-between mb-1"><span className="text-[9px] text-white/55">Institusi</span><span className="text-[9px] font-bold text-emerald-400">net long</span></div><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="tl-h-fill h-full w-4/5 rounded-full bg-emerald-400/70" /></div></div>
+      <div><div className="flex items-center justify-between mb-1"><span className="text-[9px] text-white/55">Retail</span><span className="text-[9px] font-bold text-red-400">net short</span></div><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="tl-h-fill h-full w-1/3 rounded-full bg-red-400/70" /></div></div>
     </Glass>
   )
 }
@@ -254,7 +255,7 @@ function FSentiment() {
 function FChat() {
   return (
     <div className="w-full max-w-[260px] space-y-2">
-      <Glass float="tl-float2" className="ml-auto max-w-[80%] rounded-tr-sm !bg-primary/15 !ring-primary/20 px-3 py-2 text-[10px] text-white/85">Layak entry sekarang, atau tunggu pullback?</Glass>
+      <Glass float="tl-h-float2" className="ml-auto max-w-[80%] rounded-tr-sm !bg-primary/15 !ring-primary/20 px-3 py-2 text-[10px] text-white/85">Layak entry sekarang, atau tunggu pullback?</Glass>
       <Glass className="max-w-[92%] rounded-tl-sm px-3 py-2 text-[10px] text-white/65 leading-relaxed"><b className="text-primary">Datalitiq AI:</b> Tren naik masih sehat, tapi harga dekat resistensi — lebih aman tunggu pullback ke support terdekat…</Glass>
     </div>
   )
@@ -263,8 +264,8 @@ function FChat() {
 function FNotif() {
   return (
     <div className="relative w-full max-w-[280px] flex items-center justify-center py-2">
-      <span className="tl-ring absolute w-24 h-24 rounded-full border border-emerald-400/30" />
-      <span className="tl-ring absolute w-24 h-24 rounded-full border border-emerald-400/30" style={{ animationDelay: '1.5s' }} />
+      <span className="tl-h-ring absolute w-24 h-24 rounded-full border border-emerald-400/30" />
+      <span className="tl-h-ring absolute w-24 h-24 rounded-full border border-emerald-400/30" style={{ animationDelay: '1.1s' }} />
       <Glass className="relative w-full p-3.5">
         <div className="flex items-center gap-2 mb-1.5"><span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/20"><Bell size={12} className="text-primary" /></span><span className="text-[10px] font-bold text-white/80">Datalitiq Alert</span><span className="ml-auto text-[8px] text-white/30">baru saja</span></div>
         <p className="text-[10px] text-white/60 leading-relaxed">🟢 <b className="text-white/85">Trending Bullish</b> — keyakinan 74%. Peluang beli terkonfirmasi.</p>
@@ -431,19 +432,16 @@ function HowItWorks() {
 
 // ── Fitur: BENTO GRID (mix full-width + wide + normal). Kartu besar menampilkan
 //    gambar upload admin (fallback visual dummy); kartu biasa ikon + teks. ──
-// Kartu bento gaya referensi: glow hijau dari ATAS + area illustrasi + teks bawah.
-function GlowCard({ f, img, big = false, className = '' }: { f: typeof FEATURES_X[number]; img?: string; big?: boolean; className?: string }) {
+// Kartu bento gaya referensi: glow hijau dari ATAS + illustrasi (animasi saat hover) + teks bawah.
+function GlowCard({ f, big = false, className = '' }: { f: typeof FEATURES_X[number]; big?: boolean; className?: string }) {
   return (
-    <div className={`group relative rounded-3xl border border-white/[0.07] bg-[#070d0b] overflow-hidden transition-colors hover:border-emerald-400/25 ${className}`}>
+    <div className={`tl-card group relative rounded-3xl border border-white/[0.07] bg-[#070d0b] overflow-hidden transition-colors hover:border-emerald-400/25 ${className}`}>
       {/* Cahaya hijau memancar dari atas kartu */}
       <div className="pointer-events-none absolute -top-[38%] left-1/2 -translate-x-1/2 w-[125%] h-[78%] rounded-[50%] blur-[42px] tl-glow transition-[filter] duration-500 group-hover:brightness-150"
         style={{ background: 'radial-gradient(ellipse at center, rgba(52,211,153,0.42), rgba(52,211,153,0.09) 45%, transparent 70%)' }} aria-hidden />
-      {/* Area illustrasi */}
+      {/* Area illustrasi (custom, animasi saat hover) */}
       <div className={`relative flex items-center justify-center px-6 ${big ? 'pt-10 pb-6 min-h-[218px]' : 'pt-9 pb-6 min-h-[186px]'}`}>
-        {img
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img src={img} alt={f.t} className="max-h-40 w-auto object-contain drop-shadow-2xl" />
-          : <FeatureMock visual={f.visual} />}
+        <FeatureMock visual={f.visual} />
       </div>
       {/* Teks */}
       <div className="relative px-6 pb-6">
@@ -453,10 +451,10 @@ function GlowCard({ f, img, big = false, className = '' }: { f: typeof FEATURES_
     </div>
   )
 }
-function FeatureBento({ images }: { images: Record<string, string> }) {
+function FeatureBento() {
   const F = Object.fromEntries(FEATURES_X.map(f => [f.visual, f])) as Record<string, typeof FEATURES_X[number]>
-  const cards: { f: typeof FEATURES_X[number]; img?: string; big?: boolean; cls: string }[] = [
-    { f: F.gauge, img: images['gauge'], big: true, cls: 'md:col-span-3' },
+  const cards: { f: typeof FEATURES_X[number]; big?: boolean; cls: string }[] = [
+    { f: F.gauge, big: true, cls: 'md:col-span-3' },
     { f: F.decision, big: true, cls: 'md:col-span-3' },
     { f: F.macro, cls: 'md:col-span-2' },
     { f: F.sentiment, cls: 'md:col-span-2' },
@@ -466,12 +464,12 @@ function FeatureBento({ images }: { images: Record<string, string> }) {
     <div className="grid md:grid-cols-6 gap-4 auto-rows-auto">
       {cards.map((c, i) => (
         <Reveal key={c.f.visual} delay={i * 70} className={c.cls}>
-          <GlowCard f={c.f} img={c.img} big={c.big} className="h-full" />
+          <GlowCard f={c.f} big={c.big} className="h-full" />
         </Reveal>
       ))}
       {/* Baris penutup: kartu lebar (illustrasi + teks berdampingan) */}
       <Reveal delay={360} className="md:col-span-6">
-        <div className="group relative rounded-3xl border border-white/[0.07] bg-[#070d0b] overflow-hidden transition-colors hover:border-emerald-400/25">
+        <div className="tl-card group relative rounded-3xl border border-white/[0.07] bg-[#070d0b] overflow-hidden transition-colors hover:border-emerald-400/25">
           <div className="pointer-events-none absolute -top-[30%] left-1/4 w-[70%] h-[90%] rounded-[50%] blur-[48px] tl-glow group-hover:brightness-150 transition-[filter] duration-500"
             style={{ background: 'radial-gradient(ellipse at center, rgba(52,211,153,0.38), rgba(52,211,153,0.08) 50%, transparent 72%)' }} aria-hidden />
           <div className="relative grid md:grid-cols-2 items-center">
@@ -480,10 +478,7 @@ function FeatureBento({ images }: { images: Record<string, string> }) {
               <p className="text-sm md:text-base text-white/55 mt-3 leading-relaxed max-w-md">{F.notif.d} Sistem memeriksa kondisi pasar setiap beberapa menit — kamu hanya diberi tahu saat benar-benar penting.</p>
             </div>
             <div className="relative min-h-[210px] flex items-center justify-center p-8">
-              {images['notif']
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={images['notif']} alt={F.notif.t} className="max-h-44 w-auto object-contain drop-shadow-2xl" />
-                : <FeatureMock visual="notif" />}
+              <FeatureMock visual="notif" />
             </div>
           </div>
         </div>
@@ -1010,14 +1005,14 @@ export function TerminalLanding() {
       </section>
 
       {/* ── Fitur (explorer interaktif) ── */}
-      <section id="fitur" className="max-w-6xl mx-auto px-6 py-20 md:py-24">
+      <section id="fitur" className="max-w-6xl mx-auto px-6 pt-8 md:pt-10 pb-20 md:pb-24">
         <Reveal>
-          <div className="text-center max-w-xl mx-auto mb-14">
+          <div className="text-center max-w-xl mx-auto mb-9 md:mb-10">
             <h2 className="text-3xl md:text-4xl font-black tracking-tight">Satu Terminal.<br />Semua yang Institusi Punya.</h2>
             <p className="text-base text-white/45 mt-4">Enam alat analisa, dalam satu layar.</p>
           </div>
         </Reveal>
-        <FeatureBento images={featureImages} />
+        <FeatureBento />
       </section>
 
       {/* ── Data-Driven (konsol data futuristik) ── */}

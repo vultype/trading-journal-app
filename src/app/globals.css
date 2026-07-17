@@ -130,17 +130,33 @@
   html { @apply font-sans; font-size: 15px; }
 }
 
-/* ── Animasi bento fitur landing (float + glow) ── */
+/* ── Animasi bento fitur landing ── */
 @keyframes tl-float  { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
 @keyframes tl-float2 { 0%,100% { transform: translateY(0) } 50% { transform: translateY(7px) } }
 @keyframes tl-glow   { 0%,100% { opacity: .5 } 50% { opacity: .95 } }
-@keyframes tl-bolt   { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
-@keyframes tl-ring   { 0% { transform: scale(.6); opacity: .5 } 100% { transform: scale(1.5); opacity: 0 } }
-.tl-float  { animation: tl-float  5s ease-in-out infinite }
-.tl-float2 { animation: tl-float2 6.5s ease-in-out infinite }
-.tl-glow   { animation: tl-glow   4s ease-in-out infinite }
-.tl-bolt   { animation: tl-bolt   1.8s ease-in-out infinite }
-.tl-ring   { animation: tl-ring   3s ease-out infinite }
+@keyframes tl-ring   { 0% { transform: scale(.6); opacity: .55 } 100% { transform: scale(1.6); opacity: 0 } }
+@keyframes tl-pop    { 0% { transform: scale(.4); opacity: 0 } 65% { transform: scale(1.12) } 100% { transform: scale(1); opacity: 1 } }
+@keyframes tl-fill   { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+@keyframes tl-sweep  { from { transform: rotate(-15deg) } to { transform: rotate(14deg) } }
+@keyframes tl-draw   { from { stroke-dashoffset: 120 } to { stroke-dashoffset: 0 } }
+
+/* Glow ambient kartu (selalu jalan, halus) */
+.tl-glow { animation: tl-glow 4s ease-in-out infinite }
+
+/* Animasi ILLUSTRASI — hanya jalan saat kartu (.tl-card) di-hover */
+.tl-h-float, .tl-h-float2, .tl-h-ring, .tl-h-pop, .tl-h-fill, .tl-h-sweep, .tl-h-draw { will-change: transform }
+.tl-h-fill  { transform-origin: left center }
+.tl-h-sweep { transform-origin: 80px 84px; transform-box: view-box }
+.tl-h-draw  { stroke-dasharray: 120 }
+.tl-card:hover .tl-h-float  { animation: tl-float 2.4s ease-in-out infinite }
+.tl-card:hover .tl-h-float2 { animation: tl-float2 2.8s ease-in-out infinite }
+.tl-card:hover .tl-h-ring   { animation: tl-ring 2.2s ease-out infinite }
+.tl-card:hover .tl-h-pop    { animation: tl-pop .5s ease-out both }
+.tl-card:hover .tl-h-fill   { animation: tl-fill 1s cubic-bezier(.2,.8,.2,1) both }
+.tl-card:hover .tl-h-sweep  { animation: tl-sweep 1.6s ease-in-out infinite alternate }
+.tl-card:hover .tl-h-draw   { animation: tl-draw 1.2s ease-out both }
+
 @media (prefers-reduced-motion: reduce) {
-  .tl-float, .tl-float2, .tl-glow, .tl-bolt, .tl-ring { animation: none }
+  .tl-glow, .tl-card:hover .tl-h-float, .tl-card:hover .tl-h-float2, .tl-card:hover .tl-h-ring,
+  .tl-card:hover .tl-h-pop, .tl-card:hover .tl-h-fill, .tl-card:hover .tl-h-sweep, .tl-card:hover .tl-h-draw { animation: none }
 }
