@@ -92,6 +92,76 @@ function LogoManager() {
   )
 }
 
+// ── Gambar samping halaman Login/Register ──
+function LoginImageManager() {
+  const [url, setUrl] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    createClient().from('app_config').select('login_image_url').eq('id', 1).maybeSingle()
+      .then(({ data }) => setUrl((data?.login_image_url as string | null) ?? null))
+  }, [])
+
+  async function save(next: string | null) {
+    setUrl(next)
+    const { error } = await createClient().from('app_config')
+      .upsert({ id: 1, login_image_url: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) toast.error('Gagal menyimpan: ' + error.message)
+  }
+
+  async function handleUpload(file: File) {
+    if (!file) return
+    if (file.size > 3_000_000) { toast.error('Ukuran file maksimal 3 MB'); return }
+    setUploading(true)
+    try {
+      const sb = createClient()
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `branding/login-${Date.now()}.${ext}`
+      const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+      if (error) { toast.error('Upload gagal: ' + error.message); setUploading(false); return }
+      const { data } = sb.storage.from('trade-screenshots').getPublicUrl(path)
+      await save(data.publicUrl)
+      toast.success('Gambar login berhasil diperbarui')
+    } catch {
+      toast.error('Upload gagal')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ImageIcon size={15} className="text-primary" /> Gambar Halaman Login</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="flex items-center justify-center w-40 h-52 rounded-xl border border-border/50 bg-muted/30 overflow-hidden shrink-0">
+            {url ? <img src={url} alt="Login" className="w-full h-full object-cover" /> : <span className="text-xs text-muted-foreground text-center px-3">Belum ada gambar<br/>(pakai gradien default)</span>}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className={`inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold cursor-pointer transition-opacity ${uploading ? 'opacity-60 pointer-events-none' : 'hover:opacity-90'}`}>
+              {uploading ? <><Loader2 size={15} className="animate-spin" /> Mengupload…</> : <><Upload size={15} /> Upload Gambar</>}
+              <input type="file" accept="image/png,image/webp,image/jpeg" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f) }} />
+            </label>
+            {url && (
+              <Button variant="outline" size="sm" className="gap-1.5 text-destructive" onClick={() => { save(null); toast.success('Gambar login dihapus') }}>
+                <Trash2 size={14} /> Hapus
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Panduan Ukuran</p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside leading-relaxed">
+            <li><strong>Rasio:</strong> vertikal / portrait (mis. 800×1000 px). Ditampilkan di sisi kiri form login.</li>
+            <li><strong>Format:</strong> JPG / PNG / WebP. Gambar gelap/berwarna cocok dengan tema.</li>
+            <li><strong>File maksimal:</strong> 3 MB. Kosongkan untuk pakai gradien default.</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Gambar fitur homepage (section "Satu Terminal. Semua yang Institusi Punya.") ──
 // Disimpan di app_config.feature_images (jsonb: { key: url }), upload ke bucket yang sama.
 const FEATURE_SLOTS: { key: string; label: string }[] = [
@@ -637,6 +707,7 @@ export default function AdminPage() {
         ) : (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <LogoManager />
+            <LoginImageManager />
             <ClientLogosManager />
             <PaymentLogosManager />
             <FeatureImagesManager />
