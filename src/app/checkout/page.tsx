@@ -171,7 +171,7 @@ function CheckoutInner() {
                 <div className="flex items-center justify-center gap-2 text-[11px] text-white/40 mt-3">
                   <Wallet size={12} /> Kartu · QRIS · GoPay/OVO/Dana · Virtual Account · Alfamart/Indomaret
                 </div>
-                <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via DOKU · Akses aktif otomatis</p>
+                <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman & terenkripsi · Akses aktif otomatis</p>
               </>
             ) : CLIENT_KEY ? (
               <>

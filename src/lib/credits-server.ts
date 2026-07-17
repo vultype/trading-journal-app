@@ -64,17 +64,21 @@ export async function allowanceContext(sb: SupabaseClient, userId: string): Prom
   return { cycleStart: cycleStartDate.toISOString(), expiry }
 }
 
-// Grant allowance untuk siklus berjalan bila belum ada (idempoten via unique index).
+// True bila error Postgres = pelanggaran unique (duplikat) → aman diabaikan.
+const isDuplicate = (err: { code?: string } | null) => err?.code === '23505'
+
+// Grant allowance untuk siklus berjalan bila belum ada. Idempoten: cek dulu, lalu insert;
+// kalau ada race, partial unique index (user_id, cycle_start where reason='grant') menahan
+// dgn error 23505 yang kita abaikan. (upsert onConflict TIDAK dipakai — tak cocok utk partial index.)
 export async function ensureAllowance(sb: SupabaseClient, userId: string, ctx: AllowanceCtx | null) {
   if (!ctx) return
   const { data } = await sb.from('ai_credit_ledger').select('id')
     .eq('user_id', userId).eq('reason', 'grant').eq('cycle_start', ctx.cycleStart).limit(1)
   if (data && data.length) return
-  // ignoreDuplicates: kalau ada race, unique index (user_id, cycle_start where reason=grant) menahan.
-  await sb.from('ai_credit_ledger').upsert(
+  const { error } = await sb.from('ai_credit_ledger').insert(
     { user_id: userId, bucket: 'allowance', delta: MONTHLY_ALLOWANCE, reason: 'grant', cycle_start: ctx.cycleStart },
-    { onConflict: 'user_id,cycle_start', ignoreDuplicates: true },
   )
+  if (error && !isDuplicate(error)) throw error
 }
 
 export type Balances = { allowance: number; topup: number; total: number }
@@ -110,7 +114,8 @@ export async function charge(sb: SupabaseClient, userId: string, action: AiActio
 export async function getBalanceSummary(userId: string, isAdmin: boolean) {
   const sb = svc()
   const ctx = await allowanceContext(sb, userId)
-  await ensureAllowance(sb, userId, ctx)
+  // Grant allowance best-effort — jangan gagalkan pembacaan saldo kalau grant error transien.
+  try { await ensureAllowance(sb, userId, ctx) } catch { /* saldo tetap dihitung dari ledger yang ada */ }
   const bal = await computeBalances(sb, userId, ctx)
   return {
     isAdmin, unlimited: false,
@@ -139,9 +144,16 @@ export async function beginAiCharge(req: Request, action: AiAction): Promise<Gat
   }
   // Admin ikut di-meter seperti user biasa (tidak dikecualikan).
   const sb = svc()
-  const ctx = await allowanceContext(sb, user.id)
-  await ensureAllowance(sb, user.id, ctx)
-  const bal = await computeBalances(sb, user.id, ctx)
+  let bal: Balances
+  let ctx: AllowanceCtx | null
+  try {
+    ctx = await allowanceContext(sb, user.id)
+    await ensureAllowance(sb, user.id, ctx)
+    bal = await computeBalances(sb, user.id, ctx)
+  } catch {
+    // Error transien saat baca saldo → fail-open (izinkan, tanpa debit) agar fitur tak mati.
+    return { ok: true, commit: async () => {} }
+  }
   const cost = CREDIT_COST[action]
   if (bal.total < cost) {
     return {
@@ -155,11 +167,25 @@ export async function beginAiCharge(req: Request, action: AiAction): Promise<Gat
   return { ok: true, commit: () => charge(sb, user.id, action, ctx) }
 }
 
-// Grant kredit topup (dipanggil dari webhook DOKU saat order topup lunas). Idempoten
-// via unique index ai_credit_topup_once (ref_order_id where reason='topup').
+// Grant kredit topup (dipanggil dari webhook saat order topup lunas). Idempoten: cek
+// dulu apakah order ini sudah pernah di-grant; kalau race, partial unique index
+// (ref_order_id where reason='topup') menahan dgn 23505 yang diabaikan.
 export async function grantTopup(sb: SupabaseClient, userId: string, credits: number, orderId: string) {
-  await sb.from('ai_credit_ledger').upsert(
-    { user_id: userId, bucket: 'topup', delta: credits, reason: 'topup', ref_order_id: orderId, note: 'Topup DOKU' },
-    { onConflict: 'ref_order_id', ignoreDuplicates: true },
+  const { data } = await sb.from('ai_credit_ledger').select('id')
+    .eq('reason', 'topup').eq('ref_order_id', orderId).limit(1)
+  if (data && data.length) return
+  const { error } = await sb.from('ai_credit_ledger').insert(
+    { user_id: userId, bucket: 'topup', delta: credits, reason: 'topup', ref_order_id: orderId, note: 'Topup pembayaran' },
   )
+  if (error && !isDuplicate(error)) throw error
+}
+
+// Grant kredit MANUAL (oleh admin) ke saldo topup user tertentu. Tanpa ref_order_id
+// (bukan dari pembayaran) sehingga bisa berulang. delta boleh negatif untuk koreksi.
+export async function grantManualCredit(userId: string, delta: number, note: string) {
+  const sb = svc()
+  const { error } = await sb.from('ai_credit_ledger').insert(
+    { user_id: userId, bucket: 'topup', delta: Math.trunc(delta), reason: 'topup', note: note || 'Kredit manual (admin)' },
+  )
+  if (error) throw error
 }

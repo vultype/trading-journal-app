@@ -10,7 +10,7 @@ import { toast } from '@/lib/toast'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useCredits } from '@/hooks/useCredits'
 import { rp } from '@/lib/pricing'
-import { AI_ACTION_LABEL, type AiAction } from '@/lib/ai-credits'
+import { AI_ACTION_LABEL, RP_PER_CREDIT, CUSTOM_TOPUP_MIN, CUSTOM_TOPUP_MAX, type AiAction } from '@/lib/ai-credits'
 import {
   ArrowLeft, Loader2, UserCog, Mail, Lock, Crown, Calendar, Receipt, ShieldCheck,
   Save, LogOut, CheckCircle2, Sparkles, ArrowRight, Coins, Zap, Plus, Infinity as InfinityIcon,
@@ -22,8 +22,10 @@ export default function AccountPage() {
   const router = useRouter()
   const sub = useSubscription()
   const credits = useCredits()
-  const [topupBusy, setTopupBusy] = useState<string | null>(null)
+  const [topupBusy, setTopupBusy] = useState(false)
   const [topupFinish, setTopupFinish] = useState(false)
+  const [selectedPkg, setSelectedPkg] = useState<string | null>(null)
+  const [customCredits, setCustomCredits] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [origEmail, setOrigEmail] = useState('')
@@ -77,22 +79,22 @@ export default function AccountPage() {
     }
   }, [credits])
 
-  async function buyTopup(packageId: string) {
-    setTopupBusy(packageId)
+  async function buyTopup(arg: { packageId?: string; credits?: number }) {
+    setTopupBusy(true)
     try {
       const sb = createClient()
       const { data: { session } } = await sb.auth.getSession()
-      if (!session) { toast.error('Sesi habis, login ulang'); setTopupBusy(null); return }
+      if (!session) { toast.error('Sesi habis, login ulang'); setTopupBusy(false); return }
       const res = await fetch('/api/credits/topup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ packageId, origin: window.location.origin }),
+        body: JSON.stringify({ ...arg, origin: window.location.origin }),
       })
       const j = await res.json()
-      if (!res.ok || !j.paymentUrl) { toast.error(j.error || 'Gagal memulai pembayaran'); setTopupBusy(null); return }
+      if (!res.ok || !j.paymentUrl) { toast.error(j.error || 'Gagal memulai pembayaran'); setTopupBusy(false); return }
       window.location.href = j.paymentUrl
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan'); setTopupBusy(null)
+      toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan'); setTopupBusy(false)
     }
   }
 
@@ -216,24 +218,74 @@ export default function AccountPage() {
                 </div>
               </div>
 
-              {/* Paket top up */}
+              {/* Paket top up — pilih paket ATAU isi jumlah sendiri, lalu bayar via tombol di bawah */}
               <p className="text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-2.5">Top Up Kredit</p>
               <div className="grid sm:grid-cols-3 gap-3">
-                {credits.packages?.length ? credits.packages.map(pkg => (
-                  <button key={pkg.id} onClick={() => buyTopup(pkg.id)} disabled={!!topupBusy}
-                    className={`relative rounded-2xl border p-4 text-left transition-all disabled:opacity-50 ${pkg.popular ? 'border-primary/40 bg-primary/[0.06] hover:border-primary/60' : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}>
-                    {pkg.popular && <span className="absolute -top-2 right-3 text-[8px] font-bold uppercase bg-primary text-primary-foreground rounded-full px-2 py-0.5">Populer</span>}
-                    <p className="text-lg font-black tabular-nums">{pkg.credits} <span className="text-xs font-semibold text-white/45">kredit</span></p>
-                    <p className="text-sm font-bold text-primary mt-0.5">{rp(pkg.price)}</p>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-white/70 mt-2.5">
-                      {topupBusy === pkg.id ? <><Loader2 size={12} className="animate-spin" /> Mengalihkan…</> : <><Plus size={12} /> Top Up</>}
-                    </span>
-                  </button>
-                )) : (
+                {credits.packages?.length ? credits.packages.map(pkg => {
+                  const active = selectedPkg === pkg.id
+                  return (
+                    <button key={pkg.id} type="button" onClick={() => { setSelectedPkg(pkg.id); setCustomCredits('') }} disabled={topupBusy}
+                      className={`relative rounded-2xl border p-4 text-left transition-all disabled:opacity-50 ${active ? 'border-primary bg-primary/[0.10] ring-1 ring-primary/40' : pkg.popular ? 'border-primary/40 bg-primary/[0.06] hover:border-primary/60' : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}>
+                      {pkg.popular && !active && <span className="absolute -top-2 right-3 text-[8px] font-bold uppercase bg-primary text-primary-foreground rounded-full px-2 py-0.5">Populer</span>}
+                      {active && <span className="absolute -top-2 right-3 flex items-center gap-1 text-[8px] font-bold uppercase bg-primary text-primary-foreground rounded-full px-2 py-0.5"><CheckCircle2 size={10} /> Dipilih</span>}
+                      <p className="text-lg font-black tabular-nums">{pkg.credits} <span className="text-xs font-semibold text-white/45">kredit</span></p>
+                      <p className="text-sm font-bold text-primary mt-0.5">{rp(pkg.price)}</p>
+                    </button>
+                  )
+                }) : (
                   <p className="sm:col-span-3 text-xs text-white/40">Paket top up belum tersedia.</p>
                 )}
               </div>
-              <p className="flex items-center gap-1.5 text-[11px] text-white/35 mt-3"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via DOKU · kredit masuk otomatis setelah lunas.</p>
+
+              {/* Jumlah custom */}
+              {(() => {
+                const n = parseInt(customCredits, 10)
+                const filled = customCredits.trim() !== ''
+                const valid = Number.isFinite(n) && n >= CUSTOM_TOPUP_MIN && n <= CUSTOM_TOPUP_MAX
+                return (
+                  <div className={`mt-3 rounded-2xl border p-4 transition-all ${filled ? (valid ? 'border-primary bg-primary/[0.06] ring-1 ring-primary/30' : 'border-amber-500/40 bg-amber-500/[0.04]') : 'border-white/10 bg-white/[0.02]'}`}>
+                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-white/50 uppercase tracking-wider mb-2"><Plus size={12} className="text-primary" /> Atau isi jumlah sendiri</label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number" inputMode="numeric" min={CUSTOM_TOPUP_MIN} max={CUSTOM_TOPUP_MAX} value={customCredits}
+                          onChange={e => { setCustomCredits(e.target.value); if (e.target.value.trim()) setSelectedPkg(null) }}
+                          disabled={topupBusy}
+                          placeholder={`min ${CUSTOM_TOPUP_MIN}`}
+                          className="w-full rounded-lg border border-white/10 bg-black/20 pl-3 pr-14 py-2.5 text-sm text-white outline-none focus:border-primary/40 tabular-nums" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/40">kredit</span>
+                      </div>
+                      <div className="text-right shrink-0 min-w-[90px]">
+                        <p className="text-sm font-bold text-primary tabular-nums">{valid ? rp(n * RP_PER_CREDIT) : '—'}</p>
+                        <p className="text-[9px] text-white/40">Rp{RP_PER_CREDIT}/kredit</p>
+                      </div>
+                    </div>
+                    {filled && !valid && <p className="text-[10px] text-amber-400 mt-1.5">Jumlah harus {CUSTOM_TOPUP_MIN}–{CUSTOM_TOPUP_MAX.toLocaleString('id-ID')} kredit.</p>}
+                  </div>
+                )
+              })()}
+
+              {(() => {
+                const n = parseInt(customCredits, 10)
+                const customValid = Number.isFinite(n) && n >= CUSTOM_TOPUP_MIN && n <= CUSTOM_TOPUP_MAX
+                const pkgPrice = credits.packages.find(p => p.id === selectedPkg)?.price ?? 0
+                const amount = selectedPkg ? pkgPrice : customValid ? n * RP_PER_CREDIT : 0
+                const canPay = !!selectedPkg || customValid
+                return (
+                  <button
+                    onClick={() => selectedPkg ? buyTopup({ packageId: selectedPkg }) : customValid && buyTopup({ credits: n })}
+                    disabled={!canPay || topupBusy}
+                    className="w-full mt-4 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-3 text-sm font-bold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                  >
+                    {topupBusy ? <><Loader2 size={15} className="animate-spin" /> Mengalihkan ke pembayaran…</>
+                      : <><Plus size={15} /> Top Up Sekarang{amount ? ` · ${rp(amount)}` : ''}</>}
+                  </button>
+                )
+              })()}
+              <div className="flex items-center justify-center gap-2 text-[11px] text-white/40 mt-3">
+                <Coins size={12} /> Transfer Bank · QRIS · Virtual Account Bank
+              </div>
+              <p className="flex items-center gap-1.5 text-[11px] text-white/35 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman & terenkripsi · kredit masuk otomatis setelah lunas.</p>
             </>
           )}
         </div>

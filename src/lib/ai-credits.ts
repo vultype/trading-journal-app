@@ -41,5 +41,10 @@ export const TOPUP_PACKAGES: TopupPackage[] = [
 
 export const findPackage = (id: string) => TOPUP_PACKAGES.find(p => p.id === id) || null
 
+// Top up jumlah custom (user isi sendiri). Harga = credits × RP_PER_CREDIT.
+// Min Rp10.000 (100 kredit) menyesuaikan minimum transfer/VA gateway.
+export const CUSTOM_TOPUP_MIN = 100    // 100 kredit = Rp10.000
+export const CUSTOM_TOPUP_MAX = 10_000 // 10.000 kredit = Rp1.000.000
+
 // Perkiraan berapa kali sebuah aksi bisa dijalankan dari sejumlah kredit.
 export const runsFor = (credits: number, action: AiAction) => Math.floor(credits / CREDIT_COST[action])
