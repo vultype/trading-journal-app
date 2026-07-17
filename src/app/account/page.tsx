@@ -109,6 +109,7 @@ export default function AccountPage() {
 
   const expiredSoon = sub.daysLeft != null && sub.daysLeft <= 7
   const expired = sub.daysLeft != null && sub.daysLeft < 0
+  const hasOrder = !!sub.order  // ada langganan (aktif atau sudah kadaluarsa)
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white overflow-x-hidden">
@@ -125,15 +126,15 @@ export default function AccountPage() {
         </div>
 
         {/* Langganan */}
-        <div className={`relative rounded-3xl p-[1px] ${sub.isPro ? 'bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30' : 'bg-white/10'}`}>
+        <div className={`relative rounded-3xl p-[1px] ${sub.isPro ? 'bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30' : hasOrder ? 'bg-red-500/25' : 'bg-white/10'}`}>
           <div className="rounded-3xl bg-[#0a1110] p-6">
             <div className="flex items-center gap-2 mb-4">
-              <Crown size={17} className={sub.isPro ? 'text-primary' : 'text-white/40'} />
+              <Crown size={17} className={sub.isPro ? 'text-primary' : hasOrder ? 'text-red-400/70' : 'text-white/40'} />
               <h2 className="text-sm font-black uppercase tracking-widest text-white/70">Status Langganan</h2>
-              <span className={`ml-auto text-[10px] font-bold uppercase rounded-full px-2.5 py-1 ${sub.isPro ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/50'}`}>{sub.isAdmin ? 'ADMIN' : sub.isPro ? 'PRO' : 'GRATIS'}</span>
+              <span className={`ml-auto text-[10px] font-bold uppercase rounded-full px-2.5 py-1 ${sub.isPro ? 'bg-primary/15 text-primary' : hasOrder ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/50'}`}>{sub.isAdmin ? 'ADMIN' : sub.isPro ? 'PRO' : hasOrder ? 'KADALUARSA' : 'GRATIS'}</span>
             </div>
 
-            {sub.isPro ? (
+            {(sub.isPro || hasOrder) ? (
               <>
                 <div className="grid sm:grid-cols-2 gap-3 mb-4">
                   <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">

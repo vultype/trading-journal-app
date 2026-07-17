@@ -9,6 +9,7 @@ import { ADMIN_EMAIL } from '@/lib/store'
 export type SubOrder = {
   id: string; plan: string; months: number; total: number; status: string
   method: string | null; invoice_number: string | null; created_at: string; updated_at: string | null
+  expires_at: string | null
 }
 export type Subscription = {
   loading: boolean
@@ -37,19 +38,24 @@ export function useSubscription(): Subscription {
       const user = data.user
       if (!user) { if (!stop) setState(s => ({ ...s, loading: false })); return }
       const isAdmin = user.email === ADMIN_EMAIL
+      // Ambil SEMUA order terminal aktif, lalu pilih yang kadaluarsanya PALING JAUH
+      // (robust terhadap perpanjangan menumpuk & order lama tanpa expires_at).
       const { data: orders } = await sb.from('payment_orders')
-        .select('id, plan, months, total, status, method, invoice_number, created_at, updated_at')
+        .select('id, plan, months, total, status, method, invoice_number, created_at, updated_at, expires_at')
         .eq('user_id', user.id).eq('plan', 'terminal').eq('status', 'aktif')
-        .order('updated_at', { ascending: false }).limit(1)
-      const order = (orders && orders.length ? orders[0] : null) as SubOrder | null
-      let expiresAt: Date | null = null, daysLeft: number | null = null
-      if (order) {
-        const base = new Date(order.updated_at || order.created_at)
-        expiresAt = addMonths(base, order.months || 1)
-        daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)
+      const expiryOf = (o: SubOrder) => o.expires_at
+        ? new Date(o.expires_at)
+        : addMonths(new Date(o.updated_at || o.created_at), o.months || 1)
+      let order: SubOrder | null = null, expiresAt: Date | null = null
+      for (const o of (orders || []) as SubOrder[]) {
+        const exp = expiryOf(o)
+        if (!expiresAt || exp.getTime() > expiresAt.getTime()) { expiresAt = exp; order = o }
       }
+      const daysLeft = expiresAt ? Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000) : null
+      // isPro HANYA true bila langganan masih berlaku (belum kadaluarsa). Admin selalu Pro.
+      const active = !!order && !!expiresAt && expiresAt.getTime() > Date.now()
       if (!stop) setState({
-        loading: false, isAdmin, isPro: isAdmin || !!order, order, expiresAt, daysLeft,
+        loading: false, isAdmin, isPro: isAdmin || active, order, expiresAt, daysLeft,
         email: user.email ?? null, userId: user.id,
       })
     })

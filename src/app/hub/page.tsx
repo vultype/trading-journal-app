@@ -40,6 +40,7 @@ export default function HubPage() {
   }
   const pro = sub.isPro
   const expiredSoon = sub.daysLeft != null && sub.daysLeft <= 7
+  const lapsed = !pro && !!sub.order  // pernah langganan tapi sudah kadaluarsa
 
   // Kartu tool bonus (Pro-only): jurnal, backtesting, KPI
   const BONUS_TOOLS = [
@@ -72,11 +73,11 @@ export default function HubPage() {
         <Link href="/account" className={`group flex items-center gap-3 rounded-2xl border p-4 mb-6 transition-colors ${pro ? 'border-primary/25 bg-gradient-to-r from-primary/[0.08] to-transparent hover:border-primary/40' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
           <span className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ${pro ? 'bg-primary/15 ring-1 ring-primary/30 text-primary' : 'bg-white/5 text-white/40'}`}><Crown size={18} /></span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold flex items-center gap-2">{sub.isAdmin ? 'Akses Admin' : pro ? 'Langganan Pro Aktif' : 'Mode Gratis'}
-              <span className={`text-[9px] font-bold uppercase rounded-full px-2 py-0.5 ${pro ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/50'}`}>{sub.isAdmin ? 'ADMIN' : pro ? 'PRO' : 'FREE'}</span>
+            <p className="text-sm font-bold flex items-center gap-2">{sub.isAdmin ? 'Akses Admin' : pro ? 'Langganan Pro Aktif' : lapsed ? 'Langganan Berakhir' : 'Mode Gratis'}
+              <span className={`text-[9px] font-bold uppercase rounded-full px-2 py-0.5 ${pro ? 'bg-primary/15 text-primary' : lapsed ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/50'}`}>{sub.isAdmin ? 'ADMIN' : pro ? 'PRO' : lapsed ? 'KADALUARSA' : 'FREE'}</span>
             </p>
             <p className="text-xs text-white/50 mt-0.5 flex items-center gap-1.5">
-              {sub.isAdmin && !sub.order ? 'Akses penuh tak terbatas' : pro ? <><Calendar size={11} className={expiredSoon ? 'text-amber-400' : 'text-primary/70'} /> Berlaku sampai {fmtDate(sub.expiresAt)}{sub.daysLeft != null ? ` · ${sub.daysLeft} hari lagi` : ''}</> : 'Upgrade untuk buka Terminal AI & tools bonus'}
+              {sub.isAdmin && !sub.order ? 'Akses penuh tak terbatas' : pro ? <><Calendar size={11} className={expiredSoon ? 'text-amber-400' : 'text-primary/70'} /> Berlaku sampai {fmtDate(sub.expiresAt)}{sub.daysLeft != null ? ` · ${sub.daysLeft} hari lagi` : ''}</> : lapsed ? 'Langganan sudah berakhir — perpanjang untuk buka akses lagi' : 'Upgrade untuk buka Terminal AI & tools bonus'}
             </p>
           </div>
           <ChevronRight size={18} className="text-white/30 group-hover:text-white/60 transition-colors shrink-0" />

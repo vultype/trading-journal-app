@@ -11,6 +11,8 @@ const NOTIF_TARGET = '/api/payment/doku/notification'
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
+function addMonths(d: Date, m: number) { const x = new Date(d); x.setMonth(x.getMonth() + m); return x }
+
 export async function POST(req: Request) {
   try {
     // WAJIB: baca body mentah (digest dihitung dari byte asli, bukan hasil re-serialize)
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
     const { data: updated, error } = await sb.from('payment_orders')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('invoice_number', invoice)
-      .select('id, user_id, plan, credits')
+      .select('id, user_id, plan, months, credits')
       .single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -44,6 +46,23 @@ export async function POST(req: Request) {
     // unique index (ref_order_id where reason='topup') menahan grant ganda dari notifikasi berulang.
     if (updated && updated.plan === 'topup' && status === 'aktif' && updated.credits && updated.credits > 0) {
       await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+    }
+
+    // Order TERMINAL yang lunas → set expires_at yang MENUMPUK di atas sisa langganan
+    // aktif yang belum kadaluarsa (perpanjangan dini tidak menghanguskan sisa hari).
+    if (updated && updated.plan === 'terminal' && status === 'aktif') {
+      const { data: others } = await sb.from('payment_orders')
+        .select('expires_at, updated_at, created_at, months')
+        .eq('user_id', updated.user_id).eq('plan', 'terminal').eq('status', 'aktif')
+        .neq('id', updated.id)
+      let baseMs = Date.now()
+      for (const o of (others || []) as { expires_at: string | null; updated_at: string | null; created_at: string; months: number | null }[]) {
+        const exp = o.expires_at ? new Date(o.expires_at).getTime()
+          : addMonths(new Date(o.updated_at || o.created_at), o.months || 1).getTime()
+        if (exp > baseMs) baseMs = exp
+      }
+      const expiresAt = addMonths(new Date(baseMs), updated.months || 1).toISOString()
+      await sb.from('payment_orders').update({ expires_at: expiresAt }).eq('id', updated.id)
     }
 
     return NextResponse.json({ ok: true, invoice, status })
