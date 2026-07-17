@@ -29,9 +29,9 @@ import { MacroComparisonChart, LintasAsetSection, InflasiSection, CotSection } f
 import { TerminalNewsAnalysis } from './TerminalNewsAnalysis'
 import { type Macd, type Boll, type Stoch, type Structure } from '@/lib/indicators'
 import {
-  TFS, clamp, atrLast, adxLabel, computeTF, riskOnScore, scores, confluence, regimeOf, usMarketOpen,
+  TFS, clamp, atrLast, adxLabel, computeTF, riskOnScore, scores, confluence, regimeOf, efficiencyRatio, usMarketOpen,
   macroCandleImpact, macroCandleBlend,
-  type TF, type Dir, type Candle, type Bias, type ReversalDir, type Reversal, type TFData, type CrossQuote,
+  type TF, type Dir, type Candle, type Bias, type ReversalDir, type Reversal, type TFData, type CrossQuote, type RegimePhase,
 } from '@/lib/terminal-signal'
 
 type HTF = 'H4' | 'D1'            // timeframe besar (bias harian/swing)
@@ -758,6 +758,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const [aiPrompt, setAiPrompt] = useState('')
   const [showPrompt, setShowPrompt] = useState(false)  // form konteks AI tersembunyi secara default
   const [aiFull, setAiFull] = useState(true)           // toggle output AI: Lengkap vs Ringkas
+  const regimePhaseRef = useRef<RegimePhase | undefined>(undefined)  // histeresis regime (fase sebelumnya)
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -854,7 +855,15 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const dayPos = dayRange > 0 ? clamp((feed.price - feed.dayLow) / dayRange, 0, 1) : 0.5
   const bbSqueeze = feed.tf.M15.boll.squeeze
   const adxTrend = feed.tf.M15.adxTrend
-  const regime = regimeOf({ bbSqueeze, adx, adxTrend, trendUp, m5: { adx: feed.tf.M5.adx, trendUp: feed.tf.M5.plusDI >= feed.tf.M5.minusDI } })
+  const regime = regimeOf({
+    bbSqueeze, adx, adxTrend, trendUp,
+    er: efficiencyRatio(feed.tf.M15.candles.map(c => c.c), 14),
+    diSpread: Math.abs(feed.tf.M15.plusDI - feed.tf.M15.minusDI),
+    m5: { adx: feed.tf.M5.adx, trendUp: feed.tf.M5.plusDI >= feed.tf.M5.minusDI },
+    h1: { adx: feed.tf.H1.adx, trendUp: feed.tf.H1.plusDI >= feed.tf.H1.minusDI },
+    prevPhase: regimePhaseRef.current,
+  })
+  regimePhaseRef.current = regime.phase
   const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
@@ -1256,7 +1265,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   )
   const InsightStrip = (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi pasar dari ADX/DI M15." />
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi (Ranging · Konfirmasi · Trending) dari skor kekuatan tren M15 (Efficiency Ratio + ADX + spread DI), dengan histeresis anti-flip & konteks M5/H1 (koreksi/pullback vs waspada balik arah)." />
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />

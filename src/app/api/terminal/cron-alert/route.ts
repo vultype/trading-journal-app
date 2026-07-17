@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { fetchCandles, fetchQuote } from '@/lib/twelvedata'
 import { fetchMacro, type MacroPoint } from '@/lib/fred'
-import { computeTF, riskOnScore, scores, confluence, regimeOf, adxLabel, usMarketOpen, type TF, type TFData, type CrossQuote } from '@/lib/terminal-signal'
+import { computeTF, riskOnScore, scores, confluence, regimeOf, efficiencyRatio, adxLabel, usMarketOpen, type TF, type TFData, type CrossQuote } from '@/lib/terminal-signal'
 import { sendTelegram, telegramConfigured } from '@/lib/telegram'
 import { getAlertState, setAlertState, alertStateConfigured, logPrediction, evaluateDuePredictions, type AlertState } from '@/lib/alert-state'
 
@@ -120,7 +120,13 @@ export async function GET(req: Request) {
     const conf = confluence(tf)
     const adx = tf.M15.adx
     const trendUp = tf.M15.plusDI >= tf.M15.minusDI
-    const regime = regimeOf({ bbSqueeze: tf.M15.boll.squeeze, adx, adxTrend: tf.M15.adxTrend, trendUp, m5: { adx: tf.M5.adx, trendUp: tf.M5.plusDI >= tf.M5.minusDI } })
+    const regime = regimeOf({
+      bbSqueeze: tf.M15.boll.squeeze, adx, adxTrend: tf.M15.adxTrend, trendUp,
+      er: efficiencyRatio(tf.M15.candles.map(c => c.c), 14),
+      diSpread: Math.abs(tf.M15.plusDI - tf.M15.minusDI),
+      m5: { adx: tf.M5.adx, trendUp: tf.M5.plusDI >= tf.M5.minusDI },
+      h1: { adx: tf.H1.adx, trendUp: tf.H1.plusDI >= tf.H1.minusDI },
+    })
     const price = quote?.price ?? tf.M5.candles[tf.M5.candles.length - 1].c
 
     // #7 guard pasar tutup: candle M5 terbaru lebih tua dari 15 menit → jangan kirim alert dari data mati
