@@ -1752,7 +1752,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               {/* Statistik makro kunci */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatTile icon={Landmark} label="Dolar (Live)" value={cross.uup ? <span className={cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup.changePct < -0.05 ? 'text-emerald-400' : 'text-white/70'}>{cross.uup.changePct >= 0 ? '+' : ''}{cross.uup.changePct.toFixed(2)}%</span> : '—'} sub={cross.uup ? (cross.uup.changePct > 0.05 ? 'menguat → tekan emas' : cross.uup.changePct < -0.05 ? 'melemah → dukung emas' : 'datar') : 'memuat'} tone={cross.uup ? (cross.uup.changePct > 0.05 ? 'bear' : cross.uup.changePct < -0.05 ? 'bull' : 'neutral') : 'neutral'} info="Proxy UUP real-time. Dolar & emas biasanya berlawanan arah."
-                  moreHref="/terminal/data/dxy" moreLabel="Lihat chart & detail DXY"
+                  moreHref="/terminal/data/macro/dollar" moreLabel="Lihat chart & detail DXY"
                   detail={<>
                     <DetailRow l="UUP (proxy live)" v={cross.uup ? `${cross.uup.changePct >= 0 ? '+' : ''}${cross.uup.changePct.toFixed(2)}%` : '—'} c={cross.uup && cross.uup.changePct > 0.05 ? 'text-red-400' : cross.uup && cross.uup.changePct < -0.05 ? 'text-emerald-400' : undefined} />
                     <DetailRow l="Indeks Dolar (DXY, FRED harian)" v={macro?.dollar ? macro.dollar.value.toFixed(2) : '—'} />
@@ -1763,6 +1763,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Emas dihargakan dalam dolar — dolar menguat = emas relatif lebih mahal buat pemegang mata uang lain, biasanya menekan harga.</p>
                   </>} />
                 <StatTile icon={GitBranch} label="Yield 10Y" value={macro?.us10y ? `${macro.us10y.value}%` : '—'} sub={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'naik → tekan emas' : 'turun → dukung emas') : 'memuat'} tone={macro?.us10y ? (macro.us10y.value > macro.us10y.prior ? 'bear' : 'bull') : 'neutral'} info="Yield Treasury 10 tahun. Naik = biaya peluang memegang emas naik."
+                  moreHref="/terminal/data/macro/us10y" moreLabel="Lihat chart & detail Yield 10Y"
                   detail={<>
                     <DetailRow l="US10Y" v={macro?.us10y ? `${macro.us10y.value}%` : '—'} />
                     <DetailRow l="Prior" v={macro?.us10y ? `${macro.us10y.prior}%` : '—'} />
@@ -1774,6 +1775,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Yield naik = investor dapat imbal hasil lebih tinggi dari obligasi "bebas risiko" → emas (tanpa imbal hasil) jadi kurang menarik. Kurva 2s10s negatif = pasar obligasi memperkirakan resesi/pangkas bunga.</p>
                   </>} />
                 <StatTile icon={Flame} label="Inflasi CPI" value={macro?.cpi ? `${macro.cpi.value}%` : '—'} sub={macro?.cpi ? `YoY · prior ${macro.cpi.prior}%` : 'memuat'} tone={macro?.cpi ? (macro.cpi.value > macro.cpi.prior ? 'bull' : 'neutral') : 'neutral'} info="Inflasi tinggi = emas sebagai lindung nilai makin menarik (jangka menengah)."
+                  moreHref="/terminal/data/macro/cpi" moreLabel="Lihat chart & detail CPI"
                   detail={<>
                     <DetailRow l="CPI (headline, YoY)" v={macro?.cpi ? `${macro.cpi.value}%` : '—'} />
                     <DetailRow l="Core CPI (ex food & energy)" v={macro?.corecpi ? `${macro.corecpi.value}%` : '—'} />
@@ -1785,6 +1787,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Core PCE paling dipantau The Fed untuk keputusan suku bunga. Inflasi mereda → peluang pangkas bunga naik → bullish emas.</p>
                   </>} />
                 <StatTile icon={Scale} label="Fed Funds" value={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} sub="suku bunga acuan" tone="neutral" info="Ekspektasi pemangkasan = bullish emas; ditahan tinggi = bearish."
+                  moreHref="/terminal/data/macro/fedfunds" moreLabel="Lihat chart & detail Fed Funds"
                   detail={<>
                     <DetailRow l="Fed Funds Rate" v={macro?.fedfunds ? `${macro.fedfunds.value}%` : '—'} />
                     <DetailRow l="Pengangguran" v={macro?.unrate ? `${macro.unrate.value}%` : '—'} />
@@ -1817,6 +1820,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Saham/BTC turun & VIX naik bersamaan = pasar sedang defensif (risk-off) → uang biasanya lari ke aset aman seperti emas.</p>
                   </>} />
                 <StatTile icon={Users} label="Institusi (COT)" value={cot ? <span className={cot.funds.net >= 0 ? 'text-emerald-400' : 'text-red-400'}>{cot.funds.net >= 0 ? 'Net Long' : 'Net Short'}</span> : '—'} sub={cot ? `${kfmt(cot.funds.net)} · Δ ${kfmt(cot.funds.deltaNet)}/mgg` : 'memuat'} tone={cot ? (cot.funds.net >= 0 ? 'bull' : 'bear') : 'neutral'} info="Posisi bersih dana besar di futures emas (CFTC, mingguan)."
+                  moreHref="/terminal/data/cot" moreLabel="Lihat chart & detail COT"
                   detail={cot ? <>
                     <DetailRow l="Funds (institusi/spekulan)" v={`${kfmt(cot.funds.net)}`} c={cot.funds.net >= 0 ? 'text-emerald-400' : 'text-red-400'} />
                     <DetailRow l="Δ minggu ini" v={`${cot.funds.deltaNet >= 0 ? '+' : ''}${kfmt(cot.funds.deltaNet)}`} />
@@ -1828,6 +1832,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Funds = hedge fund & spekulan besar, trend-follower. Commercials = produsen/bank, sering benar di titik ekstrem (smart money kontrarian). Data mingguan (lagging) — konteks, bukan sinyal entry.</p>
                   </> : undefined} />
                 <StatTile icon={Users} label="Retail" value={cot ? <span className="text-white/75">{cot.retail.net >= 0 ? 'Net Long' : 'Net Short'}</span> : '—'} sub={cot ? `${kfmt(cot.retail.net)} — sering kontrarian` : 'memuat'} tone="neutral" info="Trader kecil sering berada di sisi yang salah pada titik ekstrem."
+                  moreHref="/terminal/data/cot" moreLabel="Lihat chart & detail COT"
                   detail={cot ? <>
                     <DetailRow l="Retail net" v={`${kfmt(cot.retail.net)}`} c={cot.retail.net >= 0 ? 'text-emerald-400' : 'text-red-400'} />
                     <DetailRow l="Δ minggu ini" v={`${cot.retail.deltaNet >= 0 ? '+' : ''}${kfmt(cot.retail.deltaNet)}`} />
@@ -1838,6 +1843,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     <p className="text-[10px] text-white/40 leading-snug mt-2">Trader ritel (non-reportable) cenderung salah arah di titik ekstrem — kalau posisinya berlawanan sama institusi, condong ikuti institusi.</p>
                   </> : undefined} />
                 <StatTile icon={Activity} label="VIX (Takut)" value={cross.vixy ? `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(1)}%` : '—'} sub={cross.vixy ? (cross.vixy.changePct > 2 ? 'ketakutan melonjak' : cross.vixy.changePct > 0 ? 'was-was' : 'tenang') : 'memuat'} tone={cross.vixy ? (cross.vixy.changePct > 2 ? 'bull' : 'neutral') : 'neutral'} info="VIX naik = pasar takut → aliran ke aset aman (emas)."
+                  moreHref="/terminal/data/market/vix" moreLabel="Lihat chart & detail VIX"
                   detail={<>
                     <DetailRow l="Perubahan (proxy VIXY)" v={cross.vixy ? `${cross.vixy.changePct >= 0 ? '+' : ''}${cross.vixy.changePct.toFixed(2)}%` : '—'} c={cross.vixy && cross.vixy.changePct > 0 ? 'text-emerald-400' : undefined} />
                     <DetailRow l="Harga proxy" v={cross.vixy ? cross.vixy.price.toFixed(2) : '—'} />

@@ -5,7 +5,9 @@ const VALID: TF[] = ['M5', 'M15', 'H1', 'H4', 'D1']
 // Simbol yang boleh diminta lewat query ?symbol= — whitelist supaya endpoint tak
 // disalahgunakan untuk fetch simbol sembarang. XAU/USD = chart harga utama;
 // UUP/IEF = proxy candle DXY & yield 10Y untuk pilar Makro per-timeframe.
-const ALLOWED_SYMBOLS = new Set(['XAU/USD', 'UUP', 'IEF'])
+// VIXY/SPY/QQQ/BTC/USD/XAG/USD = halaman detail market (/terminal/data/market/*),
+// simbol yang sama persis sudah dipakai live-quote di /api/terminal/crossasset.
+const ALLOWED_SYMBOLS = new Set(['XAU/USD', 'UUP', 'IEF', 'VIXY', 'SPY', 'QQQ', 'BTC/USD', 'XAG/USD'])
 const cache = new Map<string, { data: Awaited<ReturnType<typeof fetchCandles>>; at: number }>()
 // TF besar (H4/D1) berubah lambat → cache lebih lama biar hemat kredit.
 const ttl = (tf: TF) => (tf === 'D1' ? 30 * 60_000 : tf === 'H4' ? 10 * 60_000 : 45_000)

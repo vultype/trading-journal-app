@@ -3,10 +3,16 @@ import { NextResponse } from 'next/server'
 // COT emas COMEX dari CFTC (publik, tanpa API key). Rilis mingguan (Jumat).
 // Retail vs Institusi: Non-commercial=fund/spekulan besar, Commercial=hedger/bank,
 // Non-reportable=trader kecil (proksi retail).
-const URL = 'https://publicreporting.cftc.gov/resource/6dca-aqww.json?cftc_contract_market_code=088691&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=12'
+// limit=52 (≈1 tahun mingguan) — cukup utk halaman ringkas (12mgg) & detail (/terminal/data/cot).
+const URL = 'https://publicreporting.cftc.gov/resource/6dca-aqww.json?cftc_contract_market_code=088691&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=52'
 
 type Group = { long: number; short: number; net: number; deltaNet: number }
-type Cot = { date: string; funds: Group; commercials: Group; retail: Group; fundsHistory: number[]; retailHistory: number[] }
+type HistPoint = { date: string; value: number }
+type Cot = {
+  date: string; funds: Group; commercials: Group; retail: Group
+  fundsHistory: number[]; retailHistory: number[] // 12 titik terakhir (kompatibel kartu ringkas lama)
+  fundsHistoryFull: HistPoint[]; commercialsHistoryFull: HistPoint[]; retailHistoryFull: HistPoint[] // 1 tahun (halaman detail)
+}
 
 let cache: { data: Cot; at: number } | null = null
 const TTL_MS = 6 * 3600_000 // mingguan → cache 6 jam cukup
@@ -28,13 +34,20 @@ export async function GET() {
     const netOf = (r: Record<string, unknown>, pfx: string) => n(r[`${pfx}_long_all`]) - n(r[`${pfx}_short_all`])
     // riwayat kronologis (lama -> baru) untuk sparkline tren posisi
     const hist = (rows as Record<string, unknown>[]).slice().reverse()
+    const dateOf = (r: Record<string, unknown>) => String(r.report_date_as_yyyy_mm_dd ?? '').slice(0, 10)
+    const histFull = (pfx: string): HistPoint[] => hist.map(r => ({ date: dateOf(r), value: netOf(r, pfx) }))
+    // 12 titik terakhir (kompatibel kartu ringkas Sentimen yg sudah ada)
+    const last12 = <T,>(arr: T[]) => arr.slice(-12)
     const data: Cot = {
       date: String(r0.report_date_as_yyyy_mm_dd ?? '').slice(0, 10),
       funds: grp(r0, 'noncomm_positions', r1),
       commercials: grp(r0, 'comm_positions', r1),
       retail: grp(r0, 'nonrept_positions', r1),
-      fundsHistory: hist.map(r => netOf(r, 'noncomm_positions')),
-      retailHistory: hist.map(r => netOf(r, 'nonrept_positions')),
+      fundsHistory: last12(hist).map(r => netOf(r, 'noncomm_positions')),
+      retailHistory: last12(hist).map(r => netOf(r, 'nonrept_positions')),
+      fundsHistoryFull: histFull('noncomm_positions'),
+      commercialsHistoryFull: histFull('comm_positions'),
+      retailHistoryFull: histFull('nonrept_positions'),
     }
     cache = { data, at: now }
     return NextResponse.json(data)
