@@ -23,7 +23,7 @@ export const FRED_SERIES: FredSeries[] = [
   { key: 'wagegrowth', id: 'CES0500000003', units: 'pc1', name: 'Pertumbuhan Upah (YoY)', sub: 'Average Hourly Earnings — naik = tekanan inflasi', dec: 1, unit: '%', corr: -1 },
 ]
 
-export type MacroPoint = { key: string; value: number; prior: number; date: string }
+export type MacroPoint = { key: string; value: number; prior: number; date: string; history: number[] }
 
 function keyParam() {
   const k = process.env.FRED_API_KEY
@@ -38,7 +38,9 @@ async function fetchSeries(s: FredSeries): Promise<MacroPoint | null> {
   const obs = (j.observations ?? []) as { date: string; value: string }[]
   const valid = obs.filter(o => o.value !== '.' && o.value !== '' && !isNaN(parseFloat(o.value)))
   if (valid.length < 1) return null
-  return { key: s.key, value: parseFloat(valid[0].value), prior: parseFloat((valid[1] ?? valid[0]).value), date: valid[0].date }
+  // history: oldest→newest (untuk sparkline detail), sudah ke-fetch (limit=6), tanpa panggilan tambahan.
+  const history = valid.slice().reverse().map(o => parseFloat(o.value))
+  return { key: s.key, value: parseFloat(valid[0].value), prior: parseFloat((valid[1] ?? valid[0]).value), date: valid[0].date, history }
 }
 
 export async function fetchMacro(): Promise<MacroPoint[]> {
