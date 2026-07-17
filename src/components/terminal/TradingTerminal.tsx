@@ -1771,9 +1771,9 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               {AiPanel}
               {DecisionHero}
               {InsightStrip}
-              {SesiPanel}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{SignalMeterPanel}{PilarPanel}</div>
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
+              {SesiPanel}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{HtfBiasPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ZonaPanel}{ReversalPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MomentumPanel}{IndicatorMatrix}</div>
