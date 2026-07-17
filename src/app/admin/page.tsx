@@ -2,21 +2,37 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useStore } from '@/lib/store'
-import { useCurrency } from '@/hooks/useCurrency'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
+import { useSubscription } from '@/hooks/useSubscription'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock } from 'lucide-react'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
 
+const fmt = (n: number) => rp(n)
+const fmtDate = (d: Date | null) => d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+function addMonths(d: Date, m: number) { const x = new Date(d); x.setMonth(x.getMonth() + m); return x }
+
 function LogoManager() {
-  const { logoUrl, updateLogo } = useStore()
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    createClient().from('app_config').select('logo_url').eq('id', 1).maybeSingle()
+      .then(({ data }) => setLogoUrl((data?.logo_url as string | null) ?? null))
+  }, [])
+
+  async function updateLogo(url: string | null) {
+    setLogoUrl(url)
+    const { error } = await createClient().from('app_config')
+      .upsert({ id: 1, logo_url: url, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) toast.error('Gagal menyimpan: ' + error.message)
+  }
 
   async function handleUpload(file: File) {
     if (!file) return
@@ -29,7 +45,7 @@ function LogoManager() {
       const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
       if (error) { toast.error('Upload gagal: ' + error.message); setUploading(false); return }
       const { data } = sb.storage.from('trade-screenshots').getPublicUrl(path)
-      updateLogo(data.publicUrl)
+      await updateLogo(data.publicUrl)
       toast.success('Logo berhasil diperbarui')
     } catch {
       toast.error('Upload gagal')
@@ -428,23 +444,19 @@ function PaymentVerificationManager({ users }: { users: AdminUser[] }) {
 }
 
 type AdminUser = { id: string; email: string; created_at: string }
+type PayRow = { user_id: string; plan: string; months: number; total: number; status: string; method: string | null; created_at: string; updated_at: string | null }
 
 type UserRow = {
-  id: string
-  email: string
-  created_at: string
-  trades: number
-  wins: number
-  losses: number
-  pnl: number
-  deposited: number
-  withdrawn: number
-  lastActive: string | null
+  id: string; email: string; created_at: string
+  trades: number; wins: number; losses: number; pnl: number
+  deposited: number; withdrawn: number; lastActive: string | null
+  // langganan
+  sub: 'pro' | 'expired' | 'none'; expiresAt: Date | null; daysLeft: number | null
+  plan: string | null; paid: number; lastMethod: string | null
 }
 
 export default function AdminPage() {
-  const { isAdmin, loading: storeLoading } = useStore()
-  const fmt = useCurrency()
+  const sub = useSubscription()
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
@@ -452,38 +464,38 @@ export default function AdminPage() {
   const [users, setUsers]     = useState<AdminUser[]>([])
   const [trades, setTrades]   = useState<Trade[]>([])
   const [transfers, setTransfers] = useState<Transfer[]>([])
+  const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
+  const [q, setQ] = useState('')
+  const [tab, setTab] = useState<'users' | 'content'>('users')
 
   useEffect(() => {
-    if (!storeLoading && !isAdmin) router.replace('/jurnal')
-  }, [storeLoading, isAdmin, router])
+    if (!sub.loading && !sub.isAdmin) router.replace('/hub')
+  }, [sub.loading, sub.isAdmin, router])
 
   async function load() {
     setLoading(true); setError(null)
     const sb = createClient()
-    const [u, t, x, j] = await Promise.all([
+    const [u, t, x, j, o] = await Promise.all([
       sb.rpc('admin_all_users'),
       sb.from('trades').select('*'),
       sb.from('transfers').select('*'),
       sb.from('journal_notes').select('id'),
+      sb.from('payment_orders').select('user_id, plan, months, total, status, method, created_at, updated_at'),
     ])
-
     if (u.error) {
       setError(`Fungsi admin belum di-setup di Supabase. Jalankan file SQL admin (admin_all_users + admin policies). Detail: ${u.error.message}`)
-      setLoading(false)
-      return
+      setLoading(false); return
     }
     setUsers((u.data ?? []) as AdminUser[])
     setTrades((t.data ?? []) as Trade[])
     setTransfers((x.data ?? []) as Transfer[])
     setJournalCount((j.data ?? []).length)
+    setOrders((o.data ?? []) as PayRow[])
     setLoading(false)
   }
 
-  useEffect(() => {
-    if (isAdmin) load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin])
+  useEffect(() => { if (sub.isAdmin) load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sub.isAdmin])
 
   const rows = useMemo<UserRow[]>(() => {
     return users.map(u => {
@@ -496,123 +508,141 @@ export default function AdminPage() {
       const deposited = ux.filter(t => t.type === 'deposit').reduce((s, t) => s + Number(t.amount), 0)
       const withdrawn = ux.filter(t => t.type === 'withdraw').reduce((s, t) => s + Number(t.amount), 0)
       const lastActive = ut.length > 0 ? ut.map(t => t.date).sort().at(-1) ?? null : null
-      return { id: u.id, email: u.email, created_at: u.created_at, trades: ut.length, wins, losses, pnl, deposited, withdrawn, lastActive }
-    }).sort((a, b) => b.trades - a.trades)
-  }, [users, trades, transfers])
+      // langganan: order 'aktif' terbaru + total yang dibayar
+      const myOrders = orders.filter(o => o.user_id === u.id)
+      const paid = myOrders.filter(o => o.status === 'aktif').reduce((s, o) => s + Number(o.total), 0)
+      const active = myOrders.filter(o => o.status === 'aktif').sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())[0]
+      let subStatus: UserRow['sub'] = 'none', expiresAt: Date | null = null, daysLeft: number | null = null, plan: string | null = null, lastMethod: string | null = null
+      if (active) {
+        plan = active.plan; lastMethod = active.method
+        expiresAt = addMonths(new Date(active.updated_at || active.created_at), active.months || 1)
+        daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)
+        subStatus = daysLeft >= 0 ? 'pro' : 'expired'
+      }
+      return { id: u.id, email: u.email, created_at: u.created_at, trades: ut.length, wins, losses, pnl, deposited, withdrawn, lastActive, sub: subStatus, expiresAt, daysLeft, plan, paid, lastMethod }
+    }).sort((a, b) => (b.sub === 'pro' ? 1 : 0) - (a.sub === 'pro' ? 1 : 0) || b.paid - a.paid || b.trades - a.trades)
+  }, [users, trades, transfers, orders])
 
-  const totalPnl = trades.reduce((s, t) => s + Number(t.pnl), 0)
+  const filtered = q.trim() ? rows.filter(r => r.email.toLowerCase().includes(q.trim().toLowerCase())) : rows
+  const activeSubs = rows.filter(r => r.sub === 'pro').length
+  const revenue = orders.filter(o => o.status === 'aktif').reduce((s, o) => s + Number(o.total), 0)
 
-  if (storeLoading || !isAdmin) {
-    return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>
+  if (sub.loading || !sub.isAdmin) {
+    return <div className="min-h-screen bg-[#060a09] flex justify-center items-center"><Loader2 className="animate-spin text-primary" /></div>
   }
 
+  const subBadge = (r: UserRow) => r.sub === 'pro'
+    ? <Badge className="text-[9px] bg-primary/15 text-primary border-primary/25" variant="outline">PRO</Badge>
+    : r.sub === 'expired' ? <Badge className="text-[9px] bg-red-500/15 text-red-400 border-red-500/25" variant="outline">EXPIRED</Badge>
+    : <Badge className="text-[9px] bg-white/5 text-muted-foreground border-border/50" variant="outline">FREE</Badge>
+
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 rounded-lg bg-red-500/10"><Shield size={18} className="text-red-400" /></span>
+    <div className="min-h-screen bg-[#060a09] text-white">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[360px] bg-red-500/8 blur-[150px] rounded-full pointer-events-none" />
+      <header className="relative max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
+        <Link href="/hub" className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors"><ArrowLeft size={16} /> Ke Hub</Link>
+        <div className="flex items-center gap-2">
+          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"><RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh</button>
+          <button onClick={async () => { await createClient().auth.signOut(); router.replace('/login') }} className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white px-2 py-1.5 transition-colors"><LogOut size={14} /></button>
+        </div>
+      </header>
+
+      <main className="relative max-w-6xl mx-auto px-5 pt-6 pb-20">
+        <div className="flex items-center gap-2.5 mb-6">
+          <span className="p-2.5 rounded-xl bg-red-500/10 ring-1 ring-red-500/20"><Shield size={20} className="text-red-400" /></span>
           <div>
-            <h1 className="text-xl font-bold">Admin Panel</h1>
-            <p className="text-sm text-muted-foreground">Aktivitas seluruh pengguna aplikasi</p>
+            <h1 className="text-2xl font-black tracking-tight">Panel Admin · CMS</h1>
+            <p className="text-sm text-white/50">Kelola pengguna, langganan, konten & branding</p>
           </div>
         </div>
-        <button onClick={load} disabled={loading} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/50 rounded-lg px-3 py-1.5 transition-colors">
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
-      </div>
 
-      {/* Pembayaran manual */}
-      <PaymentVerificationManager users={users} />
-
-      {/* Logo / branding */}
-      <LogoManager />
-      <ClientLogosManager />
-      <PaymentLogosManager />
-      <FeatureImagesManager />
-
-      {error && (
-        <Card className="border-red-500/30 bg-red-500/5">
-          <CardContent className="pt-4 flex items-start gap-3">
+        {error && (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-4 flex items-start gap-3 mb-6">
             <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-            <div className="text-sm">
-              <p className="font-semibold text-red-400">Setup admin belum lengkap</p>
-              <p className="text-muted-foreground mt-1 leading-relaxed">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
-      ) : !error && (
-        <>
-          {/* Aggregate stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: 'Total User', value: String(users.length), icon: Users, color: 'text-blue-400' },
-              { label: 'Total Trade', value: String(trades.length), icon: TrendingUp, color: 'text-emerald-400' },
-              { label: 'Total Jurnal', value: String(journalCount), icon: Activity, color: 'text-purple-400' },
-              { label: 'Total P&L (semua)', value: fmt(totalPnl), icon: Activity, color: totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400' },
-            ].map(s => (
-              <Card key={s.label}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <s.icon size={12} className={s.color} />
-                    <p className="text-xs text-muted-foreground">{s.label}</p>
-                  </div>
-                  <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
-                </CardContent>
-              </Card>
-            ))}
+            <div className="text-sm"><p className="font-semibold text-red-400">Setup admin belum lengkap</p><p className="text-white/50 mt-1 leading-relaxed">{error}</p></div>
           </div>
+        )}
 
-          {/* User table */}
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm">Daftar Pengguna</CardTitle></CardHeader>
-            <CardContent className="p-0">
+        {/* Ringkasan */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          {[
+            { label: 'Total User', value: String(users.length), icon: Users, color: 'text-blue-400' },
+            { label: 'Pelanggan Pro', value: String(activeSubs), icon: Crown, color: 'text-primary' },
+            { label: 'Pendapatan', value: fmt(revenue), icon: Wallet, color: 'text-emerald-400' },
+            { label: 'Total Trade', value: String(trades.length), icon: TrendingUp, color: 'text-cyan-400' },
+            { label: 'Total Jurnal', value: String(journalCount), icon: Activity, color: 'text-purple-400' },
+          ].map(s => (
+            <div key={s.label} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+              <div className="flex items-center gap-1.5 mb-1"><s.icon size={12} className={s.color} /><p className="text-[11px] text-white/45">{s.label}</p></div>
+              <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-5">
+          <button onClick={() => setTab('users')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'users' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Pengguna & Langganan</button>
+          <button onClick={() => setTab('content')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'content' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Konten & Branding</button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        ) : tab === 'users' ? (
+          <div className="space-y-6">
+            {/* Pesanan menunggu aktivasi */}
+            <div className="[&_.text-primary]:text-primary"><PaymentVerificationManager users={users} /></div>
+
+            {/* Tabel user + langganan */}
+            <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/[0.06]">
+                <p className="text-sm font-bold">Pengguna & Langganan <span className="text-white/40 font-normal">({filtered.length})</span></p>
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Cari email…" className="w-48 rounded-lg border border-white/10 bg-black/20 pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-primary/40" />
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border/50 text-[11px] text-muted-foreground">
-                      {['Email', 'Trades', 'W/L', 'P&L', 'Deposit', 'Withdraw', 'Aktivitas Terakhir'].map((h, i) => (
-                        <th key={h} className={`px-3 py-3 font-semibold ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                    <tr className="border-b border-white/[0.06] text-[11px] text-white/40">
+                      {['Pengguna', 'Langganan', 'Kadaluarsa', 'Dibayar', 'Trades', 'P&L', 'Aktivitas'].map((h, i) => (
+                        <th key={h} className={`px-3 py-2.5 font-semibold ${i === 0 ? 'text-left' : i === 1 ? 'text-left' : 'text-right'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/30">
-                    {rows.map(r => (
-                      <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {filtered.map(r => (
+                      <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{r.email}</span>
-                            {r.email === 'vultype@gmail.com' && <Badge className="text-[9px] bg-red-500/15 text-red-400 border-red-500/20" variant="outline">ADMIN</Badge>}
+                            {r.id === sub.userId && <Badge className="text-[9px] bg-red-500/15 text-red-400 border-red-500/20" variant="outline">ADMIN</Badge>}
                           </div>
-                          <p className="text-[10px] text-muted-foreground/50">Bergabung {r.created_at?.slice(0, 10)}</p>
+                          <p className="text-[10px] text-white/35">Bergabung {r.created_at?.slice(0, 10)}</p>
                         </td>
-                        <td className="px-3 py-3 text-right font-semibold">{r.trades}</td>
-                        <td className="px-3 py-3 text-right text-xs">
-                          <span className="text-emerald-400">{r.wins}</span>
-                          <span className="text-muted-foreground/40"> / </span>
-                          <span className="text-red-400">{r.losses}</span>
-                        </td>
-                        <td className={`px-3 py-3 text-right font-bold ${r.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {r.pnl >= 0 ? '+' : ''}{fmt(r.pnl)}
-                        </td>
-                        <td className="px-3 py-3 text-right text-indigo-400">{r.deposited > 0 ? fmt(r.deposited) : '—'}</td>
-                        <td className="px-3 py-3 text-right text-violet-400">{r.withdrawn > 0 ? fmt(r.withdrawn) : '—'}</td>
-                        <td className="px-3 py-3 text-right text-xs text-muted-foreground">{r.lastActive ?? '—'}</td>
+                        <td className="px-3 py-3">{subBadge(r)}{r.lastMethod && r.sub !== 'none' && <span className="ml-1.5 text-[10px] text-white/35 uppercase">{r.lastMethod}</span>}</td>
+                        <td className="px-3 py-3 text-right text-xs">{r.sub === 'none' ? <span className="text-white/30">—</span> : <span className={r.daysLeft != null && r.daysLeft < 7 ? (r.daysLeft < 0 ? 'text-red-400' : 'text-amber-400') : 'text-white/70'}>{fmtDate(r.expiresAt)}{r.daysLeft != null && r.daysLeft >= 0 ? <span className="text-white/35"> ({r.daysLeft}h)</span> : ''}</span>}</td>
+                        <td className="px-3 py-3 text-right font-semibold text-emerald-400">{r.paid > 0 ? fmt(r.paid) : <span className="text-white/30">—</span>}</td>
+                        <td className="px-3 py-3 text-right">{r.trades}</td>
+                        <td className={`px-3 py-3 text-right font-bold ${r.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{r.pnl !== 0 ? `${r.pnl >= 0 ? '+' : ''}${fmt(r.pnl)}` : <span className="text-white/30">—</span>}</td>
+                        <td className="px-3 py-3 text-right text-xs text-white/45">{r.lastActive ?? '—'}</td>
                       </tr>
                     ))}
-                    {rows.length === 0 && (
-                      <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-muted-foreground">Belum ada pengguna lain.</td></tr>
-                    )}
+                    {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-white/40">Tidak ada pengguna.</td></tr>}
                   </tbody>
                 </table>
               </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <LogoManager />
+            <ClientLogosManager />
+            <PaymentLogosManager />
+            <FeatureImagesManager />
+          </div>
+        )}
+      </main>
     </div>
   )
 }

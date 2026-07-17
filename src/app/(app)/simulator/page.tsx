@@ -513,7 +513,7 @@ type MonthRow = {
   gProfit: number; gLoss: number; netPnl: number; retPct: number; closeEq: number
 }
 
-function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
+export function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
   const [equity,   setEquity]   = useState(10_000_000)
   const [winRate,  setWinRate]  = useState(55)
   const [riskPct,  setRiskPct]  = useState(1)
@@ -1101,7 +1101,7 @@ function PlanComparison({ fmt, plans, setPlans }: CompareProps) {
 // ─────────────────────────────────────────────
 export default function SimulatorPage() {
   const fmt = useCurrency()
-  const [tab, setTab] = useState<'manual' | 'kpi' | 'compare'>('manual')
+  const [tab, setTab] = useState<'manual' | 'compare'>('manual')
 
   // Shared across Manual + Compare tabs
   const [plans, setPlans] = useState<Plan[]>(() => {
@@ -1119,16 +1119,13 @@ export default function SimulatorPage() {
             <FlaskConical size={20} className="text-primary"/>
           </div>
           <div>
-            <h1 className="text-xl font-bold">Trading Simulator</h1>
-            <p className="text-sm text-muted-foreground">Test, simulate, and compare your trading plans</p>
+            <h1 className="text-xl font-bold">Strategy Backtesting Tools</h1>
+            <p className="text-sm text-muted-foreground">Uji, simulasikan & bandingkan rencana strategi trading kamu</p>
           </div>
         </div>
         <div className="flex gap-2 shrink-0 flex-wrap">
           <Button size="sm" variant={tab === 'manual'  ? 'default' : 'outline'} onClick={() => setTab('manual')}>
             Manual Session
-          </Button>
-          <Button size="sm" variant={tab === 'kpi'     ? 'default' : 'outline'} onClick={() => setTab('kpi')}>
-            KPI Projector
           </Button>
           <Button size="sm" variant={tab === 'compare' ? 'default' : 'outline'} onClick={() => setTab('compare')}
             className="gap-1.5">
@@ -1144,7 +1141,6 @@ export default function SimulatorPage() {
       </div>
 
       {tab === 'manual'  && <ManualSimulator fmt={fmt} plans={plans} setPlans={setPlans} onGoToCompare={() => setTab('compare')}/>}
-      {tab === 'kpi'     && <KpiProjector    fmt={fmt}/>}
       {tab === 'compare' && <PlanComparison  fmt={fmt} plans={plans} setPlans={setPlans}/>}
     </div>
   )

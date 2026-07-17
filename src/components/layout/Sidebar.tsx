@@ -6,15 +6,14 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
-  LogOut, Sun, Moon, Grid2x2, HelpCircle, Shield,
-  CreditCard, Receipt, Lock, ChevronDown, ArrowLeftRight, PieChart, Crown,
+  LogOut, Sun, Moon, Grid2x2, HelpCircle, UserCog,
+  Lock, ChevronDown, ArrowLeftRight, PieChart, Crown,
 } from 'lucide-react'
 
-// Plan mock — semua user Free untuk saat ini
-const PLAN: 'free' | 'pro' = 'free'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase'
 import { useStore } from '@/lib/store'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useT } from '@/lib/i18n'
 import { toast } from '@/lib/toast'
 import { BrandLogo } from '@/components/layout/BrandLogo'
@@ -30,25 +29,21 @@ const finance: NavItem    = { href: '/finance', label: 'Keuangan', icon: Wallet,
 ] }
 const analisis: NavItem    = { href: '/analisis',    label: 'Analisis',  icon: BarChart3 }
 const journal: NavItem    = { href: '/journal',      label: 'Jurnal',    icon: BookOpen }
-const subscription: NavItem = { href: '/subscription', label: 'Langganan', icon: CreditCard }
-const billing: NavItem    = { href: '/billing',      label: 'Tagihan',   icon: Receipt }
-const settings: NavItem   = { href: '/settings',     label: 'Setting',   icon: Settings }
+const accountLink: NavItem = { href: '/account',     label: 'Akun & Langganan', icon: UserCog }
+const settings: NavItem   = { href: '/settings',     label: 'Setting Jurnal', icon: Settings }
 const panduan: NavItem    = { href: '/panduan',      label: 'Panduan',   icon: HelpCircle }
-const adminItem: NavItem  = { href: '/admin',        label: 'Admin',     icon: Shield }
 const hubItem: NavItem    = { href: '/hub',          label: 'Ganti Tools', icon: Grid2x2 }
 
 // Menu yang tetap terbuka sebelum user mencatat trade pertama
 export const ALWAYS_UNLOCKED = ['/jurnal', '/panduan']
 
 function useGroups(): NavGroup[] {
-  const { isAdmin } = useStore()
-  const account: NavItem[] = [subscription, billing, settings, ...(isAdmin ? [adminItem] : [])]
   return [
     { label: 'Menu',            items: [hubItem] },
     { label: 'Ringkasan',       items: [dashboard] },
     { label: 'Trading',         items: [trades, finance] },
     { label: 'Jurnal & Analisa', items: [analisis, journal] },
-    { label: 'Akun',            items: account },
+    { label: 'Akun',            items: [accountLink, settings] },
     { label: 'Bantuan',         items: [panduan] },
   ]
 }
@@ -71,6 +66,7 @@ export function Sidebar() {
   const t = useT()
   const { isLocked } = useMenuLock()
   const { logoUrl } = useStore()
+  const { isPro, loading: subLoading } = useSubscription()
   const [openMenu, setOpenMenu] = useState<string | null>('/finance')
 
   return (
@@ -140,18 +136,18 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Upgrade card (khusus Standar) */}
-      {PLAN === 'free' && (
-        <Link href="/subscription"
+      {/* Upgrade card — hanya untuk user yang BELUM Pro (disembunyikan saat sudah berlangganan) */}
+      {!subLoading && !isPro && (
+        <Link href="/upgrade"
           className="mt-3 block rounded-2xl p-[1px] bg-gradient-to-br from-primary/60 via-primary/20 to-transparent">
           <div className="rounded-2xl bg-sidebar/80 p-3.5">
             <div className="flex items-center gap-2 mb-1">
               <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/15 ring-1 ring-primary/25">
                 <Crown size={13} className="text-primary" />
               </span>
-              <p className="text-sm font-bold">Upgrade ke Professional</p>
+              <p className="text-sm font-bold">Upgrade ke Pro</p>
             </div>
-            <p className="text-[11px] text-muted-foreground leading-snug mb-2.5">Buka multi-akun, analisa jam & sesi, export data, dan lainnya.</p>
+            <p className="text-[11px] text-muted-foreground leading-snug mb-2.5">Buka Terminal AI XAU/USD + semua tools bonus.</p>
             <span className="flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold py-1.5">
               Upgrade Sekarang
             </span>

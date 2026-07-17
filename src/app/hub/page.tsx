@@ -1,40 +1,32 @@
 'use client'
 
-// Hub / launcher — halaman pertama setelah login. Pilih tools yang mau dipakai:
-// Terminal AI (tool utama) atau Jurnal Trading. Standalone (tanpa layout jurnal).
+// Hub / launcher — pusat setelah login: pilih tools + status langganan + akun.
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
-import { ADMIN_EMAIL } from '@/lib/store'
+import { useSubscription } from '@/hooks/useSubscription'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
-  Activity, BookOpen, ArrowRight, LogOut, Loader2, ShieldCheck, Sparkles,
-  Gauge, Bell, Landmark, LineChart, Lock, Settings, FlaskConical, Calculator, TrendingUp,
+  Activity, BookOpen, ArrowRight, LogOut, Loader2, Sparkles, Gauge, Bell, Landmark,
+  LineChart, Lock, UserCog, FlaskConical, Calculator, TrendingUp, Crown, Calendar, ShieldCheck, ChevronRight,
 } from 'lucide-react'
+
+const fmtDate = (d: Date | null) => d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
 export default function HubPage() {
   const router = useRouter()
-  const [state, setState] = useState<'loading' | 'ready'>('loading')
+  const sub = useSubscription()
   const [name, setName] = useState<string>('')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
-  const [terminalAccess, setTerminalAccess] = useState<boolean>(false)
 
   useEffect(() => {
     const sb = createClient()
-    sb.auth.getUser().then(async ({ data }) => {
+    sb.auth.getUser().then(({ data }) => {
       const user = data.user
       if (!user) { router.replace('/login?next=%2Fhub'); return }
-      setName(user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Trader')
-      // Akses terminal: admin ATAU langganan terminal aktif
-      let access = user.email === ADMIN_EMAIL
-      if (!access) {
-        const { data: orders } = await sb.from('payment_orders').select('id').eq('user_id', user.id).eq('plan', 'terminal').eq('status', 'aktif').limit(1)
-        access = !!(orders && orders.length)
-      }
-      setTerminalAccess(access)
+      setName((user.user_metadata?.full_name as string) || (user.user_metadata?.name as string) || user.email?.split('@')[0] || 'Trader')
       sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle().then(({ data: cfg }) => setLogoUrl((cfg?.logo_url as string | null) ?? null))
-      setState('ready')
     })
   }, [router])
 
@@ -43,9 +35,18 @@ export default function HubPage() {
     router.replace('/login')
   }
 
-  if (state === 'loading') {
+  if (sub.loading) {
     return <div className="min-h-screen bg-[#060a09] flex items-center justify-center"><Loader2 className="animate-spin text-primary" /></div>
   }
+  const pro = sub.isPro
+  const expiredSoon = sub.daysLeft != null && sub.daysLeft <= 7
+
+  // Kartu tool bonus (Pro-only): jurnal, backtesting, KPI
+  const BONUS_TOOLS = [
+    { href: '/jurnal', icon: BookOpen, t: 'Jurnal Trading', d: 'Catat & evaluasi performa — Datalitiq Score, equity curve, insight AI.', tags: [{ i: LineChart, t: 'Statistik' }, { i: Gauge, t: 'Score' }] },
+    { href: '/simulator', icon: FlaskConical, t: 'Strategy Backtesting', d: 'Uji & bandingkan rencana strategi tanpa risiko sebelum eksekusi nyata.', tags: [{ i: TrendingUp, t: 'Risk-reward' }, { i: Calculator, t: 'Sizing' }] },
+    { href: '/kpi', icon: LineChart, t: 'KPI Projection', d: 'Proyeksikan pertumbuhan equity dari target & KPI trading kamu.', tags: [{ i: TrendingUp, t: 'Proyeksi' }, { i: Calculator, t: 'Compound' }] },
+  ]
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white overflow-x-hidden">
@@ -56,97 +57,93 @@ export default function HubPage() {
           {logoUrl ? <BrandLogo url={logoUrl} /> : <span className="text-xl font-black tracking-tight">Datalitiq</span>}
         </div>
         <div className="flex items-center gap-1">
-          <Link href="/settings" className="flex items-center gap-1.5 text-xs font-medium text-white/50 hover:text-white px-3 py-2 transition-colors"><Settings size={14} /> Setting</Link>
+          <Link href="/account" className="flex items-center gap-1.5 text-xs font-medium text-white/50 hover:text-white px-3 py-2 transition-colors"><UserCog size={14} /> Akun</Link>
           <button onClick={logout} className="flex items-center gap-1.5 text-xs font-medium text-white/50 hover:text-white px-3 py-2 transition-colors"><LogOut size={14} /> Keluar</button>
         </div>
       </header>
 
-      <main className="relative max-w-5xl mx-auto px-5 pt-10 pb-16">
-        <div className="mb-9">
+      <main className="relative max-w-5xl mx-auto px-5 pt-8 pb-16">
+        <div className="mb-6">
           <p className="text-sm text-white/45">Halo, {name} 👋</p>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight mt-1">Pilih tools yang mau kamu pakai</h1>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5">
-          {/* Terminal — tool utama */}
-          <div className="relative rounded-3xl p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30">
-            <div className="relative h-full rounded-3xl bg-[#0a1110] p-6 flex flex-col overflow-hidden">
-              <span className="absolute top-4 right-4 text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/12 rounded-full px-2.5 py-1">Tool Utama</span>
-              <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/15 ring-1 ring-primary/30 mb-4"><Activity size={22} className="text-primary" /></span>
-              <h2 className="text-lg font-black">Terminal Datalitiq AI</h2>
-              <p className="text-sm text-white/55 mt-1.5 leading-relaxed">Analisa emas XAU/USD real-time berbasis AI — arah pasar, tingkat keyakinan & alasannya dalam satu layar.</p>
-              <div className="flex flex-wrap gap-1.5 mt-4">
-                {[{ i: Gauge, t: 'Signal & keputusan AI' }, { i: Landmark, t: 'Makro & sentimen' }, { i: Bell, t: 'Notifikasi Telegram' }].map(x => (
-                  <span key={x.t} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/55"><x.i size={10} className="text-primary" /> {x.t}</span>
-                ))}
+        {/* Status langganan */}
+        <Link href="/account" className={`group flex items-center gap-3 rounded-2xl border p-4 mb-6 transition-colors ${pro ? 'border-primary/25 bg-gradient-to-r from-primary/[0.08] to-transparent hover:border-primary/40' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
+          <span className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ${pro ? 'bg-primary/15 ring-1 ring-primary/30 text-primary' : 'bg-white/5 text-white/40'}`}><Crown size={18} /></span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold flex items-center gap-2">{sub.isAdmin ? 'Akses Admin' : pro ? 'Langganan Pro Aktif' : 'Mode Gratis'}
+              <span className={`text-[9px] font-bold uppercase rounded-full px-2 py-0.5 ${pro ? 'bg-primary/15 text-primary' : 'bg-white/10 text-white/50'}`}>{sub.isAdmin ? 'ADMIN' : pro ? 'PRO' : 'FREE'}</span>
+            </p>
+            <p className="text-xs text-white/50 mt-0.5 flex items-center gap-1.5">
+              {sub.isAdmin && !sub.order ? 'Akses penuh tak terbatas' : pro ? <><Calendar size={11} className={expiredSoon ? 'text-amber-400' : 'text-primary/70'} /> Berlaku sampai {fmtDate(sub.expiresAt)}{sub.daysLeft != null ? ` · ${sub.daysLeft} hari lagi` : ''}</> : 'Upgrade untuk buka Terminal AI & tools bonus'}
+            </p>
+          </div>
+          <ChevronRight size={18} className="text-white/30 group-hover:text-white/60 transition-colors shrink-0" />
+        </Link>
+
+        {/* Terminal — tool utama (hero) */}
+        <div className="relative rounded-3xl p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30 mb-5">
+          <div className="relative rounded-3xl bg-[#0a1110] p-6 md:p-7 overflow-hidden">
+            <span className="absolute top-4 right-4 text-[9px] font-bold uppercase tracking-widest text-primary bg-primary/12 rounded-full px-2.5 py-1">Tool Utama</span>
+            <div className="flex flex-col md:flex-row md:items-center gap-5">
+              <div className="flex-1">
+                <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/15 ring-1 ring-primary/30 mb-4"><Activity size={22} className="text-primary" /></span>
+                <h2 className="text-lg font-black">Terminal Datalitiq AI</h2>
+                <p className="text-sm text-white/55 mt-1.5 leading-relaxed max-w-md">Analisa emas XAU/USD real-time berbasis AI — arah pasar, tingkat keyakinan & alasannya dalam satu layar.</p>
+                <div className="flex flex-wrap gap-1.5 mt-4">
+                  {[{ i: Gauge, t: 'Signal & keputusan AI' }, { i: Landmark, t: 'Makro & sentimen' }, { i: Bell, t: 'Notifikasi Telegram' }].map(x => (
+                    <span key={x.t} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/55"><x.i size={10} className="text-primary" /> {x.t}</span>
+                  ))}
+                </div>
               </div>
-              <div className="mt-auto pt-6">
-                {terminalAccess ? (
+              <div className="md:w-56 shrink-0">
+                {pro ? (
                   <Link href="/terminal" className="group w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-lg shadow-primary/25">
                     Buka Terminal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                   </Link>
                 ) : (
                   <div className="space-y-2">
-                    <Link href="/checkout?plan=terminal&months=1" className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/25">
-                      <Sparkles size={15} /> Langganan — Rp179.000/bln
-                    </Link>
-                    <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Perlu langganan aktif untuk membuka terminal</p>
+                    <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-primary/25"><Sparkles size={15} /> Langganan Pro</Link>
+                    <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Perlu langganan aktif</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
-
-          {/* Jurnal — tool terpisah */}
-          <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 flex flex-col hover:border-white/20 transition-colors">
-            <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 ring-1 ring-white/10 mb-4"><BookOpen size={22} className="text-white/80" /></span>
-            <h2 className="text-lg font-black">Jurnal Trading</h2>
-            <p className="text-sm text-white/55 mt-1.5 leading-relaxed">Catat & evaluasi performa trading — Datalitiq Score, equity curve, insight AI, jam & sesi terbaik.</p>
-            <div className="flex flex-wrap gap-1.5 mt-4">
-              {[{ i: LineChart, t: 'Statistik & equity' }, { i: Gauge, t: 'Datalitiq Score' }, { i: BookOpen, t: 'Jurnal + mood' }].map(x => (
-                <span key={x.t} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/55"><x.i size={10} className="text-white/50" /> {x.t}</span>
-              ))}
-            </div>
-            <div className="mt-auto pt-6">
-              {terminalAccess ? (
-                <Link href="/jurnal" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
-                  Buka Jurnal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-                </Link>
-              ) : (
-                <div className="space-y-2">
-                  <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary/15 text-primary rounded-xl px-5 py-3 text-sm font-semibold hover:bg-primary/25 transition-colors"><Lock size={14} /> Khusus Pro — Upgrade</Link>
-                  <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Tools bonus hanya untuk pelanggan Pro</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Simulator — tool terpisah */}
-          <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 flex flex-col hover:border-white/20 transition-colors">
-            <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 ring-1 ring-white/10 mb-4"><FlaskConical size={22} className="text-white/80" /></span>
-            <h2 className="text-lg font-black">Simulator</h2>
-            <p className="text-sm text-white/55 mt-1.5 leading-relaxed">Latih risk-reward & position sizing tanpa menyentuh data trade asli — uji strategi sebelum eksekusi nyata.</p>
-            <div className="flex flex-wrap gap-1.5 mt-4">
-              {[{ i: Calculator, t: 'Position sizing' }, { i: TrendingUp, t: 'Risk-reward' }].map(x => (
-                <span key={x.t} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/55"><x.i size={10} className="text-white/50" /> {x.t}</span>
-              ))}
-            </div>
-            <div className="mt-auto pt-6">
-              {terminalAccess ? (
-                <Link href="/simulator" className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">
-                  Buka Simulator <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-                </Link>
-              ) : (
-                <div className="space-y-2">
-                  <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary/15 text-primary rounded-xl px-5 py-3 text-sm font-semibold hover:bg-primary/25 transition-colors"><Lock size={14} /> Khusus Pro — Upgrade</Link>
-                  <p className="flex items-center justify-center gap-1.5 text-[10px] text-white/35"><Lock size={10} /> Tools bonus hanya untuk pelanggan Pro</p>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
-        <p className="mt-8 flex items-center gap-1.5 text-[11px] text-white/30"><ShieldCheck size={13} className="text-primary/70" /> Kamu bisa berpindah antar-tools kapan saja dari halaman ini.</p>
+        {/* Tools bonus (Pro-only) */}
+        <div className="grid md:grid-cols-3 gap-5">
+          {BONUS_TOOLS.map(tool => (
+            <div key={tool.href} className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 flex flex-col hover:border-white/20 transition-colors">
+              <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 ring-1 ring-white/10 mb-4"><tool.icon size={22} className="text-white/80" /></span>
+              <h2 className="text-lg font-black">{tool.t}</h2>
+              <p className="text-sm text-white/55 mt-1.5 leading-relaxed flex-1">{tool.d}</p>
+              <div className="flex flex-wrap gap-1.5 mt-4">
+                {tool.tags.map(x => (
+                  <span key={x.t} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/55"><x.i size={10} className="text-white/50" /> {x.t}</span>
+                ))}
+              </div>
+              <div className="mt-auto pt-6">
+                {pro ? (
+                  <Link href={tool.href} className="group w-full inline-flex items-center justify-center gap-2 bg-white/10 text-white rounded-xl px-5 py-3 text-sm font-semibold hover:bg-white/15 transition-colors">Buka <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" /></Link>
+                ) : (
+                  <Link href="/upgrade" className="w-full inline-flex items-center justify-center gap-2 bg-primary/15 text-primary rounded-xl px-5 py-3 text-sm font-semibold hover:bg-primary/25 transition-colors"><Lock size={14} /> Khusus Pro</Link>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Admin */}
+        {sub.isAdmin && (
+          <Link href="/admin" className="group mt-6 flex items-center gap-3 rounded-2xl border border-red-500/25 bg-red-500/[0.05] p-4 hover:border-red-500/40 transition-colors">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-red-500/15 text-red-400 shrink-0"><ShieldCheck size={18} /></span>
+            <div className="flex-1 min-w-0"><p className="text-sm font-bold">Panel Admin (CMS)</p><p className="text-xs text-white/45">Kelola user & langganan, konten homepage, branding & pembayaran</p></div>
+            <ChevronRight size={18} className="text-white/30 group-hover:text-white/60 transition-colors" />
+          </Link>
+        )}
       </main>
     </div>
   )

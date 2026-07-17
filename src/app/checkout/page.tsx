@@ -1,17 +1,16 @@
 'use client'
 
-// Checkout — standalone (bukan di dalam layout Jurnal Tools), gaya gelap
-// konsisten dengan /terminal, /hub, /upgrade. Route group (app) sebelumnya
-// cuma soal layout, bukan URL — jadi /checkout tetap /checkout.
+// Checkout — standalone (bukan di dalam layout Jurnal Tools), gaya gelap konsisten
+// dengan /terminal, /hub, /upgrade. Pembayaran online saja (DOKU utama, Midtrans
+// fallback). Transfer manual sudah dihapus.
 import { useState, useMemo, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
-import { DURATIONS, pkgPrice, planBase, planName, rp, BANK, genUniqueCode, type PlanId } from '@/lib/pricing'
+import { DURATIONS, pkgPrice, planBase, planName, rp, type PlanId } from '@/lib/pricing'
 import {
-  Crown, Sparkles, ShieldCheck, ArrowLeft, Loader2, CreditCard, Wallet, Check, ArrowRight,
-  Building2, Copy, Upload, FileImage, Clock, HelpCircle, Receipt,
+  Crown, Sparkles, ShieldCheck, ArrowLeft, Loader2, CreditCard, Wallet, Check, ArrowRight, AlertCircle,
 } from 'lucide-react'
 
 declare global {
@@ -30,7 +29,7 @@ const INCLUDED = [
   'Analisa Teknikal, Makro & Sentimen AI — tanpa batas',
   'Analisa News AI sebelum rilis besar',
   'Alert Telegram otomatis',
-  'Bonus: Jurnal, Simulator, Risk Calculator',
+  'Bonus: Jurnal, Strategy Backtesting, KPI Projection, Risk Calculator',
 ]
 
 function CheckoutInner() {
@@ -44,16 +43,9 @@ function CheckoutInner() {
   const dur = DURATIONS.find(d => d.months === months) ?? DURATIONS[0]
   const base = useMemo(() => pkgPrice(planBase(plan), dur.months, dur.off), [plan, dur])
 
-  const [step, setStep] = useState<'review' | 'pay' | 'done' | 'processing'>(params.get('status') === 'finish' ? 'processing' : 'review')
+  const [step, setStep] = useState<'review' | 'processing'>(params.get('status') === 'finish' ? 'processing' : 'review')
   const [busy, setBusy] = useState(false)
   const [snapReady, setSnapReady] = useState(false)
-  const [uniqueCode] = useState(genUniqueCode)
-  const total = base + uniqueCode
-  const [orderId, setOrderId] = useState<string | null>(null)
-  const [invoiceNumber, setInvoiceNumber] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [proofUrl, setProofUrl] = useState<string | null>(null)
 
   useEffect(() => {
     const sb = createClient()
@@ -64,7 +56,7 @@ function CheckoutInner() {
   }, [router, params])
 
   useEffect(() => {
-    if (!CLIENT_KEY) return
+    if (!CLIENT_KEY || DOKU_ENABLED) return
     if (document.getElementById('midtrans-snap')) { setSnapReady(true); return }
     const s = document.createElement('script')
     s.id = 'midtrans-snap'; s.src = SNAP_URL; s.setAttribute('data-client-key', CLIENT_KEY); s.async = true
@@ -122,47 +114,7 @@ function CheckoutInner() {
     }
   }
 
-  // Transfer manual: buat order (invoice_number ter-generate otomatis di database).
-  async function startManualTransfer() {
-    if (!userId) return
-    setBusy(true)
-    const sb = createClient()
-    const { data, error } = await sb.from('payment_orders').insert({
-      user_id: userId, plan, months: dur.months,
-      base_amount: base, unique_code: uniqueCode, total,
-      bank: BANK.name, account_no: BANK.number, status: 'menunggu_pembayaran', method: 'manual',
-    }).select('id, invoice_number').single()
-    setBusy(false)
-    if (error || !data) { toast.error('Gagal membuat pesanan: ' + (error?.message ?? '')); return }
-    setOrderId(data.id); setInvoiceNumber(data.invoice_number as string | null)
-    setStep('pay')
-  }
-
-  function copyTotal() {
-    navigator.clipboard.writeText(String(total))
-    setCopied(true); toast.success('Nominal disalin')
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function uploadProof(file: File) {
-    if (!orderId) return
-    if (file.size > 5_000_000) { toast.error('Ukuran file maksimal 5 MB'); return }
-    setUploading(true)
-    try {
-      const sb = createClient()
-      const ext = file.name.split('.').pop() || 'jpg'
-      const path = `payment-proof/${orderId}-${Date.now()}.${ext}`
-      const { error: upErr } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
-      if (upErr) { toast.error('Upload gagal: ' + upErr.message); return }
-      const url = sb.storage.from('trade-screenshots').getPublicUrl(path).data.publicUrl
-      const { error: dbErr } = await sb.from('payment_orders').update({ proof_url: url, status: 'menunggu_verifikasi', updated_at: new Date().toISOString() }).eq('id', orderId)
-      if (dbErr) { toast.error('Gagal menyimpan bukti: ' + dbErr.message); return }
-      setProofUrl(url)
-      setStep('done')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Upload gagal')
-    } finally { setUploading(false) }
-  }
+  const onlineActive = DOKU_ENABLED || !!CLIENT_KEY
 
   if (userId === undefined) {
     return <div className="min-h-screen flex items-center justify-center bg-[#060a09]"><Loader2 className="animate-spin text-primary" /></div>
@@ -173,7 +125,7 @@ function CheckoutInner() {
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-primary/10 blur-[140px] rounded-full pointer-events-none" />
 
       <header className="relative max-w-4xl mx-auto px-5 h-16 flex items-center justify-between">
-        <Link href="/subscription" className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors"><ArrowLeft size={16} /> Kembali</Link>
+        <Link href="/hub" className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors"><ArrowLeft size={16} /> Kembali</Link>
         <span className="text-lg font-black tracking-tight">Datalitiq</span>
       </header>
 
@@ -220,7 +172,6 @@ function CheckoutInner() {
                   <Wallet size={12} /> Kartu · QRIS · GoPay/OVO/Dana · Virtual Account · Alfamart/Indomaret
                 </div>
                 <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via DOKU · Akses aktif otomatis</p>
-                <div className="flex items-center gap-3 my-4"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] text-white/35 uppercase tracking-wider">atau</span><div className="h-px flex-1 bg-white/10" /></div>
               </>
             ) : CLIENT_KEY ? (
               <>
@@ -233,74 +184,17 @@ function CheckoutInner() {
                   {IS_SANDBOX && <span className="text-amber-400 font-semibold">· MODE SANDBOX</span>}
                 </div>
                 <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via Midtrans · Akses aktif otomatis</p>
-                <div className="flex items-center gap-3 my-4"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] text-white/35 uppercase tracking-wider">atau</span><div className="h-px flex-1 bg-white/10" /></div>
               </>
-            ) : null}
-            <button onClick={startManualTransfer} disabled={busy || !userId}
-              className="group w-full flex items-center justify-center gap-2 border border-white/15 text-white/85 rounded-xl px-6 py-3.5 text-sm font-bold hover:bg-white/5 disabled:opacity-50 transition-colors">
-              {busy ? <><Loader2 size={16} className="animate-spin" /> Menyiapkan pesanan…</> : <><Building2 size={16} className="text-primary" /> Transfer Bank</>}
-            </button>
-            <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><Receipt size={11} className="text-primary/70" /> Invoice resmi diterbitkan otomatis · verifikasi cepat</p>
-          </div>
-        )}
-
-        {step === 'pay' && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-widest text-white/40">Rekening Pembayaran Resmi</p>
-              {invoiceNumber && <span className="text-[11px] font-bold text-primary tabular-nums">{invoiceNumber}</span>}
-            </div>
-
-            <div className="rounded-xl bg-black/25 border border-white/[0.06] p-4">
-              <div className="flex items-center gap-2 mb-3.5"><Building2 size={16} className="text-primary" /><span className="font-bold text-white/90">Bank {BANK.name}</span></div>
-              <div className="mb-3.5">
-                <p className="text-[10px] text-white/35 uppercase tracking-wider">No. Rekening</p>
-                <p className="text-lg font-black tracking-wider tabular-nums">{BANK.number}</p>
-              </div>
-              <div className="mb-3.5 pt-3.5 border-t border-white/[0.06]">
-                <p className="text-[10px] text-white/35 uppercase tracking-wider">Atas Nama</p>
-                <p className="text-sm font-semibold text-white/85">{BANK.holder}</p>
-              </div>
-              <div className="pt-3.5 border-t border-white/[0.06]">
-                <p className="text-[10px] text-white/35 uppercase tracking-wider">Nominal Transfer (harus tepat)</p>
-                <div className="flex items-center justify-between gap-2 mt-1">
-                  <p className="text-2xl font-black text-primary tabular-nums">{rp(total)}</p>
-                  <button onClick={copyTotal} className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold border border-white/15 text-white/75 rounded-lg px-3 py-2 hover:bg-white/5 transition-colors">
-                    {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}{copied ? 'Tersalin' : 'Salin'}
-                  </button>
+            ) : (
+              <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 p-4">
+                <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-200/90 leading-relaxed">
+                  <p className="font-semibold">Pembayaran online belum aktif.</p>
+                  <p className="mt-0.5">Silakan hubungi admin lewat <Link href="/kontak" className="underline">halaman Kontak</Link> untuk mengaktifkan langganan.</p>
                 </div>
-                <p className="text-[11px] text-amber-400 mt-2">⚠ Transfer TEPAT sampai 3 digit terakhir agar sistem otomatis mencocokkan pesanan.</p>
               </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Unggah Bukti Transfer</p>
-              <label className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/15 py-8 cursor-pointer hover:border-primary/40 hover:bg-primary/[0.03] transition-colors ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
-                {uploading ? <Loader2 size={22} className="animate-spin text-primary" /> : <Upload size={22} className="text-white/40" />}
-                <span className="text-sm font-semibold text-white/70">{uploading ? 'Mengunggah…' : 'Pilih screenshot / foto bukti transfer'}</span>
-                <span className="text-[11px] text-white/35">JPG/PNG, maks 5 MB</span>
-                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadProof(f) }} />
-              </label>
-              <p className="text-[11px] text-white/35 mt-2 flex items-center gap-1.5"><FileImage size={12} /> Setelah diunggah, pesanan otomatis masuk status &ldquo;Menunggu Verifikasi&rdquo; — tidak perlu menghubungi siapa pun.</p>
-            </div>
-          </div>
-        )}
-
-        {step === 'done' && (
-          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.05] p-8 text-center space-y-3">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/15"><Clock size={30} className="text-emerald-400" /></div>
-            <h2 className="text-xl font-black">Bukti Transfer Diterima</h2>
-            {invoiceNumber && <p className="text-xs text-white/40 tabular-nums">Invoice {invoiceNumber}</p>}
-            <p className="text-sm text-white/55 max-w-sm mx-auto leading-relaxed">Pesanan kamu sedang diverifikasi. Paket <strong className="text-white/85">{planName(plan)}</strong> akan aktif otomatis setelah transfer terkonfirmasi — biasanya dalam beberapa menit hingga maksimal 1×24 jam.</p>
-            {proofUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={proofUrl} alt="Bukti transfer" className="mx-auto max-h-32 rounded-lg border border-white/10 object-contain" />
             )}
-            <div className="flex gap-2.5 justify-center pt-3">
-              <button onClick={() => router.push('/billing')} className="text-sm font-semibold border border-white/15 text-white/80 rounded-xl px-4 py-2.5 hover:bg-white/5 transition-colors">Lihat Status Pesanan</button>
-              <button onClick={() => router.push(plan === 'terminal' ? '/terminal' : '/jurnal')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity">{plan === 'terminal' ? 'Ke Terminal' : 'Ke Dashboard'}</button>
-            </div>
-            <p className="pt-2"><Link href="/kontak" className="inline-flex items-center gap-1.5 text-[11px] text-white/35 hover:text-white/60 transition-colors"><HelpCircle size={11} /> Butuh bantuan? Hubungi Customer Support</Link></p>
+            {onlineActive && <p className="text-[11px] text-white/30 text-center mt-4">Setelah pembayaran terkonfirmasi, akses Pro terbuka otomatis.</p>}
           </div>
         )}
 
@@ -310,8 +204,8 @@ function CheckoutInner() {
             <h2 className="text-xl font-black">Mengonfirmasi Pembayaran…</h2>
             <p className="text-sm text-white/55 max-w-sm mx-auto leading-relaxed">Pembayaran kamu sedang dikonfirmasi. Paket <strong className="text-white/85">{planName(plan)}</strong> akan <strong className="text-white/85">aktif otomatis</strong> begitu terkonfirmasi (biasanya beberapa detik untuk QRIS/e-wallet/kartu).</p>
             <div className="flex gap-2.5 justify-center pt-3">
-              <button onClick={() => router.push('/billing')} className="text-sm font-semibold border border-white/15 text-white/80 rounded-xl px-4 py-2.5 hover:bg-white/5 transition-colors">Lihat Status Pesanan</button>
-              <button onClick={() => router.push(plan === 'terminal' ? '/terminal' : '/jurnal')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity">{plan === 'terminal' ? 'Ke Terminal' : 'Ke Dashboard'}</button>
+              <button onClick={() => router.push('/account')} className="text-sm font-semibold border border-white/15 text-white/80 rounded-xl px-4 py-2.5 hover:bg-white/5 transition-colors">Lihat Status Langganan</button>
+              <button onClick={() => router.push(plan === 'terminal' ? '/terminal' : '/hub')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity">{plan === 'terminal' ? 'Ke Terminal' : 'Ke Hub'}</button>
             </div>
           </div>
         )}
