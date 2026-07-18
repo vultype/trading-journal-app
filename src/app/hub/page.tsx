@@ -175,15 +175,6 @@ export default function HubPage() {
           ))}
         </div>
 
-        {/* Terminal GBP/USD — eksperimen, khusus admin */}
-        {sub.isAdmin && (
-          <Link href="/terminal-gbp" className="group mt-6 flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/[0.04] p-4 hover:border-primary/40 transition-colors">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 text-primary shrink-0"><Activity size={18} /></span>
-            <div className="flex-1 min-w-0"><p className="text-sm font-bold flex items-center gap-2">Terminal GBP/USD <span className="text-[8px] font-bold uppercase rounded-full bg-red-500/15 text-red-400 px-1.5 py-0.5">Admin</span></p><p className="text-xs text-white/45">Analisa cable: teknikal + makro AS vs UK + sentimen & COT GBP — modul terpisah dari emas</p></div>
-            <ChevronRight size={18} className="text-white/30 group-hover:text-white/60 transition-colors" />
-          </Link>
-        )}
-
         {/* Admin */}
         {sub.isAdmin && (
           <Link href="/admin" className="group mt-6 flex items-center gap-3 rounded-2xl border border-red-500/25 bg-red-500/[0.05] p-4 hover:border-red-500/40 transition-colors">
