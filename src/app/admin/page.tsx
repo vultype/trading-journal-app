@@ -873,27 +873,42 @@ function BlogManager() {
 // ── Beri Akses Pro Manual — admin buat langganan 'aktif' langsung utk email tertentu ──
 // (gratis/komplimen/testing). Insert payment_orders via sesi admin (RLS: policy "admin
 // orders" for all using is_admin() — sudah tersedia, tak perlu service_role/API terpisah).
-const GRANT_DURATIONS = [1, 3, 6, 12]
+type GrantUnit = 'hari' | 'bulan'
+const GRANT_PRESETS: { label: string; amount: number; unit: GrantUnit }[] = [
+  { label: '7 hari', amount: 7, unit: 'hari' },
+  { label: '30 hari', amount: 30, unit: 'hari' },
+  { label: '3 bulan', amount: 3, unit: 'bulan' },
+  { label: '6 bulan', amount: 6, unit: 'bulan' },
+  { label: '1 tahun', amount: 12, unit: 'bulan' },
+]
 function ManualProGrant({ users, onGranted }: { users: AdminUser[]; onGranted: () => void }) {
   const [email, setEmail] = useState('')
-  const [months, setMonths] = useState(1)
+  const [amount, setAmount] = useState('30')
+  const [unit, setUnit] = useState<GrantUnit>('hari')
   const [busy, setBusy] = useState(false)
   const [open, setOpen] = useState(false)
 
   const match = users.filter(u => email.trim().length > 1 && u.email.toLowerCase().includes(email.trim().toLowerCase())).slice(0, 6)
   const exact = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase())
+  const emailLooksComplete = /\S+@\S+\.\S+/.test(email.trim())
+  const amt = Math.max(1, Math.floor(Number(amount) || 0))
+  const expires = unit === 'hari' ? new Date(Date.now() + amt * 86_400_000) : addMonths(new Date(), amt)
+  const monthsVal = unit === 'bulan' ? amt : Math.max(1, Math.ceil(amt / 30))
 
   async function grant() {
-    if (!exact) { toast.error('Pilih user dari daftar (harus sudah terdaftar/pernah login).'); return }
+    if (!exact) { toast.error('Email belum terdaftar. Minta user daftar dulu, atau pakai SQL manual di bawah.'); return }
     setBusy(true)
     const { error } = await createClient().from('payment_orders').insert({
-      user_id: exact.id, plan: 'terminal', months, base_amount: 0, unique_code: 0, total: 0,
-      status: 'aktif', method: 'admin_grant',
-      expires_at: new Date(Date.now() + months * 30 * 86_400_000).toISOString(),
+      user_id: exact.id, plan: 'terminal', months: monthsVal, base_amount: 0, unique_code: 0, total: 0,
+      status: 'aktif', method: 'admin_grant', expires_at: expires.toISOString(),
     })
     setBusy(false)
-    if (error) { toast.error('Gagal: ' + error.message); return }
-    toast.success(`${exact.email} sekarang Pro (${months} bulan)`)
+    if (error) {
+      const rls = /row-level security|violates|policy/i.test(error.message)
+      toast.error(rls ? 'Ditolak RLS — fungsi is_admin() belum aktif. Pakai SQL manual di bawah.' : 'Gagal: ' + error.message)
+      return
+    }
+    toast.success(`${exact.email} sekarang Pro — berlaku sampai ${fmtDate(expires)}`)
     setEmail(''); setOpen(false); onGranted()
   }
 
@@ -901,26 +916,44 @@ function ManualProGrant({ users, onGranted }: { users: AdminUser[]; onGranted: (
     <Card>
       <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Crown size={15} className="text-primary" /> Beri Akses Pro Manual</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground">Aktifkan langganan Pro langsung untuk user tertentu tanpa pembayaran (komplimen/testing). User harus sudah pernah daftar/login.</p>
+        <p className="text-xs text-muted-foreground">Aktifkan Pro langsung untuk user tertentu tanpa pembayaran (komplimen/testing). User harus sudah pernah daftar/login.</p>
         <div className="relative">
           <input value={email} onChange={e => { setEmail(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} placeholder="Cari email user…" className="w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50" />
           {open && match.length > 0 && !exact && (
             <div className="absolute z-10 mt-1 w-full rounded-lg border border-border/60 bg-[#0b0f0e] shadow-xl overflow-hidden">
-              {match.map(u => (
-                <button key={u.id} onClick={() => { setEmail(u.email); setOpen(false) }} className="block w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors">{u.email}</button>
-              ))}
+              {match.map(u => <button key={u.id} onClick={() => { setEmail(u.email); setOpen(false) }} className="block w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors">{u.email}</button>)}
             </div>
           )}
         </div>
-        {exact && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">Durasi:</span>
-            {GRANT_DURATIONS.map(m => (
-              <button key={m} onClick={() => setMonths(m)} className={`rounded-md px-2.5 py-1 text-xs font-bold transition-colors ${months === m ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-white/50 hover:text-white/80'}`}>{m} bln</button>
-            ))}
+        {emailLooksComplete && !exact && <p className="text-[11px] text-amber-400 flex items-center gap-1"><AlertTriangle size={11} /> Email ini belum terdaftar di sistem — minta user daftar dulu.</p>}
+
+        {/* Durasi: preset + custom (hari/bulan) */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {GRANT_PRESETS.map(p => {
+              const on = amt === p.amount && unit === p.unit
+              return <button key={p.label} onClick={() => { setAmount(String(p.amount)); setUnit(p.unit) }} className={`rounded-md px-2.5 py-1 text-xs font-bold transition-colors ${on ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-white/50 hover:text-white/80'}`}>{p.label}</button>
+            })}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground shrink-0">Custom:</span>
+            <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" className="w-20 rounded-lg border border-border/60 bg-black/20 px-3 py-1.5 text-sm font-bold tabular-nums outline-none focus:border-primary/50" />
+            <div className="flex gap-0.5 rounded-lg bg-black/30 p-0.5 border border-border/60">
+              {(['hari', 'bulan'] as GrantUnit[]).map(u => <button key={u} onClick={() => setUnit(u)} className={`rounded-md px-2.5 py-1 text-xs font-bold transition-colors ${unit === u ? 'bg-primary text-primary-foreground' : 'text-white/45 hover:text-white/70'}`}>{u}</button>)}
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground/70">Berlaku sampai <b className="text-white/70">{fmtDate(expires)}</b> ({amt} {unit})</p>
+        </div>
+
         <Button onClick={grant} disabled={busy || !exact} size="sm" className="gap-1.5">{busy ? <><Loader2 size={14} className="animate-spin" /> Memproses…</> : <><Crown size={14} /> Berikan Akses Pro</>}</Button>
+
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-white/70">Alternatif: SQL manual (bila tombol gagal / user belum bisa dicari)</summary>
+          <p className="text-[11px] text-muted-foreground/70 mt-2">Jalankan di Supabase → SQL Editor (ganti email & durasi sesuai kebutuhan). Bekerja meski RLS/is_admin belum di-setup:</p>
+          <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-[11px] text-emerald-300 overflow-x-auto whitespace-pre mt-1.5">{`insert into payment_orders (user_id, plan, months, base_amount, unique_code, total, status, method, expires_at)
+select id, 'terminal', 12, 0, 0, 0, 'aktif', 'admin_grant', now() + interval '365 days'
+from auth.users where email = 'cahyaduadelapan@gmail.com';`}</code>
+        </details>
       </CardContent>
     </Card>
   )
