@@ -33,14 +33,20 @@ function alignNormalize(named: { name: string; color: string; main?: boolean; ra
   const maps = named.map(s => new Map(s.raw.map(p => [p.date, p.value])))
   const allDates = Array.from(new Set(named.flatMap(s => s.raw.map(p => p.date)))).sort()
   const dates = allDates.slice(-windowDays)
-  if (!dates.length) return { dates: [] as string[], series: [] as { name: string; color: string; main?: boolean; values: (number | null)[] }[] }
+  if (!dates.length) return { dates: [] as string[], series: [] as { name: string; color: string; main?: boolean; values: (number | null)[]; z: (number | null)[] }[] }
   const series = named.map((s, i) => {
     let last: number | null = null
     for (const p of s.raw) { if (p.date <= dates[0]) last = p.value; else break }
     const filled = dates.map(d => { if (maps[i].has(d)) last = maps[i].get(d)!; return last })
     const base = filled.find(v => v != null) ?? null
     const values = filled.map(v => (v == null || base == null || base === 0) ? null : ((v - base) / Math.abs(base)) * 100)
-    return { name: s.name, color: s.color, main: s.main, values }
+    // z-score: skalakan tiap seri ke volatilitasnya SENDIRI supaya amplitudo semua garis
+    // sebanding (emas yg gerak kecil tak lagi tampak lurus vs VIX/BTC). % asli tetap di `values`.
+    const nums = values.filter((v): v is number => v != null)
+    const mean = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0
+    const sd = nums.length > 1 ? Math.sqrt(nums.reduce((a, b) => a + (b - mean) ** 2, 0) / nums.length) : 0
+    const z = values.map(v => v == null ? null : sd > 0 ? (v - mean) / sd : 0)
+    return { name: s.name, color: s.color, main: s.main, values, z }
   })
   return { dates, series }
 }
@@ -73,7 +79,7 @@ function correlate(aLvl: (number | null)[], bLvl: (number | null)[]): number {
 
 // ── Chart komparasi interaktif (filter + fokus XAU) ──
 function ComparisonSVG({ dates, series, visible, height = 340 }: {
-  dates: string[]; series: { name: string; color: string; main?: boolean; values: (number | null)[] }[]; visible: Record<string, boolean>; height?: number
+  dates: string[]; series: { name: string; color: string; main?: boolean; values: (number | null)[]; z: (number | null)[] }[]; visible: Record<string, boolean>; height?: number
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(720)
@@ -84,7 +90,7 @@ function ComparisonSVG({ dates, series, visible, height = 340 }: {
     const ro = new ResizeObserver(m); ro.observe(el); return () => ro.disconnect()
   }, [])
   const shown = series.filter(s => visible[s.name])
-  const padL = 50, padR = 16, padT = 14, padB = 24
+  const padL = 16, padR = 16, padT = 14, padB = 24
   const cw = Math.max(1, w - padL - padR), ch = Math.max(1, height - padT - padB)
   const n = dates.length
   const onMove = useCallback((clientX: number) => {
@@ -93,11 +99,12 @@ function ComparisonSVG({ dates, series, visible, height = 340 }: {
     setHover(Math.round(Math.min(1, Math.max(0, (clientX - r.left - padL) / cw)) * (n - 1)))
   }, [cw, n])
   if (n < 2 || !shown.length) return <div style={{ height }} className="flex items-center justify-center text-white/30 text-sm">{n < 2 ? 'Memuat data…' : 'Pilih minimal satu data'}</div>
-  const allVals = shown.flatMap(s => s.values.filter((v): v is number => v != null))
-  const min = Math.min(...allVals, 0), max = Math.max(...allVals, 0), range = max - min || 1
+  // Plot pakai z-score (amplitudo tiap seri sebanding). Skala simetris di sekitar 0 (rata-rata).
+  const allZ = shown.flatMap(s => s.z.filter((v): v is number => v != null))
+  const zMax = Math.max(...allZ.map(Math.abs), 0.5), min = -zMax, max = zMax, range = max - min || 1
   const x = (i: number) => padL + (i / (n - 1)) * cw
   const y = (v: number) => padT + ch - ((v - min) / range) * ch
-  const grid = [max, (max + min) / 2, min]
+  const grid = [max, 0, min]
   const hx = hover != null ? x(hover) : 0
   const tipLeft = hover != null ? Math.min(Math.max(hx, 92), w - 92) : 0
   return (
@@ -106,18 +113,18 @@ function ComparisonSVG({ dates, series, visible, height = 340 }: {
       onTouchStart={e => onMove(e.touches[0].clientX)} onTouchMove={e => onMove(e.touches[0].clientX)}>
       <svg width={w} height={height} className="block">
         {grid.map((gv, i) => (
-          <g key={i}><line x1={padL} y1={y(gv)} x2={padL + cw} y2={y(gv)} stroke="rgba(255,255,255,0.06)" /><text x={padL - 8} y={y(gv) + 3} textAnchor="end" fontSize="10" fill="rgba(255,255,255,0.35)">{gv >= 0 ? '+' : ''}{gv.toFixed(1)}%</text></g>
+          <line key={i} x1={padL} y1={y(gv)} x2={padL + cw} y2={y(gv)} stroke="rgba(255,255,255,0.06)" />
         ))}
         <line x1={padL} y1={y(0)} x2={padL + cw} y2={y(0)} stroke="rgba(255,255,255,0.14)" strokeDasharray="2 3" />
         {[...shown].sort((a, b) => (a.main ? 1 : 0) - (b.main ? 1 : 0)).map(s => {
-          const pts = s.values.map((v, i) => v == null ? null : `${x(i)},${y(v)}`).filter(Boolean).join(' ')
+          const pts = s.z.map((v, i) => v == null ? null : `${x(i)},${y(v)}`).filter(Boolean).join(' ')
           return <polyline key={s.name} points={pts} fill="none" stroke={s.color} strokeWidth={s.main ? 2.75 : 1.4} opacity={s.main ? 1 : 0.85} strokeLinejoin="round" strokeLinecap="round" />
         })}
         {[0, Math.floor((n - 1) / 2), n - 1].map(i => (
           <text key={i} x={x(i)} y={height - 6} textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} fontSize="10" fill="rgba(255,255,255,0.35)">{fmtDateShort(dates[i])}</text>
         ))}
         {hover != null && <line x1={hx} y1={padT} x2={hx} y2={padT + ch} stroke="rgba(255,255,255,0.25)" strokeDasharray="3 3" />}
-        {hover != null && shown.map(s => s.values[hover] == null ? null : <circle key={s.name} cx={hx} cy={y(s.values[hover]!)} r={s.main ? 4 : 3} fill={s.color} stroke="#0b100e" strokeWidth="2" />)}
+        {hover != null && shown.map(s => s.z[hover] == null ? null : <circle key={s.name} cx={hx} cy={y(s.z[hover]!)} r={s.main ? 4 : 3} fill={s.color} stroke="#0b100e" strokeWidth="2" />)}
       </svg>
       {hover != null && (
         <div className="pointer-events-none absolute -top-1 rounded-lg border border-white/15 bg-[#0e1513] px-2.5 py-2 shadow-xl -translate-x-1/2 space-y-0.5 z-10" style={{ left: tipLeft }}>
@@ -157,8 +164,8 @@ export function MacroComparisonChart({ title, note, defs, height = 340 }: { titl
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-[#0b100e] overflow-hidden">
       <div className="px-4 py-3 border-b border-white/[0.06]">
-        <p className="text-sm font-bold flex items-center gap-2">{title} <span className="text-[9px] font-semibold text-white/30 normal-case">% perubahan · 90 hari · fokus XAU/USD</span></p>
-        {note && <p className="text-[10px] text-white/40 mt-0.5">{note}</p>}
+        <p className="text-sm font-bold flex items-center gap-2">{title} <span className="text-[9px] font-semibold text-white/30 normal-case">pergerakan diselaraskan · 90 hari · fokus XAU/USD</span></p>
+        <p className="text-[10px] text-white/40 mt-0.5">{note ? note + ' ' : ''}Tiap garis diskalakan ke volatilitasnya sendiri agar <b className="text-white/60">bentuk pergerakan</b> sebanding (emas tak lagi tampak lurus) — <b className="text-white/60">% asli</b> muncul saat kursor diarahkan.</p>
       </div>
       <div className="p-3">
         {comp ? <ComparisonSVG dates={comp.dates} series={comp.series} visible={visible} height={height} /> : <div style={{ height }} className="flex items-center justify-center"><Loader2 size={22} className="animate-spin text-white/30" /></div>}
