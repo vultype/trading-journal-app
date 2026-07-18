@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone } from 'lucide-react'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
 
@@ -536,6 +536,138 @@ function MetaPixelManager() {
   )
 }
 
+// ── SEO & Analytics: GA4 + Google Search Console (verifikasi + sitemap/robots) + meta situs ──
+function SeoManager() {
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+  const [siteUrl, setSiteUrl] = useState('')
+  const [title, setTitle] = useState('')
+  const [desc, setDesc] = useState('')
+  const [gaId, setGaId] = useState('')
+  const [gaEnabled, setGaEnabled] = useState(false)
+  const [gsc, setGsc] = useState('')
+
+  useEffect(() => {
+    createClient().from('app_config').select('site_url, seo_title, seo_description, ga_measurement_id, ga_enabled, gsc_verification').eq('id', 1).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { setNeedsMigration(true); setLoading(false); return }
+        setSiteUrl((data?.site_url as string | null) ?? '')
+        setTitle((data?.seo_title as string | null) ?? '')
+        setDesc((data?.seo_description as string | null) ?? '')
+        setGaId((data?.ga_measurement_id as string | null) ?? '')
+        setGaEnabled(!!data?.ga_enabled)
+        setGsc((data?.gsc_verification as string | null) ?? '')
+        setLoading(false)
+      })
+  }, [])
+
+  async function save() {
+    if (gaEnabled && gaId.trim() && !/^G-[A-Z0-9]{6,}$/i.test(gaId.trim())) { toast.error('Measurement ID GA4 harus format G-XXXXXXXX'); return }
+    setSaving(true)
+    const { error } = await createClient().from('app_config').upsert({
+      id: 1, site_url: siteUrl.trim() || null, seo_title: title.trim() || null, seo_description: desc.trim() || null,
+      ga_measurement_id: gaId.trim() || null, ga_enabled: gaEnabled, gsc_verification: gsc.trim() || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+    setSaving(false)
+    if (error) { toast.error('Gagal menyimpan: ' + error.message); return }
+    toast.success('Pengaturan SEO disimpan. Aktif ≤30 detik (situs perlu re-deploy untuk metadata build).')
+  }
+
+  if (needsMigration) return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Globe size={15} className="text-primary" /> SEO & Analytics</CardTitle></CardHeader>
+      <CardContent>
+        <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-4 space-y-2">
+          <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5"><AlertTriangle size={13} /> Perlu migrasi database sekali</p>
+          <p className="text-xs text-amber-200/80">Jalankan SQL ini di Supabase (SQL Editor), lalu muat ulang halaman:</p>
+          <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-xs text-emerald-300 overflow-x-auto whitespace-pre">alter table app_config
+  add column if not exists site_url text,
+  add column if not exists seo_title text,
+  add column if not exists seo_description text,
+  add column if not exists ga_measurement_id text,
+  add column if not exists ga_enabled boolean not null default false,
+  add column if not exists gsc_verification text;</code>
+        </div>
+      </CardContent>
+    </Card>
+  )
+  if (loading) return <Card><CardContent className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" size={18} /></CardContent></Card>
+
+  const base = (siteUrl.trim() || 'https://datalitiq.com').replace(/\/$/, '')
+  const gaActive = gaEnabled && /^G-[A-Z0-9]{6,}$/i.test(gaId.trim())
+
+  return (
+    <>
+      {/* Meta & identitas situs */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Globe size={15} className="text-primary" /> Meta & Identitas Situs</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">URL Situs (canonical)</label>
+            <input value={siteUrl} onChange={e => setSiteUrl(e.target.value)} placeholder="https://datalitiq.com" className="mt-1.5 w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+            <p className="text-[11px] text-muted-foreground/70 mt-1">Dipakai untuk canonical, Open Graph, sitemap & robots.</p>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Judul (title)</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Datalitiq AI Terminal — Analisa Emas…" className="mt-1.5 w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+            <p className="text-[11px] text-muted-foreground/70 mt-1">{(title || '').length} karakter · ideal 50–60.</p>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Deskripsi (meta description)</label>
+            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} placeholder="Ringkasan situs untuk hasil pencarian…" className="mt-1.5 w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50 resize-none" />
+            <p className="text-[11px] text-muted-foreground/70 mt-1">{(desc || '').length} karakter · ideal 140–160.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Google Analytics */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity size={15} className="text-primary" /> Google Analytics (GA4)</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${gaActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-white/10 text-white/50'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${gaActive ? 'bg-emerald-400' : 'bg-white/40'}`} />{gaActive ? 'Terpasang & aktif' : 'Nonaktif'}
+          </span>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Measurement ID</label>
+            <input value={gaId} onChange={e => setGaId(e.target.value)} placeholder="G-XXXXXXXXXX" className="mt-1.5 w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+            <p className="text-[11px] text-muted-foreground/70 mt-1">GA4 → Admin → Data Streams → salin <strong>Measurement ID</strong> (format G-…).</p>
+          </div>
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-4 py-3 cursor-pointer">
+            <span className="text-sm"><strong>Aktifkan pelacakan GA4</strong><br /><span className="text-xs text-muted-foreground">Lacak kunjungan & halaman (termasuk navigasi SPA).</span></span>
+            <button type="button" onClick={() => setGaEnabled(v => !v)} className={`relative w-11 h-6 rounded-full transition-colors ${gaEnabled ? 'bg-primary' : 'bg-white/15'}`}>
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${gaEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </label>
+        </CardContent>
+      </Card>
+
+      {/* Google Search Console */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Search size={15} className="text-primary" /> Google Search Console</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Kode Verifikasi (meta tag)</label>
+            <input value={gsc} onChange={e => setGsc(e.target.value)} placeholder="isi value dari <meta name=&quot;google-site-verification&quot;>" className="mt-1.5 w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+            <p className="text-[11px] text-muted-foreground/70 mt-1">GSC → Tambah properti → metode <strong>Tag HTML</strong> → salin isi <code>content=&quot;…&quot;</code> saja (bukan seluruh tag). Otomatis ditanam di <code>&lt;head&gt;</code>.</p>
+          </div>
+          <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Sitemap & Robots (otomatis)</p>
+            <div className="space-y-1.5 text-sm">
+              <a href={`${base}/sitemap.xml`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline"><ExternalLink size={12} /> {base}/sitemap.xml</a>
+              <a href={`${base}/robots.txt`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary hover:underline"><ExternalLink size={12} /> {base}/robots.txt</a>
+            </div>
+            <p className="text-[11px] text-muted-foreground/70 mt-3 leading-relaxed">Langkah submit: (1) verifikasi properti dengan kode di atas, (2) di GSC buka <strong>Sitemaps</strong> → masukkan <code>sitemap.xml</code> → Kirim. Google akan meng-crawl otomatis; pengindeksan butuh beberapa hari.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Button onClick={save} disabled={saving} className="gap-1.5">{saving ? <><Loader2 size={14} className="animate-spin" /> Menyimpan…</> : 'Simpan Pengaturan SEO'}</Button>
+    </>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -634,7 +766,7 @@ export default function AdminPage() {
   const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<'users' | 'content' | 'marketing'>('users')
+  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo'>('users')
 
   useEffect(() => {
     if (!sub.loading && !sub.isAdmin) router.replace('/hub')
@@ -751,6 +883,7 @@ export default function AdminPage() {
           <button onClick={() => setTab('users')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'users' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Pengguna & Langganan</button>
           <button onClick={() => setTab('content')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'content' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Konten & Branding</button>
           <button onClick={() => setTab('marketing')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'marketing' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Marketing & Iklan</button>
+          <button onClick={() => setTab('seo')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'seo' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>SEO & Analytics</button>
         </div>
 
         {loading ? (
@@ -810,9 +943,13 @@ export default function AdminPage() {
             <PaymentLogosManager />
             <FeatureImagesManager />
           </div>
-        ) : (
+        ) : tab === 'marketing' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <MetaPixelManager />
+          </div>
+        ) : (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <SeoManager />
           </div>
         )}
       </main>
