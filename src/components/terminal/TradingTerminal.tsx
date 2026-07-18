@@ -15,8 +15,10 @@ import {
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle, LineChart,
   Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight,
-  Lock, Crown, Check,
+  Lock, Crown, Check, Volume2, VolumeX,
 } from 'lucide-react'
+import { toast } from '@/lib/toast'
+import { Toaster } from '@/components/ui/toaster'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
@@ -36,6 +38,29 @@ import {
 
 type HTF = 'H4' | 'D1'            // timeframe besar (bias harian/swing)
 const HTFS: HTF[] = ['H4', 'D1']
+
+// Bunyi notifikasi (chime 2-nada) via Web Audio — tanpa file aset. Aman: no-op bila gagal.
+function playRegimeChime() {
+  if (typeof window === 'undefined') return
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AC) return
+    const ctx = new AC()
+    const t0 = ctx.currentTime
+    const tone = (freq: number, start: number, dur: number) => {
+      const o = ctx.createOscillator(), g = ctx.createGain()
+      o.type = 'sine'; o.frequency.value = freq
+      o.connect(g); g.connect(ctx.destination)
+      g.gain.setValueAtTime(0.0001, t0 + start)
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + start + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur)
+      o.start(t0 + start); o.stop(t0 + start + dur + 0.02)
+    }
+    tone(784, 0, 0.18)      // G5
+    tone(1047, 0.13, 0.22)  // C6 (naik, seperti "ding-dong")
+    setTimeout(() => ctx.close().catch(() => {}), 700)
+  } catch { /* diamkan */ }
+}
 type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
 type MacroPoint = { key: string; value: number; prior: number; date: string; history: number[] }
 type CotGroup = { long: number; short: number; net: number; deltaNet: number }
@@ -812,7 +837,10 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const [aiPrompt, setAiPrompt] = useState('')
   const [showPrompt, setShowPrompt] = useState(false)  // form konteks AI tersembunyi secara default
   const [aiFull, setAiFull] = useState(true)           // toggle output AI: Lengkap vs Ringkas
+  const [soundOn, setSoundOn] = useState<boolean>(() => { if (typeof window === 'undefined') return true; return localStorage.getItem('dtq_regime_sound') !== 'off' })
+  const toggleSound = () => setSoundOn(v => { const n = !v; try { localStorage.setItem('dtq_regime_sound', n ? 'on' : 'off') } catch { } ; return n })
   const regimePhaseRef = useRef<RegimePhase | undefined>(undefined)  // histeresis regime (fase sebelumnya)
+  const notifiedRegime = useRef<{ phase: RegimePhase; label: string } | null>(null)  // deteksi perubahan regime utk notif
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -918,6 +946,20 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     prevPhase: regimePhaseRef.current,
   })
   regimePhaseRef.current = regime.phase
+  // Notifikasi saat REGIME berubah (Ranging ⇄ Trending). Side-effect ditunda via setTimeout
+  // agar tak setState saat render; ref di-update sinkron supaya hanya sekali per perubahan.
+  {
+    const prev = notifiedRegime.current
+    if (prev === null) notifiedRegime.current = { phase: regime.phase, label: regime.label }
+    else if (prev.phase !== regime.phase) {
+      notifiedRegime.current = { phase: regime.phase, label: regime.label }
+      const label = regime.label, toTrending = regime.phase === 'trending', beep = soundOn
+      setTimeout(() => {
+        toast[toTrending ? 'success' : 'info'](`Regime berubah → ${label}${toTrending ? ' · tren mulai jalan' : ' · pasar menyamping'}`)
+        if (beep) playRegimeChime()
+      }, 0)
+    }
+  }
   const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
@@ -1333,7 +1375,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   )
   const InsightStrip = (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="3 kondisi (Ranging · Konfirmasi · Trending) dari skor kekuatan tren M15 (Efficiency Ratio + ADX + spread DI), dengan histeresis anti-flip & konteks M5/H1 (koreksi/pullback vs waspada balik arah)." />
+      <StatTile icon={Signal} label="Regime Pasar" value={<span className={regime.c}>{regime.label}</span>} sub={regime.desc} tone="neutral" info="2 kondisi (Ranging · Trending) dari skor kekuatan tren M15 (Efficiency Ratio + ADX + spread DI), dengan histeresis anti-flip. Notifikasi + bunyi otomatis saat regime berubah." />
       <StatTile icon={Zap} label="Momentum" value={<span className={avgMomentum > 15 ? 'text-emerald-400' : avgMomentum < -15 ? 'text-red-400' : 'text-white/70'}>{avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'}</span>} sub={`skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} · RSI/MACD/Stoch`} tone={avgMomentum > 15 ? 'bull' : avgMomentum < -15 ? 'bear' : 'neutral'} info="Gabungan RSI, MACD, Stochastic & Bollinger %B dari 3 timeframe." />
       <StatTile icon={ArrowUpDown} label="Posisi Range Hari Ini" value={`${(dayPos * 100).toFixed(0)}%`} sub={dayPos > 0.7 ? 'dekat high' : dayPos < 0.3 ? 'dekat low' : 'tengah range'} tone={dayPos > 0.7 ? 'bull' : dayPos < 0.3 ? 'bear' : 'neutral'} info={`Posisi harga di antara Low ${f2(feed.dayLow)} dan High ${f2(feed.dayHigh)} hari ini.`} />
       <StatTile icon={Scale} label="Sentimen Risiko" value={<span className={riskOn < -0.1 ? 'text-emerald-400' : riskOn > 0.1 ? 'text-red-400' : 'text-white/70'}>{riskOn < -0.1 ? 'Risk-Off' : riskOn > 0.1 ? 'Risk-On' : 'Netral'}</span>} sub={riskOn < -0.1 ? 'pasar takut → bullish emas' : riskOn > 0.1 ? 'pasar berani → tekan emas' : 'seimbang'} tone={riskOn < -0.1 ? 'bull' : riskOn > 0.1 ? 'bear' : 'neutral'} info="Dari VIX, S&P500, Nasdaq, BTC. Risk-off (takut) biasanya mengangkat emas." />
@@ -1749,6 +1791,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white">
+      <Toaster />
       {chartFull && (
         <div className="fixed inset-0 z-[60] bg-[#060a09] p-3 flex flex-col">
           <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD — {f2(feed.price)} · TradingView</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>
@@ -1832,6 +1875,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                 <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {session}</span>
                 <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/40"><Clock size={11} /> {clock}</span>
                 <span className={`flex items-center gap-1 text-[10px] ${live.status === 'live' ? 'text-emerald-400' : 'text-amber-400'}`}>{live.status === 'live' ? <Wifi size={12} /> : <RefreshCw size={11} className="animate-spin" />} live</span>
+                <button onClick={toggleSound} title={soundOn ? 'Bunyi notifikasi regime: AKTIF' : 'Bunyi notifikasi regime: MATI'} className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${soundOn ? 'text-primary hover:bg-primary/10' : 'text-white/35 hover:bg-white/5'}`}>{soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
               </div>
             </div>
           </header>

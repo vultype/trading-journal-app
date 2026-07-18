@@ -205,15 +205,12 @@ export function confluence(tf: Record<TF, TFData>) {
   return { label, strength, bulls, bears }
 }
 
-// ─────────────────────────── regime pasar (3 kondisi) ───────────────────────────
-// Tetap 3 label: Ranging · Sedang Konfirmasi Arah · Trending. Mesinnya diperbarui agar
-// ADAPTIF & STABIL:
-//  1) Skor kekuatan tren KONTINU 0..100 (Efficiency Ratio + ADX ternormalisasi + spread DI)
-//     — menggantikan cutoff ADX keras yang bikin lompat di titik 25.
-//  2) HISTERESIS (ambang masuk ≠ keluar + prevPhase) — meredam whipsaw di batas.
-//  3) Konteks MTF (M5/H1) → jadi KETERANGAN (koreksi/pullback vs waspada balik arah),
-//     bukan label baru. "Koreksi" = H1 masih searah tren tapi M5 melawan sementara.
-export type RegimePhase = 'ranging' | 'konfirmasi' | 'trending'
+// ─────────────────────────── regime pasar (2 kondisi) ───────────────────────────
+// Hanya 2 label: Ranging · Trending (Bullish/Bearish). Mesin adaptif & stabil:
+//  1) Skor kekuatan tren KONTINU 0..100 (Efficiency Ratio + ADX ternormalisasi + spread DI).
+//  2) HISTERESIS (masuk trending ≥62 / keluar <52 + prevPhase) — meredam whipsaw di batas.
+//  3) Konfirmasi dini M5 + konteks koreksi/pullback jadi KETERANGAN (bukan label baru).
+export type RegimePhase = 'ranging' | 'trending'
 export type RegimeDir = 'bullish' | 'bearish' | 'netral'
 export type Regime = { label: string; phase: RegimePhase; dir: RegimeDir; c: string; desc: string; strength?: number }
 // Kaufman Efficiency Ratio: |gerak bersih| / total lintasan pada N bar terakhir.
@@ -242,28 +239,19 @@ export function regimeOf(p: {
   const diN = clamp(diSpread / 35, 0, 1)        // spread +DI/−DI 0..35 → 0..1
   const strength = Math.round(100 * (0.40 * clamp(er, 0, 1) + 0.35 * adxN + 0.25 * diN))
 
-  // ── (2) Histeresis: ambang masuk ≠ keluar → cegah lompat-lompat di batas ──
-  const wasTrending = prevPhase === 'trending', wasRanging = prevPhase === 'ranging'
-  const trendTh = wasTrending ? 52 : 62         // sudah trending → bertahan sampai <52; kalau belum → butuh ≥62
-  const rangeTh = wasRanging ? 38 : 30          // sudah ranging → bertahan sampai >38; kalau belum → butuh ≤30
-  let phase: RegimePhase
-  if (bbSqueeze && strength < 52) phase = 'ranging'      // squeeze → ranging kecuali skor sudah tinggi
-  else if (strength >= trendTh) phase = 'trending'
-  else if (strength <= rangeTh) phase = 'ranging'
-  else phase = 'konfirmasi'
+  // ── (2) Histeresis pada batas TRENDING: masuk butuh ≥62, bertahan sampai <52 ──
+  const wasTrending = prevPhase === 'trending'
+  const trendTh = wasTrending ? 52 : 62
+  let phase: RegimePhase = (bbSqueeze && strength < 52) ? 'ranging' : strength >= trendTh ? 'trending' : 'ranging'
 
-  // Konfirmasi dini via M5: dari 'konfirmasi', bila M15 mulai kuat (ADX≥20 & tak melemah) &
-  // M5 sudah bergerak searah (ADX M5≥25) → naikkan ke trending lebih awal (tak ketinggalan).
+  // Konfirmasi dini via M5: zona menengah (skor mulai bangun, ≥50) + M15 mulai kuat (ADX≥20,
+  // tak melemah) + M5 sudah bergerak searah (ADX M5≥25) → naikkan ke trending lebih awal.
   const m5Confirm = !!m5 && m5.trendUp === trendUp && m5.adx >= 25
-  if (phase === 'konfirmasi' && adx >= 20 && adxTrend !== 'turun' && m5Confirm) phase = 'trending'
+  if (phase === 'ranging' && !bbSqueeze && strength >= 50 && adx >= 20 && adxTrend !== 'turun' && m5Confirm) phase = 'trending'
 
   // ── (3) Konteks MTF untuk keterangan ──
   const h1Agree = !!h1 && h1.trendUp === trendUp && h1.adx >= 18
   const m5Counter = !!m5 && m5.trendUp !== trendUp
-
-  if (phase === 'ranging')
-    return { label: 'Ranging', phase, dir: 'netral', c: 'text-amber-400', strength,
-      desc: bbSqueeze ? 'volatilitas menyempit, tanpa arah jelas' : `sideways / tren lemah (kekuatan ${strength})` }
 
   if (phase === 'trending') {
     const koreksi = m5Counter && h1Agree     // H1 masih searah, M5 lawan → pullback dalam tren
@@ -273,10 +261,10 @@ export function regimeOf(p: {
         : `tren ${trendUp ? 'naik — ikuti arah beli' : 'turun — ikuti arah jual'} (kekuatan ${strength})` }
   }
 
-  // konfirmasi: bedakan "tren belum matang" vs "waspada balik arah"
-  const reversalWatch = adxTrend === 'turun' && m5Counter   // momentum memudar & M5 sudah flip lawan arah
-  return { label: 'Sedang Konfirmasi Arah', phase, dir: 'netral', c: 'text-sky-400', strength,
-    desc: reversalWatch
-      ? `arah belum pasti & momentum melemah — waspada potensi balik arah (kekuatan ${strength})`
-      : `cenderung ${trendUp ? 'naik' : 'turun'}, tren belum matang (kekuatan ${strength}) — tunggu konfirmasi` }
+  // ranging: bedakan squeeze / mulai terbentuk / lemah
+  const building = strength >= 45 && !bbSqueeze
+  return { label: 'Ranging', phase, dir: 'netral', c: 'text-amber-400', strength,
+    desc: bbSqueeze ? 'volatilitas menyempit, tanpa arah jelas'
+      : building ? `sideways — tren mulai terbentuk tapi belum matang (kekuatan ${strength})`
+      : `sideways / tren lemah (kekuatan ${strength})` }
 }

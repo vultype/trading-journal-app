@@ -86,7 +86,7 @@ export async function evaluateDuePredictions(priceNow: number): Promise<number> 
 export type RegimeAccuracy = { regime: string; total: number; correct: number; pct: number }
 export type AccuracyReport = { total: number; correct: number; pct: number | null; window: number; byRegime: RegimeAccuracy[] }
 // Fase regime dari label (label mengandung arah, mis. "Trending Bullish" → "Trending")
-const regimePhaseOf = (label: string) => label.includes('Trending') ? 'Trending' : label.includes('Konfirmasi') ? 'Konfirmasi Arah' : label.includes('Ranging') ? 'Ranging' : 'Lainnya'
+const regimePhaseOf = (label: string) => label.includes('Trending') ? 'Trending' : label.includes('Ranging') ? 'Ranging' : 'Lainnya'
 
 export async function getAccuracy(days = 30): Promise<AccuracyReport | null> {
   const c = client(); if (!c) return null
