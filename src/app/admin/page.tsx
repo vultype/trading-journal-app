@@ -899,18 +899,21 @@ function ManualProGrant({ users, onGranted }: { users: AdminUser[]; onGranted: (
   async function grant() {
     if (!exact) { toast.error('Email belum terdaftar. Minta user daftar dulu, atau pakai SQL manual di bawah.'); return }
     setBusy(true)
-    const { error } = await createClient().from('payment_orders').insert({
-      user_id: exact.id, plan: 'terminal', months: monthsVal, base_amount: 0, unique_code: 0, total: 0,
-      status: 'aktif', method: 'admin_grant', expires_at: expires.toISOString(),
-    })
-    setBusy(false)
-    if (error) {
-      const rls = /row-level security|violates|policy/i.test(error.message)
-      toast.error(rls ? 'Ditolak RLS — fungsi is_admin() belum aktif. Pakai SQL manual di bawah.' : 'Gagal: ' + error.message)
-      return
-    }
-    toast.success(`${exact.email} sekarang Pro — berlaku sampai ${fmtDate(expires)}`)
-    setEmail(''); setOpen(false); onGranted()
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { toast.error('Sesi habis, login ulang.'); setBusy(false); return }
+      const res = await fetch('/api/admin/grant-pro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ userId: exact.id, email: exact.email, months: monthsVal, expiresAt: expires.toISOString() }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error(j.error || 'Gagal memberikan akses.'); setBusy(false); return }
+      toast.success(`${exact.email} sekarang Pro — berlaku sampai ${fmtDate(expires)}`)
+      setEmail(''); setOpen(false); onGranted()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan')
+    } finally { setBusy(false) }
   }
 
   return (
