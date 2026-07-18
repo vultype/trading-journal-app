@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { Toaster } from '@/components/ui/toaster'
+import { playRegimeChime } from '@/lib/chime'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
@@ -39,28 +40,6 @@ import {
 type HTF = 'H4' | 'D1'            // timeframe besar (bias harian/swing)
 const HTFS: HTF[] = ['H4', 'D1']
 
-// Bunyi notifikasi (chime 2-nada) via Web Audio — tanpa file aset. Aman: no-op bila gagal.
-function playRegimeChime() {
-  if (typeof window === 'undefined') return
-  try {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!AC) return
-    const ctx = new AC()
-    const t0 = ctx.currentTime
-    const tone = (freq: number, start: number, dur: number) => {
-      const o = ctx.createOscillator(), g = ctx.createGain()
-      o.type = 'sine'; o.frequency.value = freq
-      o.connect(g); g.connect(ctx.destination)
-      g.gain.setValueAtTime(0.0001, t0 + start)
-      g.gain.exponentialRampToValueAtTime(0.25, t0 + start + 0.02)
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur)
-      o.start(t0 + start); o.stop(t0 + start + dur + 0.02)
-    }
-    tone(784, 0, 0.18)      // G5
-    tone(1047, 0.13, 0.22)  // C6 (naik, seperti "ding-dong")
-    setTimeout(() => ctx.close().catch(() => {}), 700)
-  } catch { /* diamkan */ }
-}
 type Pivots = { P: number; R1: number; R2: number; S1: number; S2: number }
 type MacroPoint = { key: string; value: number; prior: number; date: string; history: number[] }
 type CotGroup = { long: number; short: number; net: number; deltaNet: number }
@@ -838,7 +817,9 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const [showPrompt, setShowPrompt] = useState(false)  // form konteks AI tersembunyi secara default
   const [aiFull, setAiFull] = useState(true)           // toggle output AI: Lengkap vs Ringkas
   const [soundOn, setSoundOn] = useState<boolean>(() => { if (typeof window === 'undefined') return true; return localStorage.getItem('dtq_regime_sound') !== 'off' })
-  const toggleSound = () => setSoundOn(v => { const n = !v; try { localStorage.setItem('dtq_regime_sound', n ? 'on' : 'off') } catch { } ; return n })
+  // Nyalakan → putar preview chime (langsung terdengar, sekaligus "membuka" izin audio browser
+  // di titik ini — bukan menunggu regime berubah, yang mungkin tak terjadi selama Anda tes).
+  const toggleSound = () => setSoundOn(v => { const n = !v; try { localStorage.setItem('dtq_regime_sound', n ? 'on' : 'off') } catch { } ; if (n) playRegimeChime(); return n })
   const regimePhaseRef = useRef<RegimePhase | undefined>(undefined)  // histeresis regime (fase sebelumnya)
   const notifiedRegime = useRef<{ phase: RegimePhase; label: string } | null>(null)  // deteksi perubahan regime utk notif
 

@@ -12,6 +12,7 @@ import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
 import { Toaster } from '@/components/ui/toaster'
 import { Confetti } from '@/components/ui/Confetti'
+import { playRegimeChime } from '@/lib/chime'
 import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper, Wrench, PartyPopper, Bell } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
@@ -993,6 +994,12 @@ function DevToolsManager() {
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.error('Gagal memproses — ini contoh toast error.')}><XCircle size={14} className="text-red-400" /> Error</Button>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.info('Informasi — ini contoh toast info.')}><Info size={14} className="text-sky-400" /> Info</Button>
           </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Bell size={12} /> Bunyi Notifikasi (chime regime)</p>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => playRegimeChime()}><Bell size={14} className="text-primary" /> Putar Bunyi</Button>
+          <p className="text-[11px] text-muted-foreground/70 mt-1.5">Chime yang sama dipakai saat regime pasar berubah (Ranging ⇄ Trending) di terminal. Kalau tak terdengar di sini, cek volume perangkat/tab browser — bukan masalah kode.</p>
         </div>
 
         <div>
