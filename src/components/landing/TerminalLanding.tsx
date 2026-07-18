@@ -8,7 +8,7 @@ import {
   Sparkles, Brain, ArrowRight, ChevronDown, ShieldCheck, Check, Star,
   Compass, Landmark, Newspaper, Bell, Target, MessageSquare,
   BookOpen, FlaskConical, LineChart, Calculator, Layers, Globe,
-  X, Zap, Radio, TrendingUp, BarChart3,
+  X, Zap, Radio, TrendingUp, BarChart3, Gauge, Users, Activity,
 } from 'lucide-react'
 
 const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
@@ -822,6 +822,102 @@ function BonusSection({ primaryCta }: { primaryCta: string }) {
   )
 }
 
+// ── Showcase fitur utama terminal (screenshot asli, diupload admin via key ss_*) ──
+const SHOWCASE: { key: string; icon: React.ElementType; chip: string; headline: string; body: string; bullets: string[] }[] = [
+  { key: 'ss_signal', icon: Gauge, chip: 'SIGNAL METER', headline: 'Satu jarum. Arah pasar langsung jelas.', body: 'Berhenti menebak arah. Signal Meter merangkum makro + teknikal + sentimen jadi satu skor −100…+100 plus tingkat keyakinan real-time — kamu tahu bias hari ini dalam 3 detik, bukan 30 menit analisa.', bullets: ['Skor gabungan real-time', 'Tingkat keyakinan (confidence)', 'Bearish ↔ Bullish sekali lihat'] },
+  { key: 'ss_ai', icon: Brain, chip: 'ANALISA AI', headline: 'AI baca semua data → satu keputusan.', body: 'Datalitiq AI menelan harga, makro, sentimen & posisi institusi sekaligus, lalu memberi keputusan tegas: BELI, JUAL, atau TUNGGU — lengkap dengan alasan, level entry, stop-loss, dan target.', bullets: ['Keputusan Beli / Jual / Tunggu', 'Level Entry · SL · TP konkret', 'Alasan & skenario jelas'] },
+  { key: 'ss_pillar', icon: Layers, chip: '3 PILAR TRANSPARAN', headline: 'Bukan kotak hitam — lihat alasannya.', body: 'Setiap kesimpulan dipecah jadi 3 pilar: Makro, Teknikal, dan Sentimen — masing-masing dengan skor & alasan singkat. Kamu tahu KENAPA sinyalnya bearish, bukan cuma disuruh percaya.', bullets: ['Skor per pilar', 'Alasan tiap faktor', 'Tingkat kesepakatan sinyal'] },
+  { key: 'ss_macro', icon: Landmark, chip: 'MAKRO INSTITUSI', headline: 'Data ekonomi The Fed, diterjemahkan.', body: 'Dolar, yield, real yield, inflasi, kebijakan Fed — 12+ data resmi (FRED) otomatis diterjemahkan jadi dampak jelas ke emas. Yang biasa cuma ada di meja institusi, sekarang di layarmu.', bullets: ['DXY · Yield · CPI · Fed Funds', 'Chart perbandingan makro', 'Dampak langsung ke emas'] },
+  { key: 'ss_sentiment', icon: Users, chip: 'SMART MONEY', headline: 'Intip posisi institusi vs retail.', body: 'Data COT menunjukkan ke mana institusi & retail bertaruh. Termometer risk-on/off, VIX, dan peta sentimen — tahu kapan pasar takut dan kapan serakah, sebelum harga bergerak.', bullets: ['Posisi COT institusi', 'Risk-on / Risk-off', 'VIX & korelasi lintas aset'] },
+  { key: 'ss_confluence', icon: Activity, chip: 'MULTI-TIMEFRAME', headline: 'Timing presisi di semua timeframe.', body: 'Konfluensi M5/M15/H1, bias H4 & Daily, plus deteksi pembalikan arah — semua selaras di satu layar supaya kamu entry searah momentum, bukan melawan arus.', bullets: ['Konfluensi M5–H1', 'Bias timeframe besar', 'Deteksi pembalikan arah'] },
+]
+
+function ShowcaseFrame({ img, icon: Icon, chip }: { img?: string; icon: React.ElementType; chip: string }) {
+  return (
+    <div className="relative group">
+      <div className="absolute -inset-3 bg-primary/12 blur-2xl rounded-3xl opacity-40 group-hover:opacity-90 transition-opacity duration-500" />
+      {/* frame gradient-border */}
+      <div className="relative rounded-2xl p-[1px] bg-gradient-to-br from-primary/60 via-white/10 to-cyan-500/30 shadow-2xl shadow-black/40 transition-transform duration-500 group-hover:-translate-y-1">
+        <div className="rounded-2xl bg-[#0a0f0e] overflow-hidden">
+          {/* window chrome */}
+          <div className="flex items-center gap-1.5 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
+            <span className="w-2 h-2 rounded-full bg-red-400/60" /><span className="w-2 h-2 rounded-full bg-amber-400/60" /><span className="w-2 h-2 rounded-full bg-emerald-400/60" />
+            <span className="ml-2 text-[9px] font-mono text-white/30 tracking-wide">datalitiq://terminal</span>
+            <span className="ml-auto flex items-center gap-1 text-[9px] font-mono text-primary/70"><span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> LIVE</span>
+          </div>
+          {img ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={img} alt={chip} className="w-full block" loading="lazy" />
+          ) : (
+            <div className="aspect-[16/10] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-white/[0.03] to-transparent relative overflow-hidden">
+              <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+              <Icon size={40} className="text-primary/40 relative" />
+              <p className="text-[11px] font-mono text-white/25 relative">{chip}</p>
+            </div>
+          )}
+        </div>
+      </div>
+      {/* corner brackets */}
+      <span className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-primary/50 rounded-tl-lg" />
+      <span className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-primary/50 rounded-br-lg" />
+    </div>
+  )
+}
+
+function TerminalShowcase({ images, cta }: { images: Record<string, string>; cta: string }) {
+  return (
+    <section className="relative overflow-hidden py-20 md:py-28">
+      {/* backdrop grid + glow */}
+      <div className="absolute inset-0 pointer-events-none opacity-30" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)', backgroundSize: '64px 64px', WebkitMaskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, #000 30%, transparent 90%)', maskImage: 'radial-gradient(ellipse 80% 60% at 50% 30%, #000 30%, transparent 90%)' }} />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-primary/[0.07] blur-[160px] rounded-full pointer-events-none" />
+
+      <div className="relative max-w-6xl mx-auto px-6">
+        <div className="text-center max-w-2xl mx-auto mb-16">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-primary mb-4"><Radio size={12} /> Langsung dari layar</span>
+          <h2 className="text-3xl md:text-5xl font-black tracking-tight text-balance">Bukan janji. <span className="text-primary">Ini isi terminalnya.</span></h2>
+          <p className="text-white/55 mt-4 text-[15px] leading-relaxed">Setiap fitur dirancang untuk satu tujuan: mengubah tumpukan data pasar yang bikin pusing jadi <b className="text-white/80">satu keputusan yang jelas & bisa kamu percaya</b>.</p>
+        </div>
+
+        <div className="space-y-16 md:space-y-24">
+          {SHOWCASE.map((f, i) => {
+            const flip = i % 2 === 1
+            return (
+              <div key={f.key} className="grid md:grid-cols-2 gap-8 md:gap-14 items-center">
+                <div className={`order-1 ${flip ? 'md:order-2' : 'md:order-1'}`}>
+                  <ShowcaseFrame img={images[f.key]} icon={f.icon} chip={f.chip} />
+                </div>
+                <div className={`order-2 ${flip ? 'md:order-1' : 'md:order-2'}`}>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 mb-4">
+                    <f.icon size={13} className="text-primary" />
+                    <span className="text-[10px] font-bold font-mono uppercase tracking-widest text-white/60">{f.chip}</span>
+                  </div>
+                  <h3 className="text-2xl md:text-3xl font-black tracking-tight text-balance leading-tight">{f.headline}</h3>
+                  <p className="text-white/55 mt-3 leading-relaxed text-[15px]">{f.body}</p>
+                  <ul className="mt-5 space-y-2.5">
+                    {f.bullets.map(b => (
+                      <li key={b} className="flex items-center gap-2.5 text-[14px] text-white/75">
+                        <span className="shrink-0 flex items-center justify-center w-5 h-5 rounded-md bg-primary/15 ring-1 ring-primary/25"><Check size={12} className="text-primary" /></span>
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="text-center mt-16">
+          <Link href={cta} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-7 py-3.5 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/30 hover:shadow-primary/50">
+            Lihat Semuanya di Terminal <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+          <p className="text-[11px] text-white/35 mt-3">Akses penuh begitu langganan Terminal aktif.</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function TerminalLanding() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null)
@@ -1003,6 +1099,9 @@ export function TerminalLanding() {
           </p>
         </Reveal>
       </section>
+
+      {/* ── Showcase fitur utama (screenshot asli terminal) ── */}
+      <TerminalShowcase images={featureImages} cta={primaryCta} />
 
       {/* ── Fitur (explorer interaktif) ── */}
       <section id="fitur" className="max-w-6xl mx-auto px-6 pt-8 md:pt-10 pb-20 md:pb-24">

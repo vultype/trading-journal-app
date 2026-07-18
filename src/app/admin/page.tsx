@@ -172,6 +172,13 @@ const FEATURE_SLOTS: { key: string; label: string }[] = [
   { key: 'sentiment', label: 'Posisi Institusi' },
   { key: 'chat', label: 'Tanya AI' },
   { key: 'notif', label: 'Alert Telegram' },
+  // Section showcase "Bukan janji. Ini isi terminalnya." (screenshot asli terminal)
+  { key: 'ss_signal', label: 'Showcase — Signal Meter' },
+  { key: 'ss_ai', label: 'Showcase — Analisa AI' },
+  { key: 'ss_pillar', label: 'Showcase — 3 Pilar' },
+  { key: 'ss_macro', label: 'Showcase — Makro' },
+  { key: 'ss_sentiment', label: 'Showcase — Sentimen/COT' },
+  { key: 'ss_confluence', label: 'Showcase — Multi-Timeframe' },
 ]
 function FeatureImagesManager() {
   const [images, setImages] = useState<Record<string, string>>({})
