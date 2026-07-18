@@ -43,11 +43,20 @@ export async function POST(req: Request) {
 
     const expiresAt = body.expiresAt ? new Date(body.expiresAt).toISOString() : new Date(Date.now() + (days || months * 30) * 86_400_000).toISOString()
 
-    // 3) Insert order aktif (service role → bypass RLS).
-    const { error } = await svc.from('payment_orders').insert({
-      user_id: userId, plan: 'terminal', months, base_amount: 0, unique_code: 0, total: 0,
-      status: 'aktif', method: 'admin_grant', expires_at: expiresAt,
-    })
+    // 3) Insert order aktif (service role → bypass RLS). Kolom base WAJIB ada (skema
+    // checkout awal). expires_at & method OPSIONAL — bila belum dimigrasikan, kolomnya
+    // tak ada di skema; deteksi errornya lalu ulangi tanpa kolom itu (kedaluwarsa jatuh
+    // ke `months` via useSubscription).
+    const base: Record<string, unknown> = { user_id: userId, plan: 'terminal', months, base_amount: 0, unique_code: 0, total: 0, status: 'aktif' }
+    let payload: Record<string, unknown> = { ...base, method: 'admin_grant', expires_at: expiresAt }
+    let { error } = await svc.from('payment_orders').insert(payload)
+    if (error && /schema cache|could not find|column|expires_at|method/i.test(error.message)) {
+      payload = { ...base }
+      // sertakan method bila hanya expires_at yg hilang; kalau tetap gagal, base saja.
+      const r2 = await svc.from('payment_orders').insert({ ...base, method: 'admin_grant' })
+      if (r2.error) { const r3 = await svc.from('payment_orders').insert(base); error = r3.error }
+      else error = null
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     return NextResponse.json({ ok: true, userId, expiresAt })
