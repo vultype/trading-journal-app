@@ -453,22 +453,6 @@ function PillarRow({ label, score, desc }: { label: string; score: number; desc:
   )
 }
 type CardMeta = { name: string; sub: string; dec: number; unit?: string; prefix?: string; corr: number; src: string }
-function DataCard({ meta, value, prior, changePct }: { meta: CardMeta; value: number | null; prior?: number | null; changePct?: number | null }) {
-  if (value == null) return <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5 flex flex-col justify-center items-center min-h-[76px]"><Loader2 size={14} className="animate-spin text-white/30" /><span className="text-[9px] text-white/30 mt-1">{meta.name}</span></div>
-  const chg = changePct != null ? changePct : (prior != null && prior !== 0 ? ((value - prior) / prior) * 100 : 0)
-  const impact = Math.sign(chg) * meta.corr
-  // Label EKSPLISIT menyebut "Emas" — tag ini menilai dampak KE EMAS dari pergerakan aset,
-  // BUKAN arah aset itu sendiri (mis. Dolar turun bisa tetap berlabel "Bullish Emas").
-  const imp = impact > 0.02 ? { t: '↑ Bullish Emas', c: 'text-emerald-400 bg-emerald-500/10' } : impact < -0.02 ? { t: '↓ Bearish Emas', c: 'text-red-400 bg-red-500/10' } : { t: 'Netral', c: 'text-white/50 bg-white/5' }
-  const up = chg >= 0
-  return (
-    <div className="rounded-lg border border-white/8 bg-white/[0.02] p-2.5" title={`${meta.name}: ${meta.sub}. Tag = dampak ke EMAS (XAU/USD) dari arah pergerakan ${meta.name}, bukan arah ${meta.name} itu sendiri.`}>
-      <div className="flex items-center justify-between gap-1"><span className="text-xs font-bold text-white/85 flex items-center gap-1">{meta.name}<span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /></span><span className={`text-[8px] font-bold uppercase rounded px-1 py-0.5 shrink-0 whitespace-nowrap ${imp.c}`}>{imp.t}</span></div>
-      <div className="text-[9px] text-white/35 mb-1">{meta.sub}</div>
-      <div className="flex items-end justify-between"><span className="text-sm font-black tabular-nums">{meta.prefix ?? ''}{value.toLocaleString('en-US', { minimumFractionDigits: meta.dec, maximumFractionDigits: meta.dec })}{meta.unit ?? ''}</span><span className={`text-[10px] font-bold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>{up ? '+' : ''}{chg.toFixed(2)}%</span></div>
-    </div>
-  )
-}
 const CROSS_META: Record<string, CardMeta> = {
   dollar: { name: 'Indeks Dolar', sub: 'Broad USD · FRED', dec: 2, corr: -1, src: 'FRED' },
   us10y: { name: 'US10Y', sub: 'Yield 10 Thn · FRED', dec: 2, unit: '%', corr: -1, src: 'FRED' },
@@ -489,6 +473,57 @@ const MACRO_META: { key: string; meta: CardMeta }[] = [
   { key: 'nfp', meta: { name: 'NFP (bulanan)', sub: 'Nonfarm Payrolls — lemah = bullish', dec: 0, unit: 'K', corr: 1, src: 'FRED' } },
   { key: 'wagegrowth', meta: { name: 'Pertumbuhan Upah', sub: 'Avg Hourly Earnings YoY', dec: 1, unit: '%', corr: -1, src: 'FRED' } },
 ]
+
+// ── Panel makro gaya "Gaya ke Emas": tiap faktor jadi bar diverging (dampak KE EMAS) ──
+// impact = arah pergerakan × korelasi ke emas. + = dukung emas (hijau/kanan), − = tekan (merah/kiri).
+type GoldForce = { name: string; sub: string; valueStr: string; chg: number; impact: number }
+function buildForce(m: CardMeta, value: number | null | undefined, prior?: number | null, changePct?: number | null): GoldForce | null {
+  if (value == null) return null
+  const chg = changePct != null ? changePct : (prior != null && prior !== 0 ? ((value - prior) / prior) * 100 : 0)
+  const valueStr = `${m.prefix ?? ''}${value.toLocaleString('en-US', { minimumFractionDigits: m.dec, maximumFractionDigits: m.dec })}${m.unit ?? ''}`
+  return { name: m.name, sub: m.sub, valueStr, chg, impact: Math.sign(chg) * m.corr }
+}
+function GoldForceRow({ f, maxAbs }: { f: GoldForce; maxAbs: number }) {
+  const bull = f.impact > 0.02, bear = f.impact < -0.02
+  const mag = maxAbs > 0 ? Math.min(1, Math.abs(f.chg) / maxAbs) : 0
+  const w = (bull || bear ? Math.max(0.14, mag) : 0.05) * 50   // % lebar setengah track
+  const col = bull ? '#34d399' : bear ? '#f87171' : 'rgba(255,255,255,0.35)'
+  const up = f.chg >= 0
+  return (
+    <div className="flex items-center gap-2 sm:gap-3 py-1.5" title={`${f.name} — dampak KE EMAS dari arah pergerakannya, bukan arah aset itu sendiri.`}>
+      <div className="w-[92px] sm:w-28 shrink-0 min-w-0">
+        <p className="text-[11px] font-bold text-white/85 truncate leading-tight">{f.name}</p>
+        <p className="text-[9px] text-white/35 truncate leading-tight">{f.sub}</p>
+      </div>
+      <div className="w-[70px] shrink-0 text-right">
+        <p className="text-[12px] font-black tabular-nums leading-tight">{f.valueStr}</p>
+        <p className={`text-[9px] font-bold tabular-nums leading-tight ${up ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{up ? '+' : ''}{f.chg.toFixed(2)}%</p>
+      </div>
+      <div className="relative flex-1 h-4 min-w-[44px]">
+        <span className="absolute left-1/2 top-0 bottom-0 w-px bg-white/15" />
+        <span className="absolute top-1/2 -translate-y-1/2 h-3 rounded-[3px] transition-all" style={{ left: bear ? `${50 - w}%` : '50%', width: `${w}%`, background: col, opacity: 0.9 }} />
+      </div>
+      <span className="w-[46px] shrink-0 text-right text-[9px] font-bold" style={{ color: col }}>{bull ? 'Dukung' : bear ? 'Tekan' : 'Netral'}</span>
+    </div>
+  )
+}
+function GoldForceSummary({ forces }: { forces: GoldForce[] }) {
+  const bull = forces.filter(f => f.impact > 0.02).length
+  const bear = forces.filter(f => f.impact < -0.02).length
+  const total = bull + bear || 1
+  const lean = bull > bear ? { t: 'Condong Dukung Emas', c: 'text-emerald-400' } : bear > bull ? { t: 'Condong Tekan Emas', c: 'text-red-400' } : { t: 'Gaya Seimbang', c: 'text-white/60' }
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={`text-[11px] font-black ${lean.c}`}>{lean.t}</span>
+        <span className="text-[10px] text-white/45 tabular-nums"><span className="text-emerald-400 font-bold">{bull} dukung</span> · <span className="text-red-400 font-bold">{bear} tekan</span></span>
+      </div>
+      <div className="h-2 rounded-full overflow-hidden bg-red-500/30 flex">
+        <div className="h-full bg-emerald-500/70 transition-all" style={{ width: `${(bull / total) * 100}%` }} />
+      </div>
+    </div>
+  )
+}
 
 // Baris COT yang mudah dibaca (bar proporsi long/short)
 function CotBar({ label, g, hint }: { label: string; g: CotGroup; hint: string }) {
@@ -1057,22 +1092,56 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       {htfVerdict && <div className="mt-2 rounded-lg bg-primary/8 p-2 flex items-start gap-1.5"><Compass size={12} className="text-primary mt-0.5 shrink-0" /><p className="text-[10px] text-white/85 leading-snug">{htfVerdict.text}</p></div>}
     </Panel>
   )
+  const crossForces = [
+    buildForce(CROSS_META.dollar, macro?.dollar?.value, macro?.dollar?.prior),
+    buildForce(CROSS_META.uup, cross.uup?.price, null, cross.uup?.changePct),
+    buildForce(CROSS_META.us10y, macro?.us10y?.value, macro?.us10y?.prior),
+    buildForce(CROSS_META.vixy, cross.vixy?.price, null, cross.vixy?.changePct),
+    buildForce(CROSS_META.spy, cross.spy?.price, null, cross.spy?.changePct),
+    buildForce(CROSS_META.qqq, cross.qqq?.price, null, cross.qqq?.changePct),
+    buildForce(CROSS_META.btc, cross.btc?.price, null, cross.btc?.changePct),
+  ].filter(Boolean) as GoldForce[]
+  const crossMax = Math.max(...crossForces.map(f => Math.abs(f.chg)), 0.001)
+  const crossSorted = [...crossForces].sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg))
   const CrossPanel = (
-    <Panel title="Lintas-Aset (korelasi ke emas)" icon={BarChart3} className="lg:col-span-12" info="Dolar & yield naik, saham risk-on kuat → emas cenderung turun. VIX naik (takut) & BTC (debasement) → cenderung bullish emas." right={<span className="text-[9px] text-white/30">FRED + Twelve Data</span>}>
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-        <DataCard meta={CROSS_META.dollar} value={macro?.dollar?.value ?? null} prior={macro?.dollar?.prior} />
-        <DataCard meta={CROSS_META.uup} value={cross.uup?.price ?? null} changePct={cross.uup?.changePct} />
-        <DataCard meta={CROSS_META.us10y} value={macro?.us10y?.value ?? null} prior={macro?.us10y?.prior} />
-        <DataCard meta={CROSS_META.vixy} value={cross.vixy?.price ?? null} changePct={cross.vixy?.changePct} />
-        <DataCard meta={CROSS_META.spy} value={cross.spy?.price ?? null} changePct={cross.spy?.changePct} />
-        <DataCard meta={CROSS_META.qqq} value={cross.qqq?.price ?? null} changePct={cross.qqq?.changePct} />
-        <DataCard meta={CROSS_META.btc} value={cross.btc?.price ?? null} changePct={cross.btc?.changePct} />
-      </div>
+    <Panel title="Lintas-Aset — Gaya ke Emas" icon={BarChart3} className="lg:col-span-12" info="Tiap aset menekan/mendukung emas sesuai korelasinya: dolar & yield naik, saham risk-on kuat → menekan emas; VIX naik (takut) & BTC → mendukung. Bar diurut dari penggerak terbesar hari ini." right={<span className="text-[9px] text-white/30">FRED + Twelve Data</span>}>
+      {crossForces.length ? (
+        <>
+          <GoldForceSummary forces={crossForces} />
+          <div className="divide-y divide-white/[0.05]">{crossSorted.map(f => <GoldForceRow key={f.name} f={f} maxAbs={crossMax} />)}</div>
+          <p className="text-[9px] text-white/35 mt-2.5 leading-snug">Bar ke <span className="text-emerald-400 font-semibold">kanan</span> = mendukung emas, ke <span className="text-red-400 font-semibold">kiri</span> = menekan; panjang ∝ besar pergerakan. Label menilai dampak KE EMAS, bukan arah aset itu sendiri.</p>
+        </>
+      ) : <div className="flex items-center justify-center py-8 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat data lintas-aset…</div>}
     </Panel>
   )
+  const INFLASI_GROUPS: { theme: string; keys: string[] }[] = [
+    { theme: 'Inflasi', keys: ['cpi', 'corecpi', 'corepce', 'breakeven'] },
+    { theme: 'Suku Bunga & Yield', keys: ['fedfunds', 'realyield'] },
+    { theme: 'Tenaga Kerja', keys: ['unrate', 'nfp', 'wagegrowth'] },
+  ]
+  const metaOf = (k: string) => MACRO_META.find(x => x.key === k)?.meta
+  const infForce = (k: string) => { const m = metaOf(k); return m ? buildForce(m, macro?.[k]?.value, macro?.[k]?.prior) : null }
+  const infAll = MACRO_META.map(x => infForce(x.key)).filter(Boolean) as GoldForce[]
+  const infMax = Math.max(...infAll.map(f => Math.abs(f.chg)), 0.001)
   const InflasiPanel = (
-    <Panel title="Inflasi & Kebijakan The Fed" icon={Landmark} className="lg:col-span-12" info="Data makro FRED (rilis bulanan/harian). Inflasi turun & suku bunga turun → cenderung bullish emas." right={<span className="text-[9px] text-white/30">FRED · resmi</span>}>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">{MACRO_META.map(({ key, meta }) => <DataCard key={key} meta={meta} value={macro?.[key]?.value ?? null} prior={macro?.[key]?.prior} />)}</div>
+    <Panel title="Inflasi & Kebijakan The Fed — Gaya ke Emas" icon={Landmark} className="lg:col-span-12" info="Data makro resmi FRED dikelompokkan per tema. Inflasi & suku bunga turun → mendukung emas; data tenaga kerja lemah → dovish (bullish). Bar diverging menilai dampak KE EMAS tiap rilis." right={<span className="text-[9px] text-white/30">FRED · resmi</span>}>
+      {infAll.length ? (
+        <>
+          <GoldForceSummary forces={infAll} />
+          <div className="space-y-3">
+            {INFLASI_GROUPS.map(g => {
+              const rows = g.keys.map(infForce).filter(Boolean) as GoldForce[]
+              if (!rows.length) return null
+              return (
+                <div key={g.theme}>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-white/35 mb-0.5 pl-0.5">{g.theme}</p>
+                  <div className="divide-y divide-white/[0.05]">{rows.map(f => <GoldForceRow key={f.name} f={f} maxAbs={infMax} />)}</div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      ) : <div className="flex items-center justify-center py-8 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat data makro…</div>}
     </Panel>
   )
   const CotPanel = (
