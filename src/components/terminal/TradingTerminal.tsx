@@ -483,27 +483,46 @@ function buildForce(m: CardMeta, value: number | null | undefined, prior?: numbe
   const valueStr = `${m.prefix ?? ''}${value.toLocaleString('en-US', { minimumFractionDigits: m.dec, maximumFractionDigits: m.dec })}${m.unit ?? ''}`
   return { name: m.name, sub: m.sub, valueStr, chg, impact: Math.sign(chg) * m.corr }
 }
-function GoldForceRow({ f, maxAbs }: { f: GoldForce; maxAbs: number }) {
-  const bull = f.impact > 0.02, bear = f.impact < -0.02
-  const mag = maxAbs > 0 ? Math.min(1, Math.abs(f.chg) / maxAbs) : 0
-  const w = (bull || bear ? Math.max(0.14, mag) : 0.05) * 50   // % lebar setengah track
-  const col = bull ? '#34d399' : bear ? '#f87171' : 'rgba(255,255,255,0.35)'
-  const up = f.chg >= 0
+// Satu kolom (Mendukung / Menekan) — daftar bersih, diurut dari dampak terkuat.
+function ForceColumn({ tone, forces }: { tone: 'bull' | 'bear'; forces: GoldForce[] }) {
+  const bull = tone === 'bull'
+  const head = bull ? 'text-emerald-400' : 'text-red-400'
+  const zone = bull ? 'bg-emerald-500/[0.05]' : 'bg-red-500/[0.05]'
+  const rows = [...forces].sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg))
   return (
-    <div className="flex items-center gap-2 sm:gap-3 py-1.5" title={`${f.name} — dampak KE EMAS dari arah pergerakannya, bukan arah aset itu sendiri.`}>
-      <div className="w-[92px] sm:w-28 shrink-0 min-w-0">
-        <p className="text-[11px] font-bold text-white/85 truncate leading-tight">{f.name}</p>
-        <p className="text-[9px] text-white/35 truncate leading-tight">{f.sub}</p>
+    <div className={`rounded-xl ${zone} p-3`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className={`text-[12px] font-black flex items-center gap-1.5 ${head}`}><span className={`w-2 h-2 rounded-full ${bull ? 'bg-emerald-400' : 'bg-red-400'}`} />{bull ? 'Mendukung Emas' : 'Menekan Emas'}</span>
+        <span className={`text-[13px] font-black tabular-nums ${head}`}>{rows.length}</span>
       </div>
-      <div className="w-[70px] shrink-0 text-right">
-        <p className="text-[12px] font-black tabular-nums leading-tight">{f.valueStr}</p>
-        <p className={`text-[9px] font-bold tabular-nums leading-tight ${up ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{up ? '+' : ''}{f.chg.toFixed(2)}%</p>
-      </div>
-      <div className="relative flex-1 h-4 min-w-[44px]">
-        <span className="absolute left-1/2 top-0 bottom-0 w-px bg-white/15" />
-        <span className="absolute top-1/2 -translate-y-1/2 h-3 rounded-[3px] transition-all" style={{ left: bear ? `${50 - w}%` : '50%', width: `${w}%`, background: col, opacity: 0.9 }} />
-      </div>
-      <span className="w-[46px] shrink-0 text-right text-[9px] font-bold" style={{ color: col }}>{bull ? 'Dukung' : bear ? 'Tekan' : 'Netral'}</span>
+      {rows.length ? (
+        <div className="divide-y divide-white/[0.06]">
+          {rows.map(f => (
+            <div key={f.name} className="flex items-center justify-between gap-3 py-2" title={f.sub}>
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-white/90 truncate leading-tight">{f.name}</p>
+                <p className="text-[10px] text-white/40 truncate leading-tight">{f.sub}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-[13px] font-black tabular-nums leading-tight text-white/90">{f.valueStr}</p>
+                <p className={`text-[10px] font-bold tabular-nums leading-tight ${head}`}>{f.chg >= 0 ? '+' : ''}{f.chg.toFixed(2)}%</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-[11px] text-white/30 py-2">— tidak ada saat ini</p>}
+    </div>
+  )
+}
+function ForceColumns({ forces }: { forces: GoldForce[] }) {
+  const bull = forces.filter(f => f.impact > 0.02)
+  const bear = forces.filter(f => f.impact < -0.02)
+  const neutral = forces.filter(f => Math.abs(f.impact) <= 0.02)
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <ForceColumn tone="bull" forces={bull} />
+      <ForceColumn tone="bear" forces={bear} />
+      {neutral.length > 0 && <p className="sm:col-span-2 text-[10px] text-white/35 leading-snug">Belum bergerak berarti: {neutral.map(f => f.name).join(', ')}.</p>}
     </div>
   )
 }
@@ -1101,45 +1120,25 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     buildForce(CROSS_META.qqq, cross.qqq?.price, null, cross.qqq?.changePct),
     buildForce(CROSS_META.btc, cross.btc?.price, null, cross.btc?.changePct),
   ].filter(Boolean) as GoldForce[]
-  const crossMax = Math.max(...crossForces.map(f => Math.abs(f.chg)), 0.001)
-  const crossSorted = [...crossForces].sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg))
   const CrossPanel = (
-    <Panel title="Lintas-Aset — Gaya ke Emas" icon={BarChart3} className="lg:col-span-12" info="Tiap aset menekan/mendukung emas sesuai korelasinya: dolar & yield naik, saham risk-on kuat → menekan emas; VIX naik (takut) & BTC → mendukung. Bar diurut dari penggerak terbesar hari ini." right={<span className="text-[9px] text-white/30">FRED + Twelve Data</span>}>
+    <Panel title="Lintas-Aset — Dampak ke Emas" icon={BarChart3} className="lg:col-span-12" info="Tiap aset dipisah menurut dampaknya ke emas: kolom hijau mendukung emas, kolom merah menekan. Dolar & yield naik, saham risk-on kuat → menekan; VIX naik (takut) & BTC → mendukung. Diurut dari penggerak terbesar." right={<span className="text-[9px] text-white/30">FRED + Twelve Data</span>}>
       {crossForces.length ? (
         <>
           <GoldForceSummary forces={crossForces} />
-          <div className="divide-y divide-white/[0.05]">{crossSorted.map(f => <GoldForceRow key={f.name} f={f} maxAbs={crossMax} />)}</div>
-          <p className="text-[9px] text-white/35 mt-2.5 leading-snug">Bar ke <span className="text-emerald-400 font-semibold">kanan</span> = mendukung emas, ke <span className="text-red-400 font-semibold">kiri</span> = menekan; panjang ∝ besar pergerakan. Label menilai dampak KE EMAS, bukan arah aset itu sendiri.</p>
+          <ForceColumns forces={crossForces} />
         </>
       ) : <div className="flex items-center justify-center py-8 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat data lintas-aset…</div>}
     </Panel>
   )
-  const INFLASI_GROUPS: { theme: string; keys: string[] }[] = [
-    { theme: 'Inflasi', keys: ['cpi', 'corecpi', 'corepce', 'breakeven'] },
-    { theme: 'Suku Bunga & Yield', keys: ['fedfunds', 'realyield'] },
-    { theme: 'Tenaga Kerja', keys: ['unrate', 'nfp', 'wagegrowth'] },
-  ]
   const metaOf = (k: string) => MACRO_META.find(x => x.key === k)?.meta
   const infForce = (k: string) => { const m = metaOf(k); return m ? buildForce(m, macro?.[k]?.value, macro?.[k]?.prior) : null }
   const infAll = MACRO_META.map(x => infForce(x.key)).filter(Boolean) as GoldForce[]
-  const infMax = Math.max(...infAll.map(f => Math.abs(f.chg)), 0.001)
   const InflasiPanel = (
-    <Panel title="Inflasi & Kebijakan The Fed — Gaya ke Emas" icon={Landmark} className="lg:col-span-12" info="Data makro resmi FRED dikelompokkan per tema. Inflasi & suku bunga turun → mendukung emas; data tenaga kerja lemah → dovish (bullish). Bar diverging menilai dampak KE EMAS tiap rilis." right={<span className="text-[9px] text-white/30">FRED · resmi</span>}>
+    <Panel title="Inflasi & Kebijakan The Fed — Dampak ke Emas" icon={Landmark} className="lg:col-span-12" info="Data makro resmi FRED dipisah menurut dampaknya ke emas: inflasi & suku bunga turun → mendukung; data tenaga kerja lemah → dovish (mendukung). Kolom hijau mendukung, merah menekan." right={<span className="text-[9px] text-white/30">FRED · resmi</span>}>
       {infAll.length ? (
         <>
           <GoldForceSummary forces={infAll} />
-          <div className="space-y-3">
-            {INFLASI_GROUPS.map(g => {
-              const rows = g.keys.map(infForce).filter(Boolean) as GoldForce[]
-              if (!rows.length) return null
-              return (
-                <div key={g.theme}>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-white/35 mb-0.5 pl-0.5">{g.theme}</p>
-                  <div className="divide-y divide-white/[0.05]">{rows.map(f => <GoldForceRow key={f.name} f={f} maxAbs={infMax} />)}</div>
-                </div>
-              )
-            })}
-          </div>
+          <ForceColumns forces={infAll} />
         </>
       ) : <div className="flex items-center justify-center py-8 text-white/30 text-[11px] gap-2"><Loader2 size={14} className="animate-spin" /> memuat data makro…</div>}
     </Panel>
