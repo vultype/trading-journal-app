@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe } from 'lucide-react'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
 
@@ -668,6 +668,208 @@ function SeoManager() {
   )
 }
 
+// ── Daily Outlook XAU/USD — admin tulis materi harian, tampil di Hub & /daily-outlook ──
+type OutlookRow = { id: string; outlook_date: string; title: string; bias: string; summary: string | null; content: string | null; support: string | null; resistance: string | null; published: boolean }
+const blankOutlook = (): OutlookRow => ({ id: '', outlook_date: new Date().toISOString().slice(0, 10), title: '', bias: 'netral', summary: '', content: '', support: '', resistance: '', published: true })
+const MIG_OUTLOOK = `create table if not exists daily_outlook (
+  id uuid primary key default gen_random_uuid(),
+  outlook_date date not null default current_date,
+  title text not null, bias text not null default 'netral',
+  summary text, content text, support text, resistance text,
+  published boolean not null default false,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+alter table daily_outlook enable row level security;
+create policy "outlook read published" on daily_outlook for select using (published = true);
+create policy "outlook admin all" on daily_outlook for all
+  using (auth.jwt()->>'email' = 'vultype@gmail.com') with check (auth.jwt()->>'email' = 'vultype@gmail.com');`
+
+function MigrationBanner({ sql }: { sql: string }) {
+  return (
+    <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-4 space-y-2">
+      <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5"><AlertTriangle size={13} /> Perlu migrasi database sekali</p>
+      <p className="text-xs text-amber-200/80">Jalankan SQL ini di Supabase (SQL Editor), lalu muat ulang halaman:</p>
+      <code className="block rounded-lg bg-black/40 border border-border/50 px-3 py-2 text-[11px] text-emerald-300 overflow-x-auto whitespace-pre">{sql}</code>
+    </div>
+  )
+}
+
+const biasOpt = [{ v: 'bullish', t: 'Bullish' }, { v: 'bearish', t: 'Bearish' }, { v: 'netral', t: 'Netral' }]
+const inp = 'w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50'
+
+function DailyOutlookManager() {
+  const [rows, setRows] = useState<OutlookRow[] | null>(null)
+  const [edit, setEdit] = useState<OutlookRow | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+
+  async function load() {
+    const { data, error } = await createClient().from('daily_outlook').select('*').order('outlook_date', { ascending: false }).limit(60)
+    if (error) { setNeedsMigration(true); setRows([]); return }
+    setRows((data as OutlookRow[]) ?? [])
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save() {
+    if (!edit) return
+    if (!edit.title.trim()) { toast.error('Judul wajib diisi'); return }
+    setSaving(true)
+    const p = { outlook_date: edit.outlook_date, title: edit.title.trim(), bias: edit.bias, summary: edit.summary || null, content: edit.content || null, support: edit.support || null, resistance: edit.resistance || null, published: edit.published, updated_at: new Date().toISOString() }
+    const { error } = edit.id
+      ? await createClient().from('daily_outlook').update(p).eq('id', edit.id)
+      : await createClient().from('daily_outlook').insert(p)
+    setSaving(false)
+    if (error) { toast.error('Gagal: ' + error.message); return }
+    toast.success('Outlook disimpan'); setEdit(null); load()
+  }
+  async function del(id: string) { if (!confirm('Hapus outlook ini?')) return; const { error } = await createClient().from('daily_outlook').delete().eq('id', id); if (error) return toast.error(error.message); toast.success('Dihapus'); load() }
+  async function togglePub(r: OutlookRow) { const { error } = await createClient().from('daily_outlook').update({ published: !r.published, updated_at: new Date().toISOString() }).eq('id', r.id); if (error) return toast.error(error.message); load() }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2"><CalendarDays size={15} className="text-primary" /> Daily Outlook XAU/USD</CardTitle>
+        {!needsMigration && !edit && <Button size="sm" className="gap-1.5" onClick={() => setEdit(blankOutlook())}><Plus size={14} /> Tulis Outlook</Button>}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {needsMigration ? <MigrationBanner sql={MIG_OUTLOOK} /> : edit ? (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs font-semibold text-muted-foreground">Tanggal</label><input type="date" value={edit.outlook_date} onChange={e => setEdit({ ...edit, outlook_date: e.target.value })} className={`${inp} mt-1`} /></div>
+              <div><label className="text-xs font-semibold text-muted-foreground">Bias</label><select value={edit.bias} onChange={e => setEdit({ ...edit, bias: e.target.value })} className={`${inp} mt-1`}>{biasOpt.map(o => <option key={o.v} value={o.v}>{o.t}</option>)}</select></div>
+            </div>
+            <div><label className="text-xs font-semibold text-muted-foreground">Judul</label><input value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value })} placeholder="mis. Emas konsolidasi jelang CPI" className={`${inp} mt-1`} /></div>
+            <div><label className="text-xs font-semibold text-muted-foreground">Ringkasan (1–2 kalimat)</label><textarea value={edit.summary ?? ''} onChange={e => setEdit({ ...edit, summary: e.target.value })} rows={2} className={`${inp} mt-1 resize-none`} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs font-semibold text-muted-foreground">Support</label><input value={edit.support ?? ''} onChange={e => setEdit({ ...edit, support: e.target.value })} placeholder="mis. 2380 / 2360" className={`${inp} mt-1`} /></div>
+              <div><label className="text-xs font-semibold text-muted-foreground">Resistance</label><input value={edit.resistance ?? ''} onChange={e => setEdit({ ...edit, resistance: e.target.value })} placeholder="mis. 2420 / 2445" className={`${inp} mt-1`} /></div>
+            </div>
+            <div><label className="text-xs font-semibold text-muted-foreground">Materi lengkap (Markdown)</label><textarea value={edit.content ?? ''} onChange={e => setEdit({ ...edit, content: e.target.value })} rows={8} placeholder="## Skenario&#10;- Bila tembus 2420 ...&#10;**Catatan:** ..." className={`${inp} mt-1 font-mono text-[13px]`} /></div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={edit.published} onChange={e => setEdit({ ...edit, published: e.target.checked })} /> Tampilkan ke user (published)</label>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">{saving ? <><Loader2 size={14} className="animate-spin" /> Menyimpan…</> : 'Simpan'}</Button>
+              <Button size="sm" variant="outline" onClick={() => setEdit(null)}>Batal</Button>
+            </div>
+          </div>
+        ) : rows === null ? <div className="flex justify-center py-6"><Loader2 className="animate-spin text-primary" size={18} /></div>
+          : rows.length === 0 ? <p className="text-sm text-muted-foreground py-4 text-center">Belum ada outlook. Klik “Tulis Outlook”.</p>
+            : (
+              <div className="divide-y divide-white/[0.06]">
+                {rows.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 py-2.5">
+                    <span className={`text-[9px] font-bold uppercase rounded-full px-2 py-0.5 shrink-0 ${r.bias === 'bullish' ? 'bg-emerald-500/15 text-emerald-400' : r.bias === 'bearish' ? 'bg-red-500/15 text-red-400' : 'bg-white/10 text-white/50'}`}>{r.bias}</span>
+                    <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{r.title}</p><p className="text-[10px] text-muted-foreground">{r.outlook_date}{!r.published && ' · draft'}</p></div>
+                    <button onClick={() => togglePub(r)} title={r.published ? 'Sembunyikan' : 'Terbitkan'} className={`p-1.5 rounded-lg hover:bg-white/5 ${r.published ? 'text-emerald-400' : 'text-white/40'}`}>{r.published ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+                    <button onClick={() => setEdit(r)} title="Edit" className="p-1.5 rounded-lg text-white/60 hover:bg-white/5"><Pencil size={15} /></button>
+                    <button onClick={() => del(r.id)} title="Hapus" className="p-1.5 rounded-lg text-red-400/70 hover:bg-white/5"><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Blog — admin kelola artikel, tampil publik di /blog & /blog/[slug] ──
+type BlogRow = { id: string; slug: string; title: string; excerpt: string | null; cover_url: string | null; content: string | null; tag: string | null; published: boolean; published_at: string | null }
+const blankBlog = (): BlogRow => ({ id: '', slug: '', title: '', excerpt: '', cover_url: '', content: '', tag: '', published: false, published_at: null })
+const slugify = (s: string) => s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 80)
+const MIG_BLOG = `create table if not exists blog_posts (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique not null, title text not null,
+  excerpt text, cover_url text, content text, tag text,
+  published boolean not null default false, published_at timestamptz,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+alter table blog_posts enable row level security;
+create policy "blog read published" on blog_posts for select using (published = true);
+create policy "blog admin all" on blog_posts for all
+  using (auth.jwt()->>'email' = 'vultype@gmail.com') with check (auth.jwt()->>'email' = 'vultype@gmail.com');`
+
+function BlogManager() {
+  const [rows, setRows] = useState<BlogRow[] | null>(null)
+  const [edit, setEdit] = useState<BlogRow | null>(null)
+  const [slugTouched, setSlugTouched] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+
+  async function load() {
+    const { data, error } = await createClient().from('blog_posts').select('*').order('created_at', { ascending: false })
+    if (error) { setNeedsMigration(true); setRows([]); return }
+    setRows((data as BlogRow[]) ?? [])
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function startNew() { setEdit(blankBlog()); setSlugTouched(false) }
+  function startEdit(r: BlogRow) { setEdit(r); setSlugTouched(true) }
+
+  async function save() {
+    if (!edit) return
+    if (!edit.title.trim()) { toast.error('Judul wajib diisi'); return }
+    const slug = (edit.slug.trim() || slugify(edit.title))
+    if (!slug) { toast.error('Slug tidak valid'); return }
+    setSaving(true)
+    const wasPublished = rows?.find(r => r.id === edit.id)?.published
+    const p: Record<string, unknown> = {
+      slug, title: edit.title.trim(), excerpt: edit.excerpt || null, cover_url: edit.cover_url || null,
+      content: edit.content || null, tag: edit.tag || null, published: edit.published, updated_at: new Date().toISOString(),
+    }
+    if (edit.published && !wasPublished) p.published_at = new Date().toISOString()
+    const { error } = edit.id
+      ? await createClient().from('blog_posts').update(p).eq('id', edit.id)
+      : await createClient().from('blog_posts').insert(p)
+    setSaving(false)
+    if (error) { toast.error(/duplicate|unique/i.test(error.message) ? 'Slug sudah dipakai artikel lain' : 'Gagal: ' + error.message); return }
+    toast.success('Artikel disimpan'); setEdit(null); load()
+  }
+  async function del(id: string) { if (!confirm('Hapus artikel ini?')) return; const { error } = await createClient().from('blog_posts').delete().eq('id', id); if (error) return toast.error(error.message); toast.success('Dihapus'); load() }
+  async function togglePub(r: BlogRow) { const patch: Record<string, unknown> = { published: !r.published, updated_at: new Date().toISOString() }; if (!r.published && !r.published_at) patch.published_at = new Date().toISOString(); const { error } = await createClient().from('blog_posts').update(patch).eq('id', r.id); if (error) return toast.error(error.message); load() }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2"><Newspaper size={15} className="text-primary" /> Blog</CardTitle>
+        {!needsMigration && !edit && <Button size="sm" className="gap-1.5" onClick={startNew}><Plus size={14} /> Artikel Baru</Button>}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {needsMigration ? <MigrationBanner sql={MIG_BLOG} /> : edit ? (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
+            <div><label className="text-xs font-semibold text-muted-foreground">Judul</label><input value={edit.title} onChange={e => setEdit({ ...edit, title: e.target.value, slug: slugTouched ? edit.slug : slugify(e.target.value) })} className={`${inp} mt-1`} /></div>
+            <div><label className="text-xs font-semibold text-muted-foreground">Slug (URL)</label><input value={edit.slug} onChange={e => { setSlugTouched(true); setEdit({ ...edit, slug: slugify(e.target.value) }) }} placeholder="judul-artikel" className={`${inp} mt-1 font-mono text-[13px]`} /><p className="text-[11px] text-muted-foreground/70 mt-1">/blog/{edit.slug || 'judul-artikel'}</p></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs font-semibold text-muted-foreground">Tag/Kategori</label><input value={edit.tag ?? ''} onChange={e => setEdit({ ...edit, tag: e.target.value })} placeholder="mis. Edukasi" className={`${inp} mt-1`} /></div>
+              <div><label className="text-xs font-semibold text-muted-foreground">URL Gambar Cover</label><input value={edit.cover_url ?? ''} onChange={e => setEdit({ ...edit, cover_url: e.target.value })} placeholder="https://…" className={`${inp} mt-1`} /></div>
+            </div>
+            <div><label className="text-xs font-semibold text-muted-foreground">Ringkasan (excerpt)</label><textarea value={edit.excerpt ?? ''} onChange={e => setEdit({ ...edit, excerpt: e.target.value })} rows={2} className={`${inp} mt-1 resize-none`} /></div>
+            <div><label className="text-xs font-semibold text-muted-foreground">Isi Artikel (Markdown)</label><textarea value={edit.content ?? ''} onChange={e => setEdit({ ...edit, content: e.target.value })} rows={12} placeholder="# Judul&#10;&#10;Paragraf...&#10;&#10;## Sub-judul&#10;- poin" className={`${inp} mt-1 font-mono text-[13px]`} /></div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={edit.published} onChange={e => setEdit({ ...edit, published: e.target.checked })} /> Terbitkan (published)</label>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">{saving ? <><Loader2 size={14} className="animate-spin" /> Menyimpan…</> : 'Simpan'}</Button>
+              <Button size="sm" variant="outline" onClick={() => setEdit(null)}>Batal</Button>
+              {edit.id && edit.published && <a href={`/blog/${edit.slug}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline ml-auto self-center">Lihat <ExternalLink size={12} /></a>}
+            </div>
+          </div>
+        ) : rows === null ? <div className="flex justify-center py-6"><Loader2 className="animate-spin text-primary" size={18} /></div>
+          : rows.length === 0 ? <p className="text-sm text-muted-foreground py-4 text-center">Belum ada artikel. Klik “Artikel Baru”.</p>
+            : (
+              <div className="divide-y divide-white/[0.06]">
+                {rows.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 py-2.5">
+                    {r.tag && <span className="text-[9px] font-bold uppercase rounded-full px-2 py-0.5 shrink-0 bg-primary/12 text-primary">{r.tag}</span>}
+                    <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{r.title}</p><p className="text-[10px] text-muted-foreground">/blog/{r.slug}{!r.published && ' · draft'}</p></div>
+                    <button onClick={() => togglePub(r)} title={r.published ? 'Sembunyikan' : 'Terbitkan'} className={`p-1.5 rounded-lg hover:bg-white/5 ${r.published ? 'text-emerald-400' : 'text-white/40'}`}>{r.published ? <Eye size={15} /> : <EyeOff size={15} />}</button>
+                    <button onClick={() => startEdit(r)} title="Edit" className="p-1.5 rounded-lg text-white/60 hover:bg-white/5"><Pencil size={15} /></button>
+                    <button onClick={() => del(r.id)} title="Hapus" className="p-1.5 rounded-lg text-red-400/70 hover:bg-white/5"><Trash2 size={15} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -766,7 +968,7 @@ export default function AdminPage() {
   const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo'>('users')
+  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi'>('users')
 
   useEffect(() => {
     if (!sub.loading && !sub.isAdmin) router.replace('/hub')
@@ -884,6 +1086,7 @@ export default function AdminPage() {
           <button onClick={() => setTab('content')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'content' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Konten & Branding</button>
           <button onClick={() => setTab('marketing')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'marketing' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Marketing & Iklan</button>
           <button onClick={() => setTab('seo')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'seo' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>SEO & Analytics</button>
+          <button onClick={() => setTab('publikasi')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'publikasi' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Outlook & Blog</button>
         </div>
 
         {loading ? (
@@ -947,9 +1150,14 @@ export default function AdminPage() {
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <MetaPixelManager />
           </div>
-        ) : (
+        ) : tab === 'seo' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <SeoManager />
+          </div>
+        ) : (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <DailyOutlookManager />
+            <BlogManager />
           </div>
         )}
       </main>

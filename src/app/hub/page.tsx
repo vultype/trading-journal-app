@@ -9,8 +9,14 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import {
   Activity, BookOpen, ArrowRight, LogOut, Loader2, Sparkles, Gauge, Bell, Landmark,
-  LineChart, Lock, UserCog, FlaskConical, Calculator, TrendingUp, Crown, Calendar, ShieldCheck, ChevronRight,
+  LineChart, Lock, UserCog, FlaskConical, Calculator, TrendingUp, TrendingDown, Minus, Crown, Calendar, ShieldCheck, ChevronRight, Newspaper, CalendarDays,
 } from 'lucide-react'
+
+type OutlookTeaser = { outlook_date: string; title: string; bias: string; summary: string | null }
+const biasMeta = (b: string) => b === 'bullish'
+  ? { t: 'Bullish', c: 'text-emerald-400 bg-emerald-500/12 border-emerald-500/25', ic: TrendingUp }
+  : b === 'bearish' ? { t: 'Bearish', c: 'text-red-400 bg-red-500/12 border-red-500/25', ic: TrendingDown }
+  : { t: 'Netral', c: 'text-white/60 bg-white/[0.06] border-white/15', ic: Minus }
 
 const fmtDate = (d: Date | null) => d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
@@ -19,6 +25,7 @@ export default function HubPage() {
   const sub = useSubscription()
   const [name, setName] = useState<string>('')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [outlook, setOutlook] = useState<OutlookTeaser | null | undefined>(undefined)
 
   useEffect(() => {
     const sb = createClient()
@@ -27,6 +34,8 @@ export default function HubPage() {
       if (!user) { router.replace('/login?next=%2Fhub'); return }
       setName((user.user_metadata?.full_name as string) || (user.user_metadata?.name as string) || user.email?.split('@')[0] || 'Trader')
       sb.from('app_config').select('logo_url').eq('id', 1).maybeSingle().then(({ data: cfg }) => setLogoUrl((cfg?.logo_url as string | null) ?? null))
+      sb.from('daily_outlook').select('outlook_date, title, bias, summary').eq('published', true).order('outlook_date', { ascending: false }).limit(1).maybeSingle()
+        .then(({ data: o }) => setOutlook((o as OutlookTeaser | null) ?? null))
     })
   }, [router])
 
@@ -59,6 +68,7 @@ export default function HubPage() {
           {logoUrl ? <BrandLogo url={logoUrl} /> : <span className="text-xl font-black tracking-tight">Datalitiq</span>}
         </div>
         <div className="flex items-center gap-1">
+          <Link href="/blog" className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-white/50 hover:text-white px-3 py-2 transition-colors"><Newspaper size={14} /> Blog</Link>
           <Link href="/account" className="flex items-center gap-1.5 text-xs font-medium text-white/50 hover:text-white px-3 py-2 transition-colors"><UserCog size={14} /> Akun</Link>
           <button onClick={logout} className="flex items-center gap-1.5 text-xs font-medium text-white/50 hover:text-white px-3 py-2 transition-colors"><LogOut size={14} /> Keluar</button>
         </div>
@@ -116,6 +126,31 @@ export default function HubPage() {
             </div>
           </div>
         </div>
+
+        {/* Daily Outlook XAU/USD */}
+        <Link href="/daily-outlook" className="group relative block rounded-3xl border border-white/10 bg-white/[0.02] overflow-hidden mb-5 hover:border-primary/25 transition-colors">
+          <div className="absolute -right-8 -top-8 w-40 h-40 bg-primary/10 blur-[60px] rounded-full pointer-events-none" />
+          <div className="relative p-5 md:p-6 flex items-center gap-4">
+            <span className="flex items-center justify-center w-11 h-11 rounded-2xl bg-primary/15 ring-1 ring-primary/30 text-primary shrink-0"><CalendarDays size={20} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Daily Outlook · XAU/USD</p>
+                {outlook && (() => { const m = biasMeta(outlook.bias); return <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-bold ${m.c}`}><m.ic size={9} /> {m.t}</span> })()}
+              </div>
+              {outlook === undefined ? (
+                <p className="text-sm text-white/40 mt-1">Memuat outlook…</p>
+              ) : outlook ? (
+                <>
+                  <p className="text-base font-black tracking-tight truncate mt-0.5">{outlook.title}</p>
+                  {outlook.summary && <p className="text-[12px] text-white/50 mt-0.5 line-clamp-1">{outlook.summary}</p>}
+                </>
+              ) : (
+                <p className="text-sm text-white/50 mt-0.5">Pandangan harian emas segera hadir — cek kembali nanti.</p>
+              )}
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 text-[12px] font-semibold text-primary">Lihat <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" /></span>
+          </div>
+        </Link>
 
         {/* Tools bonus (Pro-only) */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
