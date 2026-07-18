@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
+import { Toaster } from '@/components/ui/toaster'
 import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
@@ -1128,6 +1129,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white">
+      <Toaster />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[360px] bg-red-500/8 blur-[150px] rounded-full pointer-events-none" />
       <header className="relative max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         <Link href="/hub" className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors"><ArrowLeft size={16} /> Ke Hub</Link>
