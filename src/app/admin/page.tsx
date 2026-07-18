@@ -870,6 +870,62 @@ function BlogManager() {
   )
 }
 
+// ── Beri Akses Pro Manual — admin buat langganan 'aktif' langsung utk email tertentu ──
+// (gratis/komplimen/testing). Insert payment_orders via sesi admin (RLS: policy "admin
+// orders" for all using is_admin() — sudah tersedia, tak perlu service_role/API terpisah).
+const GRANT_DURATIONS = [1, 3, 6, 12]
+function ManualProGrant({ users, onGranted }: { users: AdminUser[]; onGranted: () => void }) {
+  const [email, setEmail] = useState('')
+  const [months, setMonths] = useState(1)
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  const match = users.filter(u => email.trim().length > 1 && u.email.toLowerCase().includes(email.trim().toLowerCase())).slice(0, 6)
+  const exact = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase())
+
+  async function grant() {
+    if (!exact) { toast.error('Pilih user dari daftar (harus sudah terdaftar/pernah login).'); return }
+    setBusy(true)
+    const { error } = await createClient().from('payment_orders').insert({
+      user_id: exact.id, plan: 'terminal', months, base_amount: 0, unique_code: 0, total: 0,
+      status: 'aktif', method: 'admin_grant',
+      expires_at: new Date(Date.now() + months * 30 * 86_400_000).toISOString(),
+    })
+    setBusy(false)
+    if (error) { toast.error('Gagal: ' + error.message); return }
+    toast.success(`${exact.email} sekarang Pro (${months} bulan)`)
+    setEmail(''); setOpen(false); onGranted()
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Crown size={15} className="text-primary" /> Beri Akses Pro Manual</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">Aktifkan langganan Pro langsung untuk user tertentu tanpa pembayaran (komplimen/testing). User harus sudah pernah daftar/login.</p>
+        <div className="relative">
+          <input value={email} onChange={e => { setEmail(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} placeholder="Cari email user…" className="w-full rounded-lg border border-border/60 bg-black/20 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+          {open && match.length > 0 && !exact && (
+            <div className="absolute z-10 mt-1 w-full rounded-lg border border-border/60 bg-[#0b0f0e] shadow-xl overflow-hidden">
+              {match.map(u => (
+                <button key={u.id} onClick={() => { setEmail(u.email); setOpen(false) }} className="block w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors">{u.email}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        {exact && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Durasi:</span>
+            {GRANT_DURATIONS.map(m => (
+              <button key={m} onClick={() => setMonths(m)} className={`rounded-md px-2.5 py-1 text-xs font-bold transition-colors ${months === m ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-white/50 hover:text-white/80'}`}>{m} bln</button>
+            ))}
+          </div>
+        )}
+        <Button onClick={grant} disabled={busy || !exact} size="sm" className="gap-1.5">{busy ? <><Loader2 size={14} className="animate-spin" /> Memproses…</> : <><Crown size={14} /> Berikan Akses Pro</>}</Button>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -1094,6 +1150,7 @@ export default function AdminPage() {
         ) : tab === 'users' ? (
           <div className="space-y-6">
             {/* Pesanan menunggu aktivasi */}
+            <ManualProGrant users={users} onGranted={load} />
             <div className="[&_.text-primary]:text-primary"><PaymentVerificationManager users={users} /></div>
 
             {/* Tabel user + langganan */}
