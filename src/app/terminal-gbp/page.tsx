@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase'
 import { useSubscription } from '@/hooks/useSubscription'
 import { TradingViewChart } from '@/components/terminal/TradingViewChart'
 import {
@@ -21,6 +22,7 @@ import type { MacroPoint } from '@/lib/fred'
 import {
   Activity, ArrowLeft, Loader2, Gauge, Landmark, Users, BookOpen, LayoutDashboard,
   TrendingUp, TrendingDown, Minus, Clock, Signal, Scale, GitBranch, Info, ShieldCheck, Flag, Circle,
+  Brain, Sparkles, Target, AlertTriangle, Eye,
 } from 'lucide-react'
 
 // ── data hooks (polling ringan; semua route server sudah ber-cache) ──
@@ -155,6 +157,56 @@ function MacroRow({ p, corr }: { p: MacroPoint | undefined; corr: number }) {
   )
 }
 
+// ── Analisa AI GBP ──
+type GbpAi = {
+  verdict: 'Bullish' | 'Bearish' | 'Netral'; confidence: number; keputusan: 'BELI' | 'JUAL' | 'TUNGGU'
+  keputusanAlasan: string; conviction: string; headline: string; executive: string
+  confluence: { faktor: string; arah: 'bullish' | 'bearish' | 'netral'; catatan: string }[]
+  technical: string; macro: string; sentiment: string
+  levelKunci: { support: string; resistance: string }
+  plan: { bias: string; entry: string; sl: string; tp: string; invalidation: string }
+  scenarios: { kondisi: string; aksi: string }[]; risks: string[]; watch: string[]; fetchedAt: string
+}
+
+// Signal meter: gauge horizontal −100..+100 dengan jarum di skor gabungan.
+function SignalGauge({ score, label, confidence }: { score: number; label: string; confidence: number }) {
+  const pos = clamp((score + 100) / 2, 0, 100)
+  const c = label === 'BULLISH' ? '#34d399' : label === 'BEARISH' ? '#f87171' : 'rgba(255,255,255,0.6)'
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-2">
+        <p className="text-xl font-black" style={{ color: c }}>{label === 'BULLISH' ? '↗ BULLISH' : label === 'BEARISH' ? '↘ BEARISH' : '→ NETRAL'}</p>
+        <p className="text-[11px] text-white/45">skor <b className="text-white/80 tabular-nums">{Math.round(score)}</b> · confidence <b className="text-white/80 tabular-nums">{confidence}%</b></p>
+      </div>
+      <div className="relative h-3 rounded-full" style={{ background: 'linear-gradient(90deg, rgba(248,113,113,0.5), rgba(255,255,255,0.08) 50%, rgba(52,211,153,0.5))' }}>
+        <span className="absolute left-1/2 top-0 bottom-0 w-px bg-white/25" />
+        <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white ring-2 ring-[#0b100e] shadow transition-all" style={{ left: `${pos}%` }} />
+      </div>
+      <div className="flex justify-between text-[9px] font-bold mt-1"><span className="text-red-400">BEARISH −100</span><span className="text-white/30">0</span><span className="text-emerald-400">+100 BULLISH</span></div>
+      <div className="mt-3">
+        <div className="flex justify-between text-[10px] text-white/45 mb-1"><span>Tingkat keyakinan (kesepakatan pilar)</span><span className="tabular-nums font-bold text-white/70">{confidence}%</span></div>
+        <div className="h-1.5 rounded-full bg-white/[0.06]"><div className="h-full rounded-full transition-all" style={{ width: `${confidence}%`, background: confidence > 66 ? '#34d399' : confidence > 40 ? '#fbbf24' : '#f87171' }} /></div>
+      </div>
+    </div>
+  )
+}
+
+// Baris konfluensi per-timeframe (bias + RSI + momentum) — seperti MtfPanel emas.
+function TfRow({ t, d }: { t: string; d: TFData | undefined }) {
+  if (!d) return <div className="flex items-center justify-between py-2 border-t border-white/[0.05] first:border-t-0"><span className="text-[12px] font-bold w-10">{t}</span><span className="text-[11px] text-white/30">memuat…</span></div>
+  const c = d.bias.label === 'BULLISH' ? 'text-emerald-400 bg-emerald-500/10' : d.bias.label === 'BEARISH' ? 'text-red-400 bg-red-500/10' : 'text-white/50 bg-white/5'
+  return (
+    <div className="flex items-center justify-between gap-2 py-2 border-t border-white/[0.05] first:border-t-0">
+      <span className="text-[12px] font-bold w-10">{t}</span>
+      <span className={`text-[10px] font-bold rounded px-2 py-0.5 ${c}`}>{d.bias.label}</span>
+      <span className="text-[10px] text-white/40 tabular-nums">RSI {d.rsi.toFixed(0)}</span>
+      <span className="text-[10px] text-white/40">{d.structure.label}</span>
+      <span className={`text-[11px] font-bold tabular-nums w-10 text-right ${d.momentum >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{d.momentum >= 0 ? '+' : ''}{Math.round(d.momentum)}</span>
+    </div>
+  )
+}
+const arahC = (a: string) => a === 'bullish' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : a === 'bearish' ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-white/50 bg-white/5 border-white/10'
+
 const TABS = [
   { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard },
   { id: 'teknikal', label: 'Teknikal', icon: Activity },
@@ -170,6 +222,10 @@ export default function TerminalGbpPage() {
   const [tab, setTab] = useState<Tab>('ringkasan')
   const [now, setNow] = useState(Date.now())
   const regimeRef = useRef<RegimePhase | undefined>(undefined)
+  const [ai, setAi] = useState<GbpAi | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [aiPrompt, setAiPrompt] = useState('')
 
   const isAdmin = sub.isAdmin
   const feed = useGbpFeed(isAdmin)
@@ -209,6 +265,41 @@ export default function TerminalGbpPage() {
   const q = feed.quote
   const scColor = sc.label === 'BULLISH' ? 'text-emerald-400' : sc.label === 'BEARISH' ? 'text-red-400' : 'text-white/70'
 
+  // ── Analisa AI: bangun snapshot GBP → POST ke route admin ──
+  async function runAi() {
+    if (!q || aiLoading) return
+    setAiLoading(true); setAiError(null)
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { setAiError('Sesi habis — login ulang.'); setAiLoading(false); return }
+      const fmtTf = (d: TFData | undefined) => d ? `${d.bias.label}/RSI${d.rsi.toFixed(0)}/MACD${d.macd.hist >= 0 ? '+' : ''}${d.macd.hist.toFixed(5)}/${d.structure.label}` : 'n/a'
+      const bars = (d: TFData | undefined, n: number) => d ? d.candles.slice(-n).map(c => `${c.o.toFixed(5)}/${c.h.toFixed(5)}/${c.l.toFixed(5)}/${c.c.toFixed(5)}`) : []
+      const hh = new Date(now).getUTCHours()
+      const session_ = hh >= 12 && hh < 16 ? 'London × New York' : hh >= 7 && hh < 12 ? 'London' : hh >= 16 && hh < 21 ? 'New York' : 'Asia'
+      const snap = {
+        price: q.price, changePct: +q.changePct.toFixed(3), session: session_,
+        signal: { label: sc.label, overall: Math.round(sc.overall), confidence: sc.confidence, macro: Math.round(sc.macro), tech: Math.round(sc.tech), senti: Math.round(sc.senti) },
+        regime: regime?.label ?? 'n/a', adx: +(feed.tf.M15?.adx ?? 0).toFixed(0),
+        tf: { M5: fmtTf(feed.tf.M5), M15: fmtTf(feed.tf.M15), H1: fmtTf(feed.tf.H1), H4: fmtTf(feed.tf.H4), D1: fmtTf(feed.tf.D1) },
+        us: { dollar: us.dollar?.value, dollarPrior: us.dollar?.prior, us10y: us.us10y?.value, us02y: us.us02y?.value, cpi: us.cpi?.value, fedfunds: us.fedfunds?.value, nfp: us.nfp?.value },
+        uk: { uk10y: uk.uk10y?.value, uk10yPrior: uk.uk10y?.prior, sonia: uk.sonia?.value, ukcpi: uk.ukcpi?.value, ukunrate: uk.ukunrate?.value },
+        rateDiff: rateDiff != null ? +rateDiff.toFixed(2) : null,
+        riskSentiment: riskOn > 0.1 ? 'risk-on (dukung GBP)' : riskOn < -0.1 ? 'risk-off (dukung USD)' : 'netral', riskOn: +riskOn.toFixed(2),
+        riskAssets: { spy: cross?.SPY?.changePct, qqq: cross?.QQQ?.changePct, vix: cross?.VIXY?.changePct, uup: cross?.UUP?.changePct },
+        cot: cot ? { date: cot.date, fundsNet: cot.funds.net, fundsDelta: cot.funds.deltaNet, commNet: cot.commercials.net, retailNet: cot.retail.net } : null,
+        candlesM5: bars(feed.tf.M5, 30), candlesM15: bars(feed.tf.M15, 20),
+        userPrompt: aiPrompt,
+      }
+      const res = await fetch('/api/terminal/gbp-ai-analysis', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(snap),
+      })
+      const j = await res.json()
+      if (!res.ok || j.error) throw new Error(j.error || 'gagal analisa')
+      setAi(j)
+    } catch (e) { setAiError(e instanceof Error ? e.message : 'gagal analisa') } finally { setAiLoading(false) }
+  }
+
   return (
     <div className="min-h-screen bg-[#060a09] text-white">
       {/* Header */}
@@ -235,6 +326,81 @@ export default function TerminalGbpPage() {
       <main className="max-w-6xl mx-auto px-4 py-5 space-y-4">
         {tab === 'ringkasan' && (
           <>
+            {/* Analisa AI GBP/USD */}
+            <section className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.06] to-transparent p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+                <p className="text-sm font-bold flex items-center gap-2"><Brain size={16} className="text-primary" /> Analisa AI GBP/USD <span className="text-[8px] font-bold uppercase rounded-full bg-primary/15 text-primary px-1.5 py-0.5">Datalitiq AI</span></p>
+                <button onClick={runAi} disabled={aiLoading || !q} className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-lg px-3.5 py-2 text-[12px] font-bold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-lg shadow-primary/20">
+                  {aiLoading ? <><Loader2 size={13} className="animate-spin" /> Menganalisa…</> : <><Sparkles size={13} /> {ai ? 'Analisa Ulang' : 'Jalankan Analisa AI'}</>}
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mb-3">
+                <input value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Konteks opsional — mis. scalping sesi London, fokus level entry"
+                  className="flex-1 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[12px] outline-none focus:border-primary/40 placeholder:text-white/25" />
+              </div>
+              {aiError && <p className="text-[12px] text-red-400 flex items-center gap-1.5 mb-2"><AlertTriangle size={13} /> {aiError}</p>}
+              {!ai && !aiLoading && !aiError && <p className="text-[12px] text-white/45">Gabungkan teknikal M5/M15/H1 + duel makro Fed vs BoE + sentimen & COT jadi satu keputusan: BELI / JUAL / TUNGGU.</p>}
+              {ai && (
+                <div className="space-y-4">
+                  {/* Keputusan hero */}
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    <div className={`rounded-xl border p-3.5 ${ai.keputusan === 'BELI' ? 'border-emerald-500/30 bg-emerald-500/[0.07]' : ai.keputusan === 'JUAL' ? 'border-red-500/30 bg-red-500/[0.07]' : 'border-amber-500/25 bg-amber-500/[0.06]'}`}>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/40">Keputusan</p>
+                      <p className={`text-2xl font-black ${ai.keputusan === 'BELI' ? 'text-emerald-400' : ai.keputusan === 'JUAL' ? 'text-red-400' : 'text-amber-400'}`}>{ai.keputusan}</p>
+                      <p className="text-[10px] text-white/50 leading-snug mt-1">{ai.keputusanAlasan}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/40">Verdict · Confidence</p>
+                      <p className={`text-xl font-black ${ai.verdict === 'Bullish' ? 'text-emerald-400' : ai.verdict === 'Bearish' ? 'text-red-400' : 'text-white/70'}`}>{ai.verdict} · {ai.confidence}%</p>
+                      <p className="text-[10px] text-white/50 mt-1">Conviction: <b className="text-white/75">{ai.conviction}</b></p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/40 flex items-center gap-1"><Target size={10} /> Rencana</p>
+                      <p className="text-[11px] text-white/70 leading-relaxed mt-1"><b>Entry:</b> {ai.plan.entry || '—'}<br /><b>SL:</b> {ai.plan.sl || '—'} · <b>TP:</b> {ai.plan.tp || '—'}</p>
+                    </div>
+                  </div>
+                  <p className="text-[13px] font-bold text-white/90">{ai.headline}</p>
+                  <p className="text-[12px] text-white/60 leading-relaxed">{ai.executive}</p>
+                  {/* Konfluensi chips */}
+                  {ai.confluence.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {ai.confluence.map(c => (
+                        <span key={c.faktor} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${arahC(c.arah)}`} title={c.catatan}>
+                          {c.arah === 'bullish' ? <TrendingUp size={9} /> : c.arah === 'bearish' ? <TrendingDown size={9} /> : <Minus size={9} />} {c.faktor}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Detail teknikal/makro/sentimen */}
+                  <div className="grid md:grid-cols-3 gap-3">
+                    {([['Teknikal', ai.technical], ['Makro (Fed vs BoE)', ai.macro], ['Sentimen', ai.sentiment]] as const).map(([t, x]) => (
+                      <div key={t} className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">{t}</p>
+                        <p className="text-[11px] text-white/60 leading-relaxed">{x}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Skenario + risiko + watch */}
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Skenario</p>
+                      {ai.scenarios.map((s, i) => <p key={i} className="text-[11px] text-white/60 leading-relaxed mb-1.5"><b className="text-white/80">{s.kondisi}</b> → {s.aksi}</p>)}
+                    </div>
+                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5 flex items-center gap-1"><AlertTriangle size={10} className="text-amber-400" /> Risiko</p>
+                      {ai.risks.map(r => <p key={r} className="text-[11px] text-white/60 leading-relaxed mb-1">• {r}</p>)}
+                    </div>
+                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5 flex items-center gap-1"><Eye size={10} className="text-sky-400" /> Pantau</p>
+                      {ai.watch.map(w => <p key={w} className="text-[11px] text-white/60 leading-relaxed mb-1">• {w}</p>)}
+                      <p className="text-[10px] text-white/45 mt-2 pt-2 border-t border-white/[0.06]"><b>Invalidasi:</b> {ai.plan.invalidation || '—'}</p>
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-white/30">Analisa {new Date(ai.fetchedAt).toLocaleTimeString('id-ID')} WIB · S: {ai.levelKunci.support} · R: {ai.levelKunci.resistance} · bukan nasihat keuangan</p>
+                </div>
+              )}
+            </section>
+
             {/* Verdict hero */}
             <section className="rounded-2xl border border-white/[0.08] bg-[#0b100e] p-5 grid md:grid-cols-3 gap-4">
               <div>
@@ -249,8 +415,11 @@ export default function TerminalGbpPage() {
               </div>
             </section>
 
-            {/* Regime + rate differential */}
-            <div className="grid sm:grid-cols-2 gap-4">
+            {/* Signal meter + Regime + rate differential */}
+            <div className="grid lg:grid-cols-3 gap-4">
+              <Panel title="Signal Meter" icon={Gauge} info="Skor gabungan 3 pilar (Makro 30% · Teknikal 45% · Sentimen 25%) −100..+100, kerangka currency-pair.">
+                <SignalGauge score={sc.overall} label={sc.label} confidence={sc.confidence} />
+              </Panel>
               <Panel title="Regime Pasar" icon={Signal} info="Mesin sama dgn terminal emas (skor kekuatan tren M15 + histeresis + konteks M5/H1).">
                 {regime ? <><p className={`text-lg font-black ${regime.c}`}>{regime.label}</p><p className="text-[11px] text-white/50 mt-1">{regime.desc}</p></> : <p className="text-white/30 text-sm">Memuat…</p>}
               </Panel>
@@ -294,15 +463,27 @@ export default function TerminalGbpPage() {
               </div>
             </Panel>
 
-            {/* Konfluensi MTF */}
-            {conf && (
-              <Panel title="Konfluensi Timeframe" icon={Gauge} info="Kesepakatan bias M5/M15/H1.">
-                <div className="flex items-center gap-3">
-                  <p className={`text-lg font-black ${conf.label === 'BULLISH' ? 'text-emerald-400' : conf.label === 'BEARISH' ? 'text-red-400' : 'text-white/60'}`}>{conf.label}</p>
-                  <span className="text-[11px] text-white/45">{conf.bulls} bull / {conf.bears} bear · {conf.strength}</span>
-                </div>
+            {/* Konfluensi MTF + bias TF besar */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <Panel title="Konfluensi Timeframe (scalping)" icon={Gauge} info="Kesepakatan bias M5/M15/H1 — timeframe eksekusi scalping."
+                right={conf ? <span className={`text-[11px] font-black ${conf.label === 'BULLISH' ? 'text-emerald-400' : conf.label === 'BEARISH' ? 'text-red-400' : 'text-white/50'}`}>{conf.label} · {conf.strength}</span> : null}>
+                <TfRow t="M5" d={feed.tf.M5} />
+                <TfRow t="M15" d={feed.tf.M15} />
+                <TfRow t="H1" d={feed.tf.H1} />
+                {conf && <p className="text-[10px] text-white/40 mt-2 pt-2 border-t border-white/[0.06]">{conf.bulls} bullish / {conf.bears} bearish dari 3 TF — {conf.strength === 'kuat' ? 'searah penuh, sinyal paling bisa dipercaya.' : conf.strength === 'sedang' ? 'mayoritas searah — cukup selaras.' : 'campur — tunggu kesepakatan.'}</p>}
               </Panel>
-            )}
+              <Panel title="Bias Timeframe Besar" icon={TrendingUp} info="H4 & Daily = arah besar (angin latar) — konteks, bukan veto untuk scalping.">
+                <TfRow t="H4" d={feed.tf.H4} />
+                <TfRow t="D1" d={feed.tf.D1} />
+                {feed.tf.H4 && feed.tf.D1 && (
+                  <p className="text-[10px] text-white/40 mt-2 pt-2 border-t border-white/[0.06]">
+                    {feed.tf.H4.bias.label === feed.tf.D1.bias.label && feed.tf.H4.bias.label !== 'NETRAL'
+                      ? `H4 & Daily kompak ${feed.tf.H4.bias.label.toLowerCase()} — scalp searah lebih aman, lawan arah = target rapat.`
+                      : 'H4 & Daily belum kompak — tak ada tren besar dominan, dua arah sama-sama valid di zona.'}
+                  </p>
+                )}
+              </Panel>
+            </div>
           </>
         )}
 
