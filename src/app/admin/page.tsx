@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
 import { Toaster } from '@/components/ui/toaster'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper } from 'lucide-react'
+import { Confetti } from '@/components/ui/Confetti'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper, Wrench, PartyPopper, Bell } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import type { Trade, Transfer } from '@/types'
 
@@ -970,6 +971,41 @@ from auth.users where email = 'cahyaduadelapan@gmail.com';`}</code>
   )
 }
 
+// ── Dev Tools — testing manual komponen UI (toast, confetti) tanpa perlu memicu alur asli ──
+function DevToolsManager() {
+  const [confettiKey, setConfettiKey] = useState<number | null>(null)
+
+  function fireConfetti() {
+    setConfettiKey(Date.now())
+    setTimeout(() => setConfettiKey(null), 3600) // sedikit lebih lama dari durasi animasi (3500ms)
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Wrench size={15} className="text-primary" /> Dev Tools — Testing Notifikasi</CardTitle></CardHeader>
+      <CardContent className="space-y-5">
+        <p className="text-xs text-muted-foreground">Uji tampilan komponen notifikasi tanpa perlu memicu alur asli (bayar, upgrade, dll). Hanya terlihat di admin.</p>
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Bell size={12} /> Toast</p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.success('Berhasil disimpan — ini contoh toast sukses.')}><CheckCircle2 size={14} className="text-emerald-400" /> Success</Button>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.error('Gagal memproses — ini contoh toast error.')}><XCircle size={14} className="text-red-400" /> Error</Button>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.info('Informasi — ini contoh toast info.')}><Info size={14} className="text-sky-400" /> Info</Button>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><PartyPopper size={12} /> Popup Confetti</p>
+          <Button size="sm" className="gap-1.5" onClick={fireConfetti}><PartyPopper size={14} /> Tembak Confetti</Button>
+        </div>
+
+        {confettiKey && <Confetti key={confettiKey} />}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -1068,7 +1104,7 @@ export default function AdminPage() {
   const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi'>('users')
+  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi' | 'dev'>('users')
 
   useEffect(() => {
     if (!sub.loading && !sub.isAdmin) router.replace('/hub')
@@ -1188,6 +1224,7 @@ export default function AdminPage() {
           <button onClick={() => setTab('marketing')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'marketing' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Marketing & Iklan</button>
           <button onClick={() => setTab('seo')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'seo' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>SEO & Analytics</button>
           <button onClick={() => setTab('publikasi')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'publikasi' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Outlook & Blog</button>
+          <button onClick={() => setTab('dev')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'dev' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Dev Tools</button>
         </div>
 
         {loading ? (
@@ -1256,10 +1293,14 @@ export default function AdminPage() {
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <SeoManager />
           </div>
-        ) : (
+        ) : tab === 'publikasi' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <DailyOutlookManager />
             <BlogManager />
+          </div>
+        ) : (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <DevToolsManager />
           </div>
         )}
       </main>
