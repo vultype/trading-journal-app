@@ -47,6 +47,7 @@ export default function HubPage() {
     { href: '/jurnal', icon: BookOpen, t: 'Jurnal Trading', d: 'Catat & evaluasi performa — Datalitiq Score, equity curve, insight AI.', tags: [{ i: LineChart, t: 'Statistik' }, { i: Gauge, t: 'Score' }] },
     { href: '/simulator', icon: FlaskConical, t: 'Strategy Backtesting', d: 'Uji & bandingkan rencana strategi tanpa risiko sebelum eksekusi nyata.', tags: [{ i: TrendingUp, t: 'Risk-reward' }, { i: Calculator, t: 'Sizing' }] },
     { href: '/kpi', icon: LineChart, t: 'KPI Projection', d: 'Proyeksikan pertumbuhan equity dari target & KPI trading kamu.', tags: [{ i: TrendingUp, t: 'Proyeksi' }, { i: Calculator, t: 'Compound' }] },
+    { href: '/lot-calculator', icon: Calculator, t: 'Kalkulator Lot', d: 'Hitung ukuran lot ideal dari risiko & stop loss + saran lot aman. Multi-pair: emas, forex, kripto, indeks.', tags: [{ i: ShieldCheck, t: 'Lot aman' }, { i: Gauge, t: 'Multi-pair' }] },
   ]
 
   return (
@@ -117,7 +118,7 @@ export default function HubPage() {
         </div>
 
         {/* Tools bonus (Pro-only) */}
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {BONUS_TOOLS.map(tool => (
             <div key={tool.href} className="rounded-3xl border border-white/10 bg-white/[0.02] p-6 flex flex-col hover:border-white/20 transition-colors">
               <span className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/5 ring-1 ring-white/10 mb-4"><tool.icon size={22} className="text-white/80" /></span>
