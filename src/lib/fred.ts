@@ -63,3 +63,10 @@ export async function fetchMacro(): Promise<MacroPoint[]> {
   const results = await Promise.all(FRED_SERIES.map(s => fetchSeries(s).catch(() => null)))
   return results.filter((r): r is MacroPoint => r !== null)
 }
+
+// Fetch daftar seri KUSTOM (di luar FRED_SERIES emas) — dipakai modul lain
+// (mis. makro UK utk terminal GBP) tanpa menyentuh pipeline emas.
+export async function fetchSeriesList(defs: FredSeries[]): Promise<MacroPoint[]> {
+  const results = await Promise.all(defs.map(s => fetchSeries(s).catch(() => null)))
+  return results.filter((r): r is MacroPoint => r !== null)
+}

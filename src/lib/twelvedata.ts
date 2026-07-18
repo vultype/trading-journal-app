@@ -15,8 +15,9 @@ function key() {
   return k
 }
 
-export async function fetchQuote(): Promise<TDQuote> {
-  const res = await fetch(`${BASE}/quote?symbol=${encodeURIComponent(SYMBOL)}&apikey=${key()}`, { cache: 'no-store' })
+// symbol default XAU/USD (terminal emas, tak berubah); bisa diisi simbol lain (mis. GBP/USD).
+export async function fetchQuote(symbol: string = SYMBOL): Promise<TDQuote> {
+  const res = await fetch(`${BASE}/quote?symbol=${encodeURIComponent(symbol)}&apikey=${key()}`, { cache: 'no-store' })
   const j = await res.json()
   if (j.status === 'error' || j.code) throw new Error(j.message || 'Twelve Data quote error')
   return {
