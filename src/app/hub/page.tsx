@@ -175,11 +175,11 @@ export default function HubPage() {
           ))}
         </div>
 
-        {/* Regime Lab — riset trending/ranging, khusus admin */}
+        {/* Backtest Journal — jurnal backtest strategi berbasis kalender, khusus admin */}
         {sub.isAdmin && (
-          <Link href="/regime-lab" className="group mt-6 flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/[0.04] p-4 hover:border-primary/40 transition-colors">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 text-primary shrink-0"><LineChart size={18} /></span>
-            <div className="flex-1 min-w-0"><p className="text-sm font-bold flex items-center gap-2">Regime Lab <span className="text-[8px] font-bold uppercase rounded-full bg-red-500/15 text-red-400 px-1.5 py-0.5">Admin</span></p><p className="text-xs text-white/45">Catat Trending/Ranging → bandingkan sesi & plan mana yang paling trending</p></div>
+          <Link href="/backtest-journal" className="group mt-6 flex items-center gap-3 rounded-2xl border border-primary/25 bg-primary/[0.04] p-4 hover:border-primary/40 transition-colors">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/15 text-primary shrink-0"><Calendar size={18} /></span>
+            <div className="flex-1 min-w-0"><p className="text-sm font-bold flex items-center gap-2">Backtest Journal <span className="text-[8px] font-bold uppercase rounded-full bg-red-500/15 text-red-400 px-1.5 py-0.5">Admin</span></p><p className="text-xs text-white/45">Catat Win/Lose per tanggal di kalender — win rate, streak & statistik strategi</p></div>
             <ChevronRight size={18} className="text-white/30 group-hover:text-white/60 transition-colors" />
           </Link>
         )}
