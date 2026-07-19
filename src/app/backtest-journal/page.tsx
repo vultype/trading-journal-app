@@ -19,14 +19,21 @@ type Entry = { id: number; date: string; result: Result; plan: string; rr: numbe
 type Cfg = { initEquity: number; riskPct: number; compound: boolean; defaultRR: number }
 const KEY = 'dtq_backtest_journal'
 const CFG_KEY = 'dtq_backtest_journal_cfg'
-const DEFCFG: Cfg = { initEquity: 1000, riskPct: 1, compound: false, defaultRR: 2 }
+const DEFCFG: Cfg = { initEquity: 10000000, riskPct: 1, compound: false, defaultRR: 2 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const todayKey = () => dateKey(new Date())
 const DOW = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']
 const fmtDayLabel = (key: string) => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }
-const fmtN = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 })
+const fmtRp = (n: number) => (n < 0 ? '-Rp ' : 'Rp ') + Math.round(Math.abs(n)).toLocaleString('id-ID')
+const fmtRpShort = (n: number) => {
+  const a = Math.abs(n), sign = n < 0 ? '-' : ''
+  if (a >= 1e9) return `${sign}Rp ${(a / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 1 })}M`
+  if (a >= 1e6) return `${sign}Rp ${(a / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 })}jt`
+  if (a >= 1e3) return `${sign}Rp ${Math.round(a / 1e3)}rb`
+  return `${sign}Rp ${Math.round(a)}`
+}
 const TooltipStyle = { background: '#0b100e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, fontSize: 11 }
 
 export default function BacktestJournalPage() {
@@ -126,6 +133,7 @@ export default function BacktestJournalPage() {
 
   const plansUsed = useMemo(() => Array.from(new Set(entries.map(e => e.plan))), [entries])
   const dayEntries = useMemo(() => entries.filter(e => e.date === selDate).sort((a, b) => a.id - b.id), [entries, selDate])
+  const allTrades = useMemo(() => [...entries].sort((a, b) => a.date === b.date ? b.id - a.id : b.date.localeCompare(a.date)), [entries])
   const monthLabel = new Date(view.y, view.m, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
   const bestPlan = byPlan[0]
 
@@ -160,7 +168,7 @@ export default function BacktestJournalPage() {
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mb-5">
           <p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3 flex items-center gap-1.5"><Wallet size={12} /> Pengaturan Akun</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div><label className="text-[10px] text-white/40">Modal Awal</label><input value={cfg.initEquity} onChange={e => setC({ initEquity: Number(e.target.value.replace(/[^\d]/g, '')) || 0 })} inputMode="numeric" className={`${numInput} mt-1`} /></div>
+            <div><label className="text-[10px] text-white/40">Modal Awal (Rp)</label><input value={cfg.initEquity} onChange={e => setC({ initEquity: Number(e.target.value.replace(/[^\d]/g, '')) || 0 })} inputMode="numeric" className={`${numInput} mt-1`} /><p className="text-[9px] text-white/35 mt-0.5">{fmtRp(cfg.initEquity)}</p></div>
             <div><label className="text-[10px] text-white/40">Risk / Trade (%)</label><input value={cfg.riskPct} onChange={e => setC({ riskPct: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} inputMode="decimal" className={`${numInput} mt-1`} /></div>
             <div><label className="text-[10px] text-white/40">RR Default</label><input value={cfg.defaultRR} onChange={e => setC({ defaultRR: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} inputMode="decimal" className={`${numInput} mt-1`} /></div>
             <div>
@@ -175,7 +183,7 @@ export default function BacktestJournalPage() {
         {/* Stats atas */}
         {stats.total > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-            <StatBox label="Equity Akhir" value={fmtN(eq.final)} color={eq.final >= cfg.initEquity ? 'text-emerald-400' : 'text-red-400'} />
+            <StatBox label="Equity Akhir" value={fmtRpShort(eq.final)} color={eq.final >= cfg.initEquity ? 'text-emerald-400' : 'text-red-400'} />
             <StatBox label="Return" value={`${eq.returnPct >= 0 ? '+' : ''}${eq.returnPct.toFixed(1)}%`} color={eq.returnPct >= 0 ? 'text-emerald-400' : 'text-red-400'} />
             <StatBox label="Win Rate" value={`${Math.round(stats.winRate)}%`} color={stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'} />
             <StatBox label="Net R" value={`${stats.netR >= 0 ? '+' : ''}${stats.netR.toFixed(1)}R`} color={stats.netR >= 0 ? 'text-emerald-400' : 'text-red-400'} />
@@ -193,8 +201,8 @@ export default function BacktestJournalPage() {
                 <defs><linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={eq.final >= cfg.initEquity ? '#10b981' : '#ef4444'} stopOpacity={0.35} /><stop offset="95%" stopColor={eq.final >= cfg.initEquity ? '#10b981' : '#ef4444'} stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                 <XAxis dataKey="i" tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} width={54} tickFormatter={v => fmtN(Number(v))} />
-                <Tooltip contentStyle={TooltipStyle} formatter={(v) => [fmtN(Number(v)), 'Equity']} labelFormatter={l => `Trade ${l}`} />
+                <YAxis tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} width={58} tickFormatter={v => fmtRpShort(Number(v))} />
+                <Tooltip contentStyle={TooltipStyle} formatter={(v) => [fmtRp(Number(v)), 'Equity']} labelFormatter={l => `Trade ${l}`} />
                 <ReferenceLine y={cfg.initEquity} stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4" />
                 <Area type="monotone" dataKey="bal" stroke={eq.final >= cfg.initEquity ? '#10b981' : '#ef4444'} strokeWidth={2} fill="url(#eqGrad)" dot={eq.curve.length <= 25 ? { r: 2.5 } : false} />
               </AreaChart>
@@ -273,7 +281,7 @@ export default function BacktestJournalPage() {
                         <span className={`text-[9px] font-bold uppercase rounded px-1.5 py-0.5 shrink-0 ${e.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{e.result === 'win' ? 'WIN' : 'LOSE'}</span>
                         <span className="text-[11px] text-white/50">{e.plan}</span>
                         {e.rr != null && <span className="text-[10px] text-white/40">1:{e.rr}</span>}
-                        <span className={`text-[10px] font-bold tabular-nums ${pnl >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{pnl >= 0 ? '+' : ''}{fmtN(pnl)}</span>
+                        <span className={`text-[10px] font-bold tabular-nums ${pnl >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{pnl >= 0 ? '+' : ''}{fmtRp(pnl)}</span>
                         {e.note && <span className="text-[10px] text-white/35 truncate">· {e.note}</span>}
                         <button onClick={() => del(e.id)} className="ml-auto text-white/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" aria-label="Hapus"><Trash2 size={13} /></button>
                       </div>
@@ -284,6 +292,39 @@ export default function BacktestJournalPage() {
             </div>
           </div>
         </div>
+
+        {/* Daftar semua trade */}
+        {stats.total > 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden mt-5">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06]">
+              <LineChartIcon size={14} className="text-primary" /><p className="text-[13px] font-bold">Daftar Trade ({allTrades.length})</p>
+              <button onClick={resetAll} className="ml-auto inline-flex items-center gap-1 text-[11px] text-white/45 hover:text-red-400 transition-colors"><RotateCcw size={12} /> Hapus semua</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead><tr className="text-[10px] text-white/40 border-b border-white/[0.06]">
+                  <th className="text-left px-4 py-2">Tanggal</th><th className="text-left px-3">Hasil</th><th className="text-left px-3">Plan</th><th className="text-right px-3">RR</th><th className="text-right px-3">P&amp;L</th><th className="text-left px-3">Catatan</th><th className="w-10 px-3"></th>
+                </tr></thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {allTrades.map(e => {
+                    const pnl = eq.pnlById.get(e.id) ?? 0
+                    return (
+                      <tr key={e.id} className="hover:bg-white/[0.02] group">
+                        <td className="px-4 py-2 tabular-nums text-white/60 whitespace-nowrap">{(() => { const [y, m, d] = e.date.split('-'); return `${d}/${m}/${y.slice(2)}` })()}</td>
+                        <td className="px-3"><span className={`text-[9px] font-bold uppercase rounded px-1.5 py-0.5 ${e.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{e.result === 'win' ? 'WIN' : 'LOSE'}</span></td>
+                        <td className="px-3 text-white/70">{e.plan}</td>
+                        <td className="px-3 text-right text-white/50 tabular-nums">{e.rr != null ? `1:${e.rr}` : '—'}</td>
+                        <td className={`px-3 text-right font-bold tabular-nums whitespace-nowrap ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl >= 0 ? '+' : ''}{fmtRp(pnl)}</td>
+                        <td className="px-3 text-white/40 max-w-[160px] truncate">{e.note || '—'}</td>
+                        <td className="px-3 text-right"><button onClick={() => del(e.id)} className="text-white/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" aria-label="Hapus"><Trash2 size={13} /></button></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Perbandingan plan */}
         {stats.total > 0 && (
@@ -303,7 +344,7 @@ export default function BacktestJournalPage() {
                       <td className="text-right px-3 tabular-nums text-white/60">1:{p.avgWinRR.toFixed(1)}</td>
                       <td className={`text-right px-3 tabular-nums font-bold ${p.netR >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{p.netR >= 0 ? '+' : ''}{p.netR.toFixed(1)}R</td>
                       <td className={`text-right px-3 tabular-nums ${p.exp >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{p.exp >= 0 ? '+' : ''}{p.exp.toFixed(2)}R</td>
-                      <td className={`text-right px-4 tabular-nums font-bold ${p.netPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{p.netPnl >= 0 ? '+' : ''}{fmtN(p.netPnl)}</td>
+                      <td className={`text-right px-4 tabular-nums font-bold ${p.netPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{p.netPnl >= 0 ? '+' : ''}{fmtRpShort(p.netPnl)}</td>
                     </tr>
                   ))}
                 </tbody>
