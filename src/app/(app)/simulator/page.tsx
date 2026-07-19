@@ -150,6 +150,15 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
 
   function reset() { setTrades([]) }
 
+  // Hapus satu trade dari histori. Balance tiap baris kumulatif dari initEquity, jadi
+  // setelah hapus, balance & nomor urut baris SETELAHNYA harus dihitung ulang berantai.
+  function deleteTrade(id: number) {
+    setTrades(prev => {
+      let bal = initEquity
+      return prev.filter(t => t.id !== id).map((t, i) => { bal += t.pnl; return { ...t, id: i + 1, balance: bal } })
+    })
+  }
+
   function handleSavePlan() {
     if (!saveName.trim() || plans.length >= 5 || trades.length === 0) return
     const newPlan: Plan = {
@@ -476,11 +485,12 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">RR</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">P&L</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">Balance</th>
+                      <th className="w-8 px-2 py-2"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
                     {[...trades].reverse().map(t => (
-                      <tr key={t.id} className="hover:bg-muted/20">
+                      <tr key={t.id} className="hover:bg-muted/20 group">
                         <td className="px-3 py-2 text-muted-foreground">#{t.id}</td>
                         <td className="px-3 py-2">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${t.result === 'win' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
@@ -492,6 +502,12 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                           {t.pnl >= 0 ? '+' : ''}{fmt(t.pnl)}
                         </td>
                         <td className="px-3 py-2 text-right font-medium">{fmt(t.balance)}</td>
+                        <td className="px-2 py-2 text-right">
+                          <button onClick={() => deleteTrade(t.id)} title="Hapus trade ini" aria-label={`Hapus trade #${t.id}`}
+                            className="text-muted-foreground/40 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
