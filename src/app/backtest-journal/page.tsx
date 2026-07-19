@@ -11,11 +11,11 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts'
 import {
   ArrowLeft, Loader2, Trophy, X as XIcon, Trash2, RotateCcw, ChevronLeft, ChevronRight,
-  Calendar as CalIcon, Tag, Wallet, LineChart as LineChartIcon,
+  Calendar as CalIcon, Tag, Wallet, LineChart as LineChartIcon, Image as ImageIcon,
 } from 'lucide-react'
 
 type Result = 'win' | 'loss'
-type Entry = { id: number; date: string; result: Result; plan: string; rr: number | null; note: string }
+type Entry = { id: number; date: string; result: Result; plan: string; rr: number | null; note: string; chart?: string }
 type Cfg = { initEquity: number; riskPct: number; compound: boolean; defaultRR: number }
 const KEY = 'dtq_backtest_journal'
 const CFG_KEY = 'dtq_backtest_journal_cfg'
@@ -46,6 +46,7 @@ export default function BacktestJournalPage() {
   const [plan, setPlan] = useState('Umum')
   const [rr, setRr] = useState('2')
   const [note, setNote] = useState('')
+  const [chart, setChart] = useState('')
   const [view, setView] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
 
   useEffect(() => {
@@ -63,8 +64,9 @@ export default function BacktestJournalPage() {
 
   function add(result: Result) {
     const rrN = rr.trim() ? parseFloat(rr.replace(',', '.')) : cfg.defaultRR
-    setEntries(prev => [...prev, { id: Date.now() + Math.floor(Math.random() * 1000), date: selDate, result, plan: plan.trim() || 'Umum', rr: rrN && rrN > 0 ? rrN : null, note: note.trim() }])
-    setNote('')
+    const c = chart.trim()
+    setEntries(prev => [...prev, { id: Date.now() + Math.floor(Math.random() * 1000), date: selDate, result, plan: plan.trim() || 'Umum', rr: rrN && rrN > 0 ? rrN : null, note: note.trim(), chart: /^https?:\/\//i.test(c) ? c : undefined }])
+    setNote(''); setChart('')
   }
   const del = (id: number) => setEntries(prev => prev.filter(e => e.id !== id))
   const resetAll = () => { if (confirm('Hapus SEMUA entri jurnal backtest?')) setEntries([]) }
@@ -263,6 +265,11 @@ export default function BacktestJournalPage() {
                 <label className="text-[11px] font-bold uppercase tracking-widest text-white/40">Catatan (opsional)</label>
                 <input value={note} onChange={e => setNote(e.target.value)} placeholder="setup, alasan, dsb" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-primary/50" />
               </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-widest text-white/40 flex items-center gap-1"><ImageIcon size={11} /> Link Chart / Screenshot (opsional)</label>
+                <input value={chart} onChange={e => setChart(e.target.value)} placeholder="tradingview.com/x/… atau URL gambar" className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-primary/50" />
+                <p className="text-[9px] text-white/35 mt-0.5">Di TradingView: klik ikon kamera → “Salin tautan ke gambar chart”, lalu tempel di sini.</p>
+              </div>
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <button onClick={() => add('win')} className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] py-3 hover:bg-emerald-500/[0.14] transition-colors"><Trophy size={17} className="text-emerald-400" /><span className="text-sm font-black text-emerald-400">WIN</span></button>
                 <button onClick={() => add('loss')} className="flex items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/[0.08] py-3 hover:bg-red-500/[0.14] transition-colors"><XIcon size={17} className="text-red-400" /><span className="text-sm font-black text-red-400">LOSE</span></button>
@@ -283,7 +290,10 @@ export default function BacktestJournalPage() {
                         {e.rr != null && <span className="text-[10px] text-white/40">1:{e.rr}</span>}
                         <span className={`text-[10px] font-bold tabular-nums ${pnl >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'}`}>{pnl >= 0 ? '+' : ''}{fmtRp(pnl)}</span>
                         {e.note && <span className="text-[10px] text-white/35 truncate">· {e.note}</span>}
-                        <button onClick={() => del(e.id)} className="ml-auto text-white/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" aria-label="Hapus"><Trash2 size={13} /></button>
+                        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                          {e.chart && <a href={e.chart} target="_blank" rel="noopener noreferrer" title="Buka chart" className="text-primary/70 hover:text-primary"><ImageIcon size={13} /></a>}
+                          <button onClick={() => del(e.id)} className="text-white/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" aria-label="Hapus"><Trash2 size={13} /></button>
+                        </div>
                       </div>
                     )
                   })}
@@ -303,7 +313,7 @@ export default function BacktestJournalPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-[12px]">
                 <thead><tr className="text-[10px] text-white/40 border-b border-white/[0.06]">
-                  <th className="text-left px-4 py-2">Tanggal</th><th className="text-left px-3">Hasil</th><th className="text-left px-3">Plan</th><th className="text-right px-3">RR</th><th className="text-right px-3">P&amp;L</th><th className="text-left px-3">Catatan</th><th className="w-10 px-3"></th>
+                  <th className="text-left px-4 py-2">Tanggal</th><th className="text-left px-3">Hasil</th><th className="text-left px-3">Plan</th><th className="text-right px-3">RR</th><th className="text-right px-3">P&amp;L</th><th className="text-left px-3">Catatan</th><th className="text-center px-2">Chart</th><th className="w-10 px-3"></th>
                 </tr></thead>
                 <tbody className="divide-y divide-white/[0.04]">
                   {allTrades.map(e => {
@@ -316,6 +326,7 @@ export default function BacktestJournalPage() {
                         <td className="px-3 text-right text-white/50 tabular-nums">{e.rr != null ? `1:${e.rr}` : '—'}</td>
                         <td className={`px-3 text-right font-bold tabular-nums whitespace-nowrap ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl >= 0 ? '+' : ''}{fmtRp(pnl)}</td>
                         <td className="px-3 text-white/40 max-w-[160px] truncate">{e.note || '—'}</td>
+                        <td className="px-2 text-center">{e.chart ? <a href={e.chart} target="_blank" rel="noopener noreferrer" title="Buka chart" className="inline-flex text-primary/70 hover:text-primary"><ImageIcon size={14} /></a> : <span className="text-white/20">—</span>}</td>
                         <td className="px-3 text-right"><button onClick={() => del(e.id)} className="text-white/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" aria-label="Hapus"><Trash2 size={13} /></button></td>
                       </tr>
                     )
