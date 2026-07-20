@@ -1,6 +1,6 @@
 // Integrasi iPaymu API v2 (redirect payment) — server-side. Secret HANYA server-side.
 // Signature (per dok resmi iPaymu v2):
-//   payload      = JSON body, serialisasi ala PHP json_encode ('/' → '\/') — lihat ipaymuPayload
+//   payload      = JSON.stringify(body) — slash TIDAK di-escape (JSON_UNESCAPED_SLASHES)
 //   bodyHash     = lowercase( sha256( payload ) )
 //   stringToSign = METHOD(UPPER) + ':' + va + ':' + bodyHash + ':' + apiKey
 //   signature    = hex( HMAC-SHA256( stringToSign, apiKey ) )
@@ -23,13 +23,14 @@ export function ipaymuTimestamp(d = new Date()) {
   return `${j.getUTCFullYear()}${p(j.getUTCMonth() + 1)}${p(j.getUTCDate())}${p(j.getUTCHours())}${p(j.getUTCMinutes())}${p(j.getUTCSeconds())}`
 }
 
-// ⚠️ Serialisasi body HARUS meniru PHP json_encode: '/' di-escape jadi '\/'.
-// iPaymu (PHP) meng-encode ULANG body yang diterima untuk menghitung hash pembanding.
-// JSON.stringify JS tidak meng-escape '/', jadi tanpa ini hash kita ≠ hash mereka dan
-// server menolak dengan "unauthorized signature" (body kita berisi URL: returnUrl dll).
-// String hasil fungsi ini WAJIB dipakai untuk hash DAN sebagai body request (harus sama).
+// Serialisasi body. iPaymu memakai json_encode($body, JSON_UNESCAPED_SLASHES) di contoh
+// resminya → '/' TIDAK di-escape, persis seperti JSON.stringify bawaan JS.
+// DIVERIFIKASI langsung ke API sandbox iPaymu memakai kredensial demo publik:
+//   tanpa escape '/' → 200 Success ; dengan escape '\/' → 401 unauthorized signature.
+// Fungsi ini jadi SATU sumber string: dipakai untuk hash DAN sebagai body request,
+// sehingga keduanya mustahil berbeda.
 export function ipaymuPayload(body: unknown): string {
-  return JSON.stringify(body ?? {}).replace(/\//g, '\\/')
+  return JSON.stringify(body ?? {})
 }
 
 export function ipaymuSignature(method: string, va: string, apiKey: string, payload: string) {
@@ -89,7 +90,11 @@ export async function createIpaymuPayment(p: IpaymuParams): Promise<{ paymentUrl
   const data = j?.Data ?? j?.data
   const payUrl = data?.Url ?? data?.url
   if (status !== 200 || !payUrl) {
-    throw new Error(j?.Message || j?.message || `iPaymu error (status ${status || res.status})`)
+    const msg = j?.Message || j?.message || `status ${status || res.status}`
+    const mode = p.production ? 'PRODUKSI (my.ipaymu.com)' : 'SANDBOX (sandbox.ipaymu.com)'
+    // Sertakan mode + VA di pesan: penyebab tersering "unauthorized signature" adalah
+    // kredensial sandbox dipakai ke endpoint produksi (atau sebaliknya), atau VA salah.
+    throw new Error(`iPaymu: ${msg} — mode ${mode}, VA ${p.va}. Pastikan VA & API Key cocok dengan mode ini (Admin → Pembayaran).`)
   }
   return { paymentUrl: String(payUrl), sessionId: data?.SessionID ?? data?.sessionId }
 }
