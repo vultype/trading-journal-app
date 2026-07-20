@@ -38,12 +38,24 @@ export async function GET(req: Request) {
   return NextResponse.json({ config: configStatus() })
 }
 
+const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s)
+
 export async function POST(req: Request) {
   const deny = await requireAdmin(req); if (deny) return deny
+  const body = await req.json().catch(() => ({} as Record<string, unknown>))
+  const to = typeof body.to === 'string' ? body.to.trim() : ''
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 300) : ''
+  // Kirim ke alamat lain hanya bila formatnya valid — Resend menolak alamat ngawur
+  // dengan error yang membingungkan, lebih baik dicegat di sini.
+  if (to && !isEmail(to)) return NextResponse.json({ error: 'Format email tujuan tidak valid.' }, { status: 400 })
+
+  const target = to || ADMIN_EMAIL
   const result = await notifyAdmin('🔔 Tes notifikasi Datalitiq', [
     `Waktu: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`,
-    `Sumber: tombol uji di Admin → Dev Tools`,
-    `Status: jika Anda menerima pesan ini, notifikasi berfungsi`,
-  ])
-  return NextResponse.json({ config: configStatus(), result })
+    `Tujuan: ${target}`,
+    `Sumber: form uji di Admin → Dev Tools`,
+    ...(note ? [`Catatan: ${note}`] : []),
+    `Status: jika Anda menerima pesan ini, pengiriman email berfungsi`,
+  ], { to: target, skipTelegram: true })
+  return NextResponse.json({ config: configStatus(), result, sentTo: target })
 }

@@ -17,14 +17,14 @@ const FROM = process.env.RESEND_FROM || 'Datalitiq <onboarding@resend.dev>'
 export type ChannelResult = { configured: boolean; ok: boolean; detail: string }
 export type NotifyResult = { email: ChannelResult; telegram: ChannelResult }
 
-async function sendEmail(subject: string, html: string): Promise<ChannelResult> {
+async function sendEmail(subject: string, html: string, to: string = ADMIN_EMAIL): Promise<ChannelResult> {
   const key = process.env.RESEND_API_KEY
   if (!key) return { configured: false, ok: false, detail: 'RESEND_API_KEY belum diset di environment' }
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: FROM, to: [ADMIN_EMAIL], subject, html }),
+      body: JSON.stringify({ from: FROM, to: [to], subject, html }),
     })
     const j = await res.json().catch(() => ({}))
     if (res.ok) return { configured: true, ok: true, detail: `Terkirim (id ${j?.id ?? '-'}) dari ${FROM}` }
@@ -46,13 +46,20 @@ ${lines.map(l => {
 </table>`
 }
 
-export async function notifyAdmin(subject: string, lines: string[]): Promise<NotifyResult> {
+// opts.to → kirim ke alamat lain (dipakai form uji di Admin > Dev Tools). Default ke admin.
+// opts.skipTelegram → jangan fallback ke Telegram; saat menguji email kita ingin melihat
+// kegagalan email apa adanya, bukan tertutup oleh Telegram yang berhasil.
+export async function notifyAdmin(subject: string, lines: string[], opts: { to?: string; skipTelegram?: boolean } = {}): Promise<NotifyResult> {
   const out: NotifyResult = {
     email: { configured: false, ok: false, detail: 'belum dijalankan' },
     telegram: { configured: false, ok: false, detail: 'tidak dipakai (email berhasil)' },
   }
   try {
-    out.email = await sendEmail(subject, buildHtml(subject, lines))
+    out.email = await sendEmail(subject, buildHtml(subject, lines), opts.to || ADMIN_EMAIL)
+    if (opts.skipTelegram) {
+      out.telegram = { configured: telegramConfigured(), ok: false, detail: 'dilewati (mode uji email)' }
+      return out
+    }
     // Fallback Telegram hanya bila email gagal/belum dikonfigurasi
     if (!out.email.ok) {
       if (!telegramConfigured()) {

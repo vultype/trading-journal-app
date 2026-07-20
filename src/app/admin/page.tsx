@@ -992,6 +992,8 @@ function DevToolsManager() {
   const [confettiKey, setConfettiKey] = useState<number | null>(null)
   const [diag, setDiag] = useState<NotifDiag | null>(null)
   const [notifBusy, setNotifBusy] = useState(false)
+  const [notifTo, setNotifTo] = useState('')
+  const [notifNote, setNotifNote] = useState('')
 
   function fireConfetti() {
     setConfettiKey(Date.now())
@@ -1003,14 +1005,17 @@ function DevToolsManager() {
     try {
       const { data: { session } } = await createClient().auth.getSession()
       if (!session) { toast.error('Sesi habis, login ulang'); return }
-      const res = await fetch('/api/admin/notify-test', { method, headers: { Authorization: `Bearer ${session.access_token}` } })
+      const res = await fetch('/api/admin/notify-test', {
+        method,
+        headers: { Authorization: `Bearer ${session.access_token}`, ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}) },
+        ...(method === 'POST' ? { body: JSON.stringify({ to: notifTo.trim(), note: notifNote.trim() }) } : {}),
+      })
       const j = await res.json()
       if (!res.ok) { toast.error(j.error || 'Gagal'); return }
       setDiag(j)
       if (method === 'POST') {
-        if (j.result?.email?.ok) toast.success('Email terkirim — cek inbox/spam')
-        else if (j.result?.telegram?.ok) toast.info('Email gagal — terkirim via Telegram')
-        else toast.error('Notifikasi gagal, lihat detail di bawah')
+        if (j.result?.email?.ok) toast.success(`Email terkirim ke ${j.sentTo} — cek inbox/spam`)
+        else toast.error('Pengiriman gagal, lihat detail di bawah')
       }
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal') } finally { setNotifBusy(false) }
   }
@@ -1042,11 +1047,37 @@ function DevToolsManager() {
         <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5"><Megaphone size={12} /> Notifikasi Admin (Email / Telegram)</p>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => notifCall('GET')} disabled={notifBusy}><RefreshCw size={13} /> Cek Status</Button>
-              <Button size="sm" className="gap-1.5" onClick={() => notifCall('POST')} disabled={notifBusy}>{notifBusy ? <><Loader2 size={13} className="animate-spin" /> Mengirim…</> : <><Bell size={13} /> Kirim Notifikasi Uji</>}</Button>
-            </div>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => notifCall('GET')} disabled={notifBusy}><RefreshCw size={13} /> Cek Status</Button>
           </div>
+
+          {/* Form uji kirim — tujuan bisa diganti untuk mengecek deliverability ke provider lain */}
+          <form
+            className="rounded-lg border border-border/40 bg-background/40 p-3 mb-3 space-y-2"
+            onSubmit={(e) => { e.preventDefault(); notifCall('POST') }}
+          >
+            <div className="grid sm:grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Kirim ke</label>
+                <input
+                  type="email" value={notifTo} onChange={(e) => setNotifTo(e.target.value)}
+                  placeholder={diag?.config.target || 'vultype@gmail.com'}
+                  className="w-full h-9 px-2.5 rounded-md bg-background border border-border/60 text-[12px] outline-none focus:border-primary/60"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">Kosongkan = kirim ke {diag?.config.target || 'admin'}</p>
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Catatan (opsional)</label>
+                <input
+                  value={notifNote} onChange={(e) => setNotifNote(e.target.value)} maxLength={300}
+                  placeholder="mis. uji deliverability Gmail"
+                  className="w-full h-9 px-2.5 rounded-md bg-background border border-border/60 text-[12px] outline-none focus:border-primary/60"
+                />
+              </div>
+            </div>
+            <Button type="submit" size="sm" className="gap-1.5 w-full sm:w-auto" disabled={notifBusy}>
+              {notifBusy ? <><Loader2 size={13} className="animate-spin" /> Mengirim…</> : <><Bell size={13} /> Kirim Email Uji</>}
+            </Button>
+          </form>
           {!diag ? <p className="text-[11px] text-muted-foreground">Memuat status…</p> : (
             <div className="space-y-1">
               <p className="text-[11px] text-muted-foreground mb-1.5">Tujuan: <b className="text-foreground">{diag.config.target}</b></p>
