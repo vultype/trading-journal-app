@@ -982,13 +982,46 @@ from auth.users where email = 'cahyaduadelapan@gmail.com';`}</code>
 }
 
 // ── Dev Tools — testing manual komponen UI (toast, confetti) tanpa perlu memicu alur asli ──
+type NotifChannel = { configured: boolean; ok: boolean; detail: string }
+type NotifDiag = {
+  config: { target: string; resendKey: boolean; resendFrom: string; usingDefaultFrom: boolean; telegram: boolean }
+  result?: { email: NotifChannel; telegram: NotifChannel }
+}
+
 function DevToolsManager() {
   const [confettiKey, setConfettiKey] = useState<number | null>(null)
+  const [diag, setDiag] = useState<NotifDiag | null>(null)
+  const [notifBusy, setNotifBusy] = useState(false)
 
   function fireConfetti() {
     setConfettiKey(Date.now())
     setTimeout(() => setConfettiKey(null), 3600) // sedikit lebih lama dari durasi animasi (3500ms)
   }
+
+  async function notifCall(method: 'GET' | 'POST') {
+    setNotifBusy(true)
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { toast.error('Sesi habis, login ulang'); return }
+      const res = await fetch('/api/admin/notify-test', { method, headers: { Authorization: `Bearer ${session.access_token}` } })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'Gagal'); return }
+      setDiag(j)
+      if (method === 'POST') {
+        if (j.result?.email?.ok) toast.success('Email terkirim — cek inbox/spam')
+        else if (j.result?.telegram?.ok) toast.info('Email gagal — terkirim via Telegram')
+        else toast.error('Notifikasi gagal, lihat detail di bawah')
+      }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal') } finally { setNotifBusy(false) }
+  }
+  useEffect(() => { notifCall('GET') }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const Row = ({ ok, label, detail }: { ok: boolean; label: string; detail: string }) => (
+    <div className="flex items-start gap-2 py-1">
+      {ok ? <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" /> : <XCircle size={14} className="text-red-400 shrink-0 mt-0.5" />}
+      <div className="min-w-0"><p className="text-[12px] font-semibold">{label}</p><p className="text-[11px] text-muted-foreground break-words">{detail}</p></div>
+    </div>
+  )
 
   return (
     <Card>
@@ -1003,6 +1036,35 @@ function DevToolsManager() {
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.error('Gagal memproses — ini contoh toast error.')}><XCircle size={14} className="text-red-400" /> Error</Button>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => toast.info('Informasi — ini contoh toast info.')}><Info size={14} className="text-sky-400" /> Info</Button>
           </div>
+        </div>
+
+        {/* Diagnosa notifikasi admin (email/Telegram) — menampilkan error asli provider */}
+        <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5"><Megaphone size={12} /> Notifikasi Admin (Email / Telegram)</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => notifCall('GET')} disabled={notifBusy}><RefreshCw size={13} /> Cek Status</Button>
+              <Button size="sm" className="gap-1.5" onClick={() => notifCall('POST')} disabled={notifBusy}>{notifBusy ? <><Loader2 size={13} className="animate-spin" /> Mengirim…</> : <><Bell size={13} /> Kirim Notifikasi Uji</>}</Button>
+            </div>
+          </div>
+          {!diag ? <p className="text-[11px] text-muted-foreground">Memuat status…</p> : (
+            <div className="space-y-1">
+              <p className="text-[11px] text-muted-foreground mb-1.5">Tujuan: <b className="text-foreground">{diag.config.target}</b></p>
+              <Row ok={diag.config.resendKey} label="RESEND_API_KEY" detail={diag.config.resendKey ? 'Terpasang di environment' : 'Belum diset → email tidak akan terkirim (fallback ke Telegram)'} />
+              <Row ok={!diag.config.usingDefaultFrom} label={`Pengirim: ${diag.config.resendFrom}`}
+                detail={diag.config.usingDefaultFrom
+                  ? 'Memakai domain bawaan resend.dev — HANYA bisa mengirim ke email pemilik akun Resend. Set RESEND_FROM dengan domain terverifikasi agar andal.'
+                  : 'Memakai domain sendiri (terverifikasi di Resend)'} />
+              <Row ok={diag.config.telegram} label="Telegram (cadangan)" detail={diag.config.telegram ? 'Terpasang — dipakai bila email gagal' : 'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID belum diset'} />
+              {diag.result && (
+                <div className="mt-3 pt-3 border-t border-border/40 space-y-1">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1">Hasil Pengiriman Uji</p>
+                  <Row ok={diag.result.email.ok} label="Email (Resend)" detail={diag.result.email.detail} />
+                  <Row ok={diag.result.telegram.ok} label="Telegram" detail={diag.result.telegram.detail} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
