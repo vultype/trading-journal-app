@@ -30,8 +30,12 @@ create policy "admin read journal_notes" on journal_notes for select using (is_a
 create policy "admin read settings"      on user_settings for select using (is_admin());
 
 -- ── 4. Fungsi untuk ambil daftar user (email) — hanya admin ────────────────
+-- v2: tambah last_sign_in_at (login terakhir, native Supabase auth) — beda dari
+-- lastActive di UI admin yang berarti tanggal trade jurnal terakhir.
+-- DROP wajib: Postgres tak izinkan CREATE OR REPLACE mengubah tipe kembalian fungsi.
+drop function if exists admin_all_users();
 create or replace function admin_all_users()
-returns table (id uuid, email text, created_at timestamptz)
+returns table (id uuid, email text, created_at timestamptz, last_sign_in_at timestamptz)
 language plpgsql
 security definer
 set search_path = public
@@ -41,7 +45,7 @@ begin
     raise exception 'not authorized';
   end if;
   return query
-    select u.id, u.email::text, u.created_at
+    select u.id, u.email::text, u.created_at, u.last_sign_in_at
     from auth.users u
     order by u.created_at;
 end;

@@ -19,6 +19,16 @@ import type { Trade, Transfer } from '@/types'
 
 const fmt = (n: number) => rp(n)
 const fmtDate = (d: Date | null) => d ? d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+// Login terakhir: relatif ("3j lalu") kalau baru, tanggal biasa kalau lama — lebih cepat dibaca admin.
+const fmtLoginRel = (iso: string | null) => {
+  if (!iso) return null
+  const d = new Date(iso), diffMin = Math.floor((Date.now() - d.getTime()) / 60_000)
+  if (diffMin < 1) return 'baru saja'
+  if (diffMin < 60) return `${diffMin}m lalu`
+  if (diffMin < 1440) return `${Math.floor(diffMin / 60)}j lalu`
+  if (diffMin < 43200) return `${Math.floor(diffMin / 1440)}h lalu`
+  return fmtDate(d)
+}
 function addMonths(d: Date, m: number) { const x = new Date(d); x.setMonth(x.getMonth() + m); return x }
 
 function LogoManager() {
@@ -1087,11 +1097,11 @@ function PaymentVerificationManager({ users }: { users: AdminUser[] }) {
   )
 }
 
-type AdminUser = { id: string; email: string; created_at: string }
+type AdminUser = { id: string; email: string; created_at: string; last_sign_in_at: string | null }
 type PayRow = { user_id: string; plan: string; months: number; total: number; status: string; method: string | null; created_at: string; updated_at: string | null }
 
 type UserRow = {
-  id: string; email: string; created_at: string
+  id: string; email: string; created_at: string; lastLogin: string | null
   trades: number; wins: number; losses: number; pnl: number
   deposited: number; withdrawn: number; lastActive: string | null
   // langganan
@@ -1163,7 +1173,7 @@ export default function AdminPage() {
         daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)
         subStatus = daysLeft >= 0 ? 'pro' : 'expired'
       }
-      return { id: u.id, email: u.email, created_at: u.created_at, trades: ut.length, wins, losses, pnl, deposited, withdrawn, lastActive, sub: subStatus, expiresAt, daysLeft, plan, paid, lastMethod }
+      return { id: u.id, email: u.email, created_at: u.created_at, lastLogin: u.last_sign_in_at, trades: ut.length, wins, losses, pnl, deposited, withdrawn, lastActive, sub: subStatus, expiresAt, daysLeft, plan, paid, lastMethod }
     }).sort((a, b) => (b.sub === 'pro' ? 1 : 0) - (a.sub === 'pro' ? 1 : 0) || b.paid - a.paid || b.trades - a.trades)
   }, [users, trades, transfers, orders])
 
@@ -1255,7 +1265,7 @@ export default function AdminPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-white/[0.06] text-[11px] text-white/40">
-                      {['Pengguna', 'Langganan', 'Kadaluarsa', 'Dibayar', 'Trades', 'P&L', 'Aktivitas'].map((h, i) => (
+                      {['Pengguna', 'Langganan', 'Kadaluarsa', 'Login Terakhir', 'Dibayar', 'Trades', 'P&L', 'Trade Terakhir'].map((h, i) => (
                         <th key={h} className={`px-3 py-2.5 font-semibold ${i === 0 ? 'text-left' : i === 1 ? 'text-left' : 'text-right'}`}>{h}</th>
                       ))}
                     </tr>
@@ -1272,13 +1282,14 @@ export default function AdminPage() {
                         </td>
                         <td className="px-3 py-3">{subBadge(r)}{r.lastMethod && r.sub !== 'none' && <span className="ml-1.5 text-[10px] text-white/35 uppercase">{r.lastMethod}</span>}</td>
                         <td className="px-3 py-3 text-right text-xs">{r.sub === 'none' ? <span className="text-white/30">—</span> : <span className={r.daysLeft != null && r.daysLeft < 7 ? (r.daysLeft < 0 ? 'text-red-400' : 'text-amber-400') : 'text-white/70'}>{fmtDate(r.expiresAt)}{r.daysLeft != null && r.daysLeft >= 0 ? <span className="text-white/35"> ({r.daysLeft}h)</span> : ''}</span>}</td>
+                        <td className="px-3 py-3 text-right text-xs">{r.lastLogin ? <span className="text-white/60">{fmtLoginRel(r.lastLogin)}</span> : <span className="text-amber-400/70" title="Daftar tapi belum pernah login">belum login</span>}</td>
                         <td className="px-3 py-3 text-right font-semibold text-emerald-400">{r.paid > 0 ? fmt(r.paid) : <span className="text-white/30">—</span>}</td>
                         <td className="px-3 py-3 text-right">{r.trades}</td>
                         <td className={`px-3 py-3 text-right font-bold ${r.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{r.pnl !== 0 ? `${r.pnl >= 0 ? '+' : ''}${fmt(r.pnl)}` : <span className="text-white/30">—</span>}</td>
                         <td className="px-3 py-3 text-right text-xs text-white/45">{r.lastActive ?? '—'}</td>
                       </tr>
                     ))}
-                    {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-white/40">Tidak ada pengguna.</td></tr>}
+                    {filtered.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-white/40">Tidak ada pengguna.</td></tr>}
                   </tbody>
                 </table>
               </div>
