@@ -1,9 +1,8 @@
-import { NextResponse, after } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { pkgPrice, planBase, planName, DURATIONS, type PlanId } from '@/lib/pricing'
 import { createMayarInvoice } from '@/lib/mayar'
 import { getPaymentConfig } from '@/lib/payment-config'
-import { notifyAdmin } from '@/lib/notify-admin'
 
 // Buat order + invoice Mayar. Harga DIHITUNG DI SERVER (jangan percaya client).
 // User diverifikasi dari access token Supabase (Authorization: Bearer ...).
@@ -55,14 +54,9 @@ export async function POST(req: Request) {
     // Simpan id invoice Mayar — dipakai webhook untuk memverifikasi status ke sumbernya.
     await sb.from('payment_orders').update({ gateway_ref: pay.invoiceId }).eq('id', order.id)
 
-    after(() => notifyAdmin('🛒 Checkout baru (Mayar)', [
-      `Invoice: ${order.invoice_number}`,
-      `User: ${user.email ?? user.id}`,
-      `Paket: ${planName(plan)} ${dur.months} bulan`,
-      `Nominal: Rp${amount.toLocaleString('id-ID')}`,
-      `Status: menunggu pembayaran di Mayar`,
-    ]))
-
+    // Catatan: TIDAK ada notifikasi admin di sini. Untuk pembayaran online, admin
+    // hanya perlu tahu saat pembayaran BENAR-BENAR lunas — notifikasi itu dikirim
+    // dari route webhook (mayar/notification) setelah status diverifikasi ke Mayar.
     return NextResponse.json({ paymentUrl: pay.paymentUrl, orderId: order.id, invoice: order.invoice_number, amount })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal membuat transaksi' }, { status: 502 })
