@@ -10,14 +10,18 @@
 //    logo pun punya fallback teks lewat atribut alt yang diberi gaya.
 import { BANK, BASE, rp } from './pricing'
 
-const BRAND = '#0B1220'      // slate near-black — tombol & judul
-const ACCENT = '#D4A017'     // emas tua — aksen XAU, lebih korporat dari amber terang
-const OK = '#047857'
-const TEXT = '#111827'
-const BODY = '#374151'       // teks paragraf, sedikit lebih lembut dari judul
-const MUTED = '#6B7280'
-const LINE = '#E6EAF0'
-const CANVAS = '#EEF1F6'     // latar luar, abu kebiruan — terasa SaaS
+// Palet mengikuti warna merek aplikasi: --primary oklch(0.55 0.15 160) = #008B52.
+// Nilainya di-hardcode karena email tidak bisa membaca CSS variable.
+const BRAND = '#008B52'        // hijau Datalitiq — tombol & aksen
+const BRAND_DARK = '#00632E'   // hijau tua — angka besar & judul di atas tint
+const BRAND_TINT = '#F2FAF6'   // latar panel hijau paling muda
+const BRAND_EDGE = '#C4E5D5'   // garis panel hijau
+const BRAND_CHIP = '#DCF0E6'   // chip di dalam panel
+const TEXT = '#0F1B16'         // near-black kehijauan, bukan abu netral
+const BODY = '#3C4A44'         // teks paragraf
+const MUTED = '#6B7A73'
+const LINE = '#E3E9E6'
+const CANVAS = '#EEF3F0'       // latar luar, abu kehijauan
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif"
 
 // Spesifikasi logo email — dipakai kode DAN ditampilkan sebagai panduan di admin,
@@ -94,15 +98,15 @@ const rule = () => `<div style="height:1px;background:${LINE};margin:28px 0"></d
 // dibuat menonjol karena pembulatan nominal adalah penyebab gagal verifikasi
 // yang paling sering terjadi.
 const amountBox = (total: number, code?: number) => `
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 20px;border:1px solid #EAD9A6;border-radius:12px;background:#FDFAF1">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 20px;border:1px solid ${BRAND_EDGE};border-radius:12px;background:${BRAND_TINT}">
 <tr><td style="padding:24px;text-align:center">
   ${label('Nominal Transfer')}
-  <div style="margin:12px 0 6px;font:700 36px/1.05 ${FONT};color:#6B4E0B;letter-spacing:-1px">${rp(total)}</div>
-  ${code ? `<div style="display:inline-block;margin-top:8px;padding:7px 14px;border-radius:6px;background:#F5E9C8;font:600 12px/1.4 ${FONT};color:#6B4E0B">3 angka terakhir (${code}) adalah kode unik Anda &middot; jangan dibulatkan</div>` : ''}
+  <div style="margin:12px 0 6px;font:700 36px/1.05 ${FONT};color:${BRAND_DARK};letter-spacing:-1px">${rp(total)}</div>
+  ${code ? `<div style="display:inline-block;margin-top:8px;padding:7px 14px;border-radius:6px;background:${BRAND_CHIP};font:600 12px/1.4 ${FONT};color:${BRAND_DARK}">3 angka terakhir (${code}) adalah kode unik Anda &middot; jangan dibulatkan</div>` : ''}
 </td></tr></table>`
 
 const bankBox = () => `
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid ${LINE};border-radius:12px;background:#FAFBFD">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid ${LINE};border-radius:12px;background:#F8FAF9">
 <tr><td style="padding:22px 24px">
   ${label('Transfer Ke')}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;font:400 14px/1.5 ${FONT};color:${TEXT}">
@@ -115,7 +119,7 @@ const bankBox = () => `
 const featureList = (items: string[]) => `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 22px">
 ${items.map(i => `<tr>
-<td width="26" valign="top" style="padding:8px 0;font:700 14px/1.55 ${FONT};color:${ACCENT}">&#9679;</td>
+<td width="26" valign="top" style="padding:8px 0;font:700 14px/1.55 ${FONT};color:${BRAND}">&#9679;</td>
 <td style="padding:8px 0;font:400 14px/1.6 ${FONT};color:${BODY}">${i}</td></tr>`).join('')}
 </table>`
 
@@ -127,7 +131,7 @@ ${items.map(i => `<tr>
 function brandMark(logoUrl?: string) {
   if (!logoUrl) {
     return `<span style="font:700 20px/1 ${FONT};color:${TEXT};letter-spacing:-0.4px">Datalitiq</span>
-<span style="font:500 11px/1 ${FONT};color:${MUTED};margin-left:9px;letter-spacing:0.3px">XAU/USD TERMINAL</span>`
+<span style="font:600 11px/1 ${FONT};color:${BRAND};margin-left:9px;letter-spacing:0.4px">XAU/USD TERMINAL</span>`
   }
   return `<img src="${logoUrl}" alt="Datalitiq" height="${EMAIL_LOGO_SPEC.displayH}"
 style="height:${EMAIL_LOGO_SPEC.displayH}px;width:auto;max-width:200px;display:block;border:0;outline:none;text-decoration:none;font:700 18px/1 ${FONT};color:${TEXT}">`
@@ -144,10 +148,10 @@ function shell(bodyHtml: string, preheader: string, siteUrl: string, logoUrl?: s
 <div style="display:none;max-height:0;overflow:hidden;opacity:0">${preheader}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${CANVAS};padding:40px 12px">
 <tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid ${LINE}">
+<table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid ${LINE}">
 
   <!-- garis aksen tipis: identitas merek tanpa header blok gelap yang berat -->
-  <tr><td style="height:3px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
+  <tr><td style="height:3px;background:${BRAND};font-size:0;line-height:0">&nbsp;</td></tr>
 
   <tr><td style="padding:26px 36px 22px;border-bottom:1px solid ${LINE}">
     ${brandMark(logoUrl)}
@@ -155,7 +159,7 @@ function shell(bodyHtml: string, preheader: string, siteUrl: string, logoUrl?: s
 
   <tr><td style="padding:34px 36px 30px">${bodyHtml}</td></tr>
 
-  <tr><td style="padding:24px 36px 30px;border-top:1px solid ${LINE};background:#FAFBFD">
+  <tr><td style="padding:24px 36px 30px;border-top:1px solid ${LINE};background:#F8FAF9">
     <p style="margin:0 0 14px;font:400 13px/1.6 ${FONT};color:${BODY}">
       Ada pertanyaan? Balas email ini, atau hubungi kami di
       <a href="https://wa.me/${BANK.wa}" style="color:${TEXT};font-weight:600;text-decoration:none">WhatsApp +${BANK.wa}</a>.
@@ -167,7 +171,7 @@ function shell(bodyHtml: string, preheader: string, siteUrl: string, logoUrl?: s
       <a href="${siteUrl}/blog" style="color:${MUTED};text-decoration:none">Blog</a> &nbsp;&middot;&nbsp;
       <a href="${unsub}" style="color:${MUTED};text-decoration:none">Kelola preferensi email</a>
     </p>
-    <p style="margin:0;font:400 10px/1.6 ${FONT};color:#9AA3B2">
+    <p style="margin:0;font:400 10px/1.6 ${FONT};color:#96A29B">
       Anda menerima email ini karena terdaftar di Datalitiq.<br>
       Seluruh analisa bersifat informasi, bukan saran investasi. Trading mengandung risiko kerugian.
     </p>
@@ -263,10 +267,10 @@ export function renderTemplate(id: TemplateId, v: TemplateVars): { subject: stri
     case 'pro_active': {
       const subject = `Akses Pro Anda sudah aktif`
       return { subject, html: shell(
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-radius:12px;background:#ECFDF5;border:1px solid #A7F3D0">
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-radius:12px;background:${BRAND_TINT};border:1px solid ${BRAND_EDGE}">
          <tr><td style="padding:20px 24px;text-align:center">
-           <div style="font:700 17px/1.3 -apple-system,Arial,sans-serif;color:#065F46">Pembayaran diterima &middot; Akses Pro aktif</div>
-           ${v.expiresAt ? `<div style="margin-top:6px;font:400 13px/1.5 -apple-system,Arial,sans-serif;color:#047857">Berlaku sampai <b>${v.expiresAt}</b></div>` : ''}
+           <div style="font:700 17px/1.3 ${FONT};color:${BRAND_DARK}">Pembayaran diterima &middot; Akses Pro aktif</div>
+           ${v.expiresAt ? `<div style="margin-top:7px;font:400 13px/1.5 ${FONT};color:${BODY}">Berlaku sampai <b style="color:${TEXT}">${v.expiresAt}</b></div>` : ''}
          </td></tr></table>` +
         p(`Hai <b>${nama}</b>, terima kasih. Pembayaran Anda sudah kami verifikasi dan seluruh fitur ${v.planLabel ? `<b>${v.planLabel}</b>` : 'Pro'} kini terbuka.`) +
         rule() + label('Mulai Dari Sini') + 
@@ -276,7 +280,7 @@ export function renderTemplate(id: TemplateId, v: TemplateVars): { subject: stri
           'Pakai Kalkulator Lot agar ukuran posisi sesuai risiko Anda',
           'Catat setiap posisi di Jurnal Trading — bonus langganan Pro',
         ]) +
-        btn(`${site}/terminal`, 'Buka Terminal', OK) +
+        btn(`${site}/terminal`, 'Buka Terminal') +
         small(`Ada kendala akses? Balas email ini, kami bantu.`),
         `Pembayaran diterima. Semua fitur Pro sudah terbuka.`, site, v.logoUrl) }
     }
