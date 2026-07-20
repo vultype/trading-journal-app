@@ -145,19 +145,42 @@ function CheckoutInner() {
     if (!userId) return
     track('InitiateCheckout', { content_name: `Paket ${planName(plan)}`, value: base, currency: 'IDR' })
     setBusy(true)
+
+    // Popup HARUS dibuka sinkron di sini — saat masih dalam konteks gestur klik.
+    // Kalau window.open dipanggil setelah `await fetch`, browser menganggapnya
+    // bukan hasil klik langsung dan memblokirnya. Jadi dibuka blank dulu, lalu
+    // diarahkan ke URL pembayaran begitu datang.
+    const w = 460, h = 760
+    const y = window.top!.outerHeight / 2 + window.top!.screenY - h / 2
+    const x = window.top!.outerWidth / 2 + window.top!.screenX - w / 2
+    const popup = window.open('about:blank', 'datalitiq_pay',
+      `popup,width=${w},height=${h},left=${Math.max(0, x)},top=${Math.max(0, y)}`)
+    // Halaman tunggu ringkas selama menunggu URL (agar popup tak tampak macet).
+    if (popup) popup.document.write('<title>Memuat pembayaran…</title><body style="font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0;color:#334155">Menyiapkan pembayaran…</body>')
+
     try {
       const sb = createClient()
       const { data: { session } } = await sb.auth.getSession()
-      if (!session) { toast.error('Sesi habis, silakan login ulang'); setBusy(false); return }
+      if (!session) { toast.error('Sesi habis, silakan login ulang'); popup?.close(); setBusy(false); return }
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ plan, months: dur.months, origin: window.location.origin }),
       })
       const j = await res.json()
-      if (!res.ok || !j.paymentUrl) { toast.error(j.error || 'Gagal memulai pembayaran'); setBusy(false); return }
-      window.location.href = j.paymentUrl
+      if (!res.ok || !j.paymentUrl) { toast.error(j.error || 'Gagal memulai pembayaran'); popup?.close(); setBusy(false); return }
+
+      if (popup && !popup.closed) {
+        popup.location.href = j.paymentUrl
+        popup.focus()
+      } else {
+        // Popup diblokir browser → jangan buntu, arahkan di tab ini saja.
+        window.location.href = j.paymentUrl
+        return
+      }
+      setBusy(false)
     } catch (e) {
+      popup?.close()
       toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan')
       setBusy(false)
     }

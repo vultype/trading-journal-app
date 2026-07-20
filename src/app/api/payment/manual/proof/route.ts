@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { notifyAdmin } from '@/lib/notify-admin'
 
@@ -41,14 +41,14 @@ export async function POST(req: Request) {
       .eq('id', orderId)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    notifyAdmin('📎 Bukti transfer diunggah — perlu verifikasi', [
+    after(() => notifyAdmin('📎 Bukti transfer diunggah — perlu verifikasi', [
       `Invoice: ${order.invoice_number ?? '-'}`,
       `User: ${user.email ?? user.id}`,
       `Total: Rp${Number(order.total).toLocaleString('id-ID')} (kode unik ${order.unique_code})`,
       `Durasi: ${order.months} bulan`,
       `Bukti: ${proofUrl}`,
       `Tindakan: buka Admin → Pengguna & Langganan → Verifikasi Pembayaran`,
-    ])
+    ]))
 
     return NextResponse.json({ ok: true, status: 'menunggu_verifikasi' })
   } catch (err) {

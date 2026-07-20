@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { pkgPrice, planBase, planName, DURATIONS, genUniqueCode, BANK, type PlanId } from '@/lib/pricing'
 import { notifyAdmin } from '@/lib/notify-admin'
@@ -38,14 +38,17 @@ export async function POST(req: Request) {
     }).select('id, invoice_number, total, unique_code, base_amount').single()
     if (oErr || !order) return NextResponse.json({ error: 'Gagal membuat pesanan: ' + (oErr?.message ?? '-') }, { status: 500 })
 
-    // Notifikasi admin (gagal-diam, tak menghalangi user)
-    notifyAdmin('🧾 Checkout baru (transfer manual)', [
+    // Notifikasi admin — dijalankan lewat after() supaya SELESAI setelah respons
+    // terkirim. Tanpa ini (fire-and-forget tanpa await), serverless membekukan
+    // fungsi begitu respons dikirim dan fetch ke Resend tak pernah rampung —
+    // itu sebab notifikasi tidak terkirim selama ini.
+    after(() => notifyAdmin('🧾 Checkout baru (transfer manual)', [
       `Invoice: ${order.invoice_number ?? '-'}`,
       `User: ${user.email ?? user.id}`,
       `Paket: ${planName(plan)} ${dur.months} bulan`,
       `Total transfer: Rp${Number(order.total).toLocaleString('id-ID')} (kode unik ${order.unique_code})`,
       `Status: menunggu transfer`,
-    ])
+    ]))
 
     return NextResponse.json({
       orderId: order.id, invoice: order.invoice_number,

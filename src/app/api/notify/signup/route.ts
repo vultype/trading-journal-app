@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { notifyAdmin } from '@/lib/notify-admin'
 
@@ -28,11 +28,13 @@ export async function POST(req: Request) {
       email = raw
     }
 
-    notifyAdmin('👤 Pendaftar baru di Datalitiq', [
+    // after() → notifikasi rampung setelah respons; tanpa ini fetch ke Resend
+    // dibekukan serverless sebelum selesai (sebab notifikasi signup tak masuk).
+    after(() => notifyAdmin('👤 Pendaftar baru di Datalitiq', [
       `Email: ${email}${verified ? '' : ' (belum konfirmasi email)'}`,
       `Nama: ${name || '-'}`,
       `Waktu: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`,
-    ])
+    ]))
     return NextResponse.json({ ok: true })
   } catch {
     return NextResponse.json({ ok: true }) // notifikasi tak boleh menggagalkan pendaftaran

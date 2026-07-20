@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getMayarInvoice, mapMayarStatus, isKnownMayarStatus } from '@/lib/mayar'
 import { getPaymentConfig } from '@/lib/payment-config'
 import { grantTopup } from '@/lib/credits-server'
+import { notifyAdmin } from '@/lib/notify-admin'
 
 // Webhook Mayar.
 //
@@ -116,6 +117,17 @@ export async function POST(req: Request) {
         if (exp > baseMs) baseMs = exp
       }
       await sb.from('payment_orders').update({ expires_at: addMonths(new Date(baseMs), updated.months || 1).toISOString() }).eq('id', updated.id)
+    }
+
+    // Notifikasi admin saat pembayaran BENAR-BENAR lunas (sudah diverifikasi ke Mayar).
+    // Transisi ke aktif dari status lain saja — cegah kirim ganda dari webhook susulan.
+    if (updated && status === 'aktif' && order.status !== 'aktif') {
+      const { data: u } = await sb.auth.admin.getUserById(updated.user_id)
+      after(() => notifyAdmin('✅ Pembayaran LUNAS (Mayar)', [
+        `User: ${u?.user?.email ?? updated.user_id}`,
+        `Paket: ${updated.plan} ${updated.months} bulan`,
+        `Akses Pro sudah otomatis aktif.`,
+      ]))
     }
 
     return NextResponse.json({ ok: true, status, mayarStatus: verified.status, verified: true })
