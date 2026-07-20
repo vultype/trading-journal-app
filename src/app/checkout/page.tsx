@@ -23,7 +23,7 @@ declare global {
 // Gateway aktif TIDAK lagi dari env — diambil dari /api/payment/gateway (diatur admin
 // lewat UI). Endpoint itu hanya mengembalikan nama gateway + client key Midtrans (publik);
 // semua secret tetap server-side.
-type GatewayInfo = { gateway: 'none' | 'doku' | 'ipaymu' | 'midtrans' | 'manual'; midtransClientKey: string; midtransProduction: boolean }
+type GatewayInfo = { gateway: 'none' | 'doku' | 'ipaymu' | 'midtrans' | 'mayar' | 'manual'; midtransClientKey: string; midtransProduction: boolean }
 // Order transfer manual yang sudah dibuat (menunggu transfer + bukti)
 type ManualOrder = { orderId: string; invoice: string; baseAmount: number; uniqueCode: number; total: number }
 
@@ -306,9 +306,9 @@ function CheckoutInner() {
                   </div>
                 </div>
               )
-            ) : activeGw === 'doku' || activeGw === 'ipaymu' ? (
+            ) : activeGw === 'doku' || activeGw === 'ipaymu' || activeGw === 'mayar' ? (
               <>
-                <button onClick={() => payRedirect(activeGw === 'doku' ? '/api/payment/doku/create' : '/api/payment/ipaymu/create')} disabled={busy || !userId}
+                <button onClick={() => payRedirect(`/api/payment/${activeGw}/create`)} disabled={busy || !userId}
                   className="group w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-primary/25">
                   {busy ? <><Loader2 size={16} className="animate-spin" /> Mengalihkan ke pembayaran…</> : <><CreditCard size={16} /> Bayar Online <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></>}
                 </button>

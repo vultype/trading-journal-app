@@ -1390,12 +1390,14 @@ type GwCfg = {
   doku: { clientId: string; secretKeyMask: string; production: boolean }
   ipaymu: { va: string; apiKeyMask: string; production: boolean }
   midtrans: { clientKey: string; serverKeyMask: string; production: boolean }
+  mayar: { apiKeyMask: string; production: boolean }
 }
 const GW_LIST = [
   { id: 'manual', label: 'Transfer Manual', note: 'Transfer bank + upload bukti · verifikasi admin' },
   { id: 'doku', label: 'DOKU', note: 'Redirect checkout · kartu, QRIS, e-wallet, VA' },
   { id: 'ipaymu', label: 'iPaymu', note: 'Redirect payment · QRIS, VA, retail, e-wallet' },
   { id: 'midtrans', label: 'Midtrans', note: 'Snap popup · kartu, QRIS, e-wallet, VA' },
+  { id: 'mayar', label: 'Mayar', note: 'Invoice link · QRIS, VA, e-wallet, kartu' },
 ] as const
 
 function PaymentGatewayManager() {
@@ -1406,9 +1408,10 @@ function PaymentGatewayManager() {
   // Input secret dibiarkan kosong = "jangan ubah". Server hanya menimpa bila diisi.
   const [dokuSecret, setDokuSecret] = useState('')
   const [ipaymuKey, setIpaymuKey] = useState('')
+  const [mayarKey, setMayarKey] = useState('')
   const [midServer, setMidServer] = useState('')
   const [testing, setTesting] = useState(false)
-  const [testRes, setTestRes] = useState<{ ok: boolean; message: string; mode?: string; endpoint?: string; va?: string; apiKey?: string; channels?: number } | null>(null)
+  const [testRes, setTestRes] = useState<{ gw: string; ok: boolean; message: string; detail?: string; mode?: string; endpoint?: string; va?: string; apiKey?: string; channels?: number } | null>(null)
 
   async function authFetch(init?: RequestInit) {
     const { data: { session } } = await createClient().auth.getSession()
@@ -1437,6 +1440,7 @@ function PaymentGatewayManager() {
           activeGateway: cfg.activeGateway,
           doku: { clientId: cfg.doku.clientId, secretKey: dokuSecret, production: cfg.doku.production },
           ipaymu: { va: cfg.ipaymu.va, apiKey: ipaymuKey, production: cfg.ipaymu.production },
+          mayar: { apiKey: mayarKey, production: cfg.mayar.production },
           midtrans: { clientKey: cfg.midtrans.clientKey, serverKey: midServer, production: cfg.midtrans.production },
         }),
       })
@@ -1461,7 +1465,7 @@ function PaymentGatewayManager() {
       })
       const j = await res.json()
       if (!res.ok) { toast.error(j.error || 'Gagal tes'); setTesting(false); return }
-      setTestRes(j)
+      setTestRes({ ...j, gw: gateway })
       if (j.ok) toast.success('Kredensial iPaymu valid'); else toast.error('Ditolak iPaymu: ' + j.message)
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal tes') } finally { setTesting(false) }
   }
@@ -1536,7 +1540,7 @@ alter table public.payment_config enable row level security;`} /></CardContent>
             </Button>
             <span className="text-[11px] text-muted-foreground">Simpan dulu, baru tes. Tidak membuat transaksi.</span>
           </div>
-          {testRes && (
+          {testRes?.gw === 'ipaymu' && (
             <div className={`rounded-xl border p-3 text-[12px] ${testRes.ok ? 'border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-300' : 'border-red-500/30 bg-red-500/[0.07] text-red-300'}`}>
               <p className="font-bold flex items-center gap-1.5">{testRes.ok ? <><CheckCircle2 size={13} /> Kredensial valid</> : <><XCircle size={13} /> Ditolak: {testRes.message}</>}</p>
               <p className="text-[11px] opacity-80 mt-1">Mode <b>{testRes.mode}</b> → {testRes.endpoint} · VA <b>{testRes.va}</b> · API Key <b>{testRes.apiKey}</b>{testRes.channels != null ? ` · ${testRes.channels} channel aktif` : ''}</p>
@@ -1546,6 +1550,32 @@ alter table public.payment_config enable row level security;`} /></CardContent>
           <div className="rounded-xl bg-muted/30 border border-border/40 p-3">
             <p className="text-[11px] text-muted-foreground/80 leading-relaxed">Ambil VA & API Key di dashboard iPaymu → <strong>Integrasi</strong>. Set <strong>URL Notifikasi</strong> di iPaymu ke:</p>
             <code className="block rounded bg-black/40 border border-border/50 px-2 py-1.5 text-[11px] text-emerald-300 mt-1.5 overflow-x-auto">https://datalitiq.com/api/payment/ipaymu/notification</code>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">Mayar</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {secretField('API Key', cfg.mayar.apiKeyMask, mayarKey, setMayarKey)}
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.mayar.production} onChange={e => set({ mayar: { ...cfg.mayar, production: e.target.checked } })} /> Mode Produksi <span className="text-[11px] text-muted-foreground">(uncheck = sandbox / api.mayar.club)</span></label>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => testGateway('mayar')} disabled={testing}>
+              {testing ? <><Loader2 size={14} className="animate-spin" /> Menguji…</> : <><RefreshCw size={14} /> Test Koneksi</>}
+            </Button>
+            <span className="text-[11px] text-muted-foreground">Simpan dulu, baru tes. Tidak membuat transaksi.</span>
+          </div>
+          {testRes?.gw === 'mayar' && (
+            <div className={`rounded-xl border p-3 text-[12px] ${testRes.ok ? 'border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-300' : 'border-red-500/30 bg-red-500/[0.07] text-red-300'}`}>
+              <p className="font-bold flex items-center gap-1.5">{testRes.ok ? <><CheckCircle2 size={13} /> Kredensial valid</> : <><XCircle size={13} /> Ditolak</>}</p>
+              <p className="text-[11px] opacity-80 mt-1">{testRes.detail || testRes.message}</p>
+              <p className="text-[11px] opacity-70 mt-1">Mode <b>{testRes.mode}</b> → {testRes.endpoint} · API Key <b>{testRes.apiKey}</b></p>
+            </div>
+          )}
+          <div className="rounded-xl bg-muted/30 border border-border/40 p-3">
+            <p className="text-[11px] text-muted-foreground/80 leading-relaxed">Ambil API key di <strong>web.mayar.id → API Keys</strong>. Daftarkan <strong>webhook</strong> di dashboard Mayar ke:</p>
+            <code className="block rounded bg-black/40 border border-border/50 px-2 py-1.5 text-[11px] text-emerald-300 mt-1.5 overflow-x-auto">https://datalitiq.com/api/payment/mayar/notification</code>
+            <p className="text-[11px] text-muted-foreground/70 mt-2 leading-relaxed">Dokumentasi Mayar tidak menjelaskan cara memverifikasi keaslian webhook, jadi isi webhook tidak pernah dipercaya. Setiap notifikasi diverifikasi ulang ke API Mayar memakai API key ini sebelum langganan diaktifkan.</p>
           </div>
         </CardContent>
       </Card>

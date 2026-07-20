@@ -13,7 +13,7 @@ const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_UR
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const ADMIN_EMAIL = 'vultype@gmail.com'
-const GATEWAYS = ['none', 'doku', 'ipaymu', 'midtrans', 'manual']
+const GATEWAYS = ['none', 'doku', 'ipaymu', 'midtrans', 'mayar', 'manual']
 
 const mask = (v: string | null) => { const s = (v || '').trim(); return s ? '••••' + s.slice(-4) : '' }
 
@@ -39,6 +39,7 @@ export async function GET(req: Request) {
     doku: { clientId: r.doku_client_id ?? '', secretKeyMask: mask(r.doku_secret_key), production: !!r.doku_production },
     ipaymu: { va: r.ipaymu_va ?? '', apiKeyMask: mask(r.ipaymu_api_key), production: !!r.ipaymu_production },
     midtrans: { clientKey: r.midtrans_client_key ?? '', serverKeyMask: mask(r.midtrans_server_key), production: !!r.midtrans_production },
+    mayar: { apiKeyMask: mask(r.mayar_api_key), production: !!r.mayar_production },
   })
 }
 
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
   setStr('doku_client_id', b.doku?.clientId); setSecret('doku_secret_key', b.doku?.secretKey); setBool('doku_production', b.doku?.production)
   setStr('ipaymu_va', b.ipaymu?.va); setSecret('ipaymu_api_key', b.ipaymu?.apiKey); setBool('ipaymu_production', b.ipaymu?.production)
   setStr('midtrans_client_key', b.midtrans?.clientKey); setSecret('midtrans_server_key', b.midtrans?.serverKey); setBool('midtrans_production', b.midtrans?.production)
+  setSecret('mayar_api_key', b.mayar?.apiKey); setBool('mayar_production', b.mayar?.production)
 
   const { error } = await g.sb!.from('payment_config').upsert(patch, { onConflict: 'id' })
   if (error) return NextResponse.json({ error: error.message, needsMigration: /relation|does not exist|schema cache/i.test(error.message) }, { status: 500 })

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getPaymentConfig } from '@/lib/payment-config'
 import { testIpaymuCredentials } from '@/lib/ipaymu'
+import { testMayarCredentials } from '@/lib/mayar'
 
 // Tes kredensial gateway yang TERSIMPAN (admin-only). Memakai endpoint baca-saja
 // (iPaymu payment-channels) → tidak membuat transaksi apa pun.
@@ -32,6 +33,15 @@ export async function POST(req: Request) {
       endpoint: cfg.ipaymu.production ? 'my.ipaymu.com' : 'sandbox.ipaymu.com',
       va: cfg.ipaymu.va || '(kosong)',
       apiKey: mask(cfg.ipaymu.apiKey),
+    })
+  }
+  if (gateway === 'mayar') {
+    const r = await testMayarCredentials(cfg.mayar.apiKey, cfg.mayar.production)
+    return NextResponse.json({
+      ...r,
+      mode: cfg.mayar.production ? 'PRODUKSI' : 'SANDBOX',
+      endpoint: cfg.mayar.production ? 'api.mayar.id' : 'api.mayar.club',
+      apiKey: mask(cfg.mayar.apiKey),
     })
   }
   return NextResponse.json({ error: 'Tes untuk gateway ini belum tersedia.' }, { status: 400 })

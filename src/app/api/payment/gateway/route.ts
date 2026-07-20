@@ -18,6 +18,6 @@ export async function GET() {
       midtransProduction: c.midtrans.production,
     })
   } catch {
-    return NextResponse.json({ gateway: 'none', ready: { doku: false, ipaymu: false, midtrans: false, manual: true, none: false }, midtransClientKey: '', midtransProduction: false })
+    return NextResponse.json({ gateway: 'none', ready: { doku: false, ipaymu: false, midtrans: false, mayar: false, manual: true, none: false }, midtransClientKey: '', midtransProduction: false })
   }
 }
