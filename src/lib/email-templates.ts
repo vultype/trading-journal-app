@@ -7,7 +7,7 @@
 //    menghasilkan teks hitam di atas latar hitam.
 //  - Tanpa gambar eksternal. Banyak klien memblokir gambar secara default, jadi
 //    pesan inti tidak boleh bergantung pada gambar.
-import { BANK, rp } from './pricing'
+import { BANK, BASE, rp } from './pricing'
 
 const BRAND = '#0F172A'      // slate-900 — header
 const ACCENT = '#F59E0B'     // amber — aksen emas
@@ -27,22 +27,23 @@ export type TemplateMeta = {
   id: TemplateId
   label: string
   desc: string
-  needsOrder: boolean   // butuh order 'menunggu_pembayaran' untuk isi nominal + kode unik
+  usesOrder: boolean   // punya varian khusus bila user punya order 'menunggu_pembayaran'
   tone: 'followup' | 'status'
 }
 
 // Dipakai juga oleh UI admin untuk daftar pilihan (murni data, aman di client).
 export const TEMPLATES: TemplateMeta[] = [
-  { id: 'checkout_pending',  label: 'Pembayaran Belum Selesai',   desc: 'Pengingat +1 jam. Nominal, kode unik, dan rekening. Fokus menghilangkan friksi.', needsOrder: true,  tone: 'followup' },
-  { id: 'checkout_value',    label: 'Follow-up: Nilai vs Biaya',  desc: 'Pengingat +24 jam. Membandingkan Rp99.000 dengan satu kali kena SL.',              needsOrder: true,  tone: 'followup' },
-  { id: 'checkout_lastcall', label: 'Follow-up: Panggilan Akhir', desc: 'Pengingat +72 jam. Kode unik akan dilepas. Urgensi jujur, tanpa tekanan.',        needsOrder: true,  tone: 'followup' },
-  { id: 'pro_active',        label: 'Status Pro Aktif',           desc: 'Konfirmasi pembayaran diterima dan akses Pro sudah menyala.',                     needsOrder: false, tone: 'status' },
-  { id: 'pro_expiring',      label: 'Langganan Akan Berakhir',    desc: 'Pengingat perpanjangan sebelum akses Pro habis.',                                 needsOrder: false, tone: 'status' },
+  { id: 'checkout_pending',  label: 'Pembayaran Belum Selesai',   desc: 'Ada order: nominal + kode unik + rekening. Tanpa order: ajakan membuat pesanan.', usesOrder: true,  tone: 'followup' },
+  { id: 'checkout_value',    label: 'Follow-up: Nilai vs Biaya',  desc: 'Membandingkan Rp99.000 dengan satu kali kena SL. Bisa dikirim dengan atau tanpa order.', usesOrder: true, tone: 'followup' },
+  { id: 'checkout_lastcall', label: 'Follow-up: Panggilan Akhir', desc: 'Ada order: kode unik akan dilepas. Tanpa order: penawaran penutup yang lembut.',  usesOrder: true,  tone: 'followup' },
+  { id: 'pro_active',        label: 'Status Pro Aktif',           desc: 'Konfirmasi pembayaran diterima dan akses Pro sudah menyala.',                     usesOrder: false, tone: 'status' },
+  { id: 'pro_expiring',      label: 'Langganan Akan Berakhir',    desc: 'Pengingat perpanjangan sebelum akses Pro habis.',                                 usesOrder: false, tone: 'status' },
 ]
 
 export type TemplateVars = {
   name: string
   siteUrl: string
+  hasOrder?: boolean    // false → varian tanpa nominal/kode unik
   total?: number
   uniqueCode?: number
   planLabel?: string
@@ -133,11 +134,26 @@ function shell(bodyHtml: string, preheader: string, siteUrl: string) {
 export function renderTemplate(id: TemplateId, v: TemplateVars): { subject: string; html: string } {
   const nama = v.name || 'Trader'
   const site = v.siteUrl.replace(/\/$/, '')
-  const total = v.total ?? 0
   const sla = v.slaText || '1x24 jam'
+  // Tanpa order, nominal jatuh ke harga standar dan kode unik TIDAK ADA.
+  const hasOrder = v.hasOrder !== false && !!v.total
+  const total = hasOrder ? (v.total as number) : BASE.terminal
 
   switch (id) {
     case 'checkout_pending': {
+      // Varian tanpa order: SENGAJA tidak menampilkan nomor rekening.
+      // Verifikasi pembayaran mencocokkan 3 angka terakhir ke payment_orders;
+      // user yang transfer nominal bulat tanpa kode unik tidak bisa dicocokkan
+      // ke siapa pun. Jadi arahkan dulu ke checkout untuk mendapat kodenya.
+      if (!hasOrder) {
+        return { subject: `Pesanan Anda belum dibuat — prosesnya kurang dari semenit`, html: shell(
+          p(`Hai <b>${nama}</b>,`) +
+          p(`Sepertinya Anda sempat melihat halaman langganan <b>Terminal XAU/USD</b>, tapi pesanannya belum sempat dibuat.`) +
+          p(`Biayanya <b>${rp(total)} per bulan</b>. Setelah pesanan dibuat, Anda langsung mendapat nominal transfer khusus milik Anda — dari situ pembayaran kami kenali otomatis.`) +
+          btn(`${site}/checkout`, 'Buat Pesanan Sekarang') +
+          small(`Akses aktif dalam <b>${sla}</b> setelah bukti transfer masuk.`),
+          `Terminal XAU/USD ${rp(total)} per bulan — buat pesanan dalam semenit`, site) }
+      }
       const subject = `Nominal transfer Anda ${rp(total)} — 3 angka terakhir jangan dibulatkan`
       return { subject, html: shell(
         p(`Hai <b>${nama}</b>,`) +
@@ -165,13 +181,25 @@ export function renderTemplate(id: TemplateId, v: TemplateVars): { subject: stri
           'Analisa AI dan Daily Outlook XAU/USD setiap hari',
           'Kalkulator lot dan jurnal trading — bonus untuk pengguna Pro',
         ]) +
-        amountBox(total, v.uniqueCode) +
-        btn(`${site}/checkout`, 'Selesaikan Pesanan') +
-        small(`Nominal Anda masih sama seperti saat checkout.`),
+        (hasOrder
+          ? amountBox(total, v.uniqueCode) + btn(`${site}/checkout`, 'Selesaikan Pesanan') + small(`Nominal Anda masih sama seperti saat checkout.`)
+          : btn(`${site}/checkout`, 'Mulai Langganan') + small(`${rp(total)} per bulan, tanpa kontrak. Berhenti kapan saja.`)),
         `Sebulan akses penuh, kurang dari satu setengah kali kena SL`, site) }
     }
 
     case 'checkout_lastcall': {
+      // Tanpa order tidak ada kode unik yang bisa "dilepas", jadi urgensinya
+      // diganti penutup yang lembut. Mengarang tenggat palsu merusak kepercayaan.
+      if (!hasOrder) {
+        return { subject: `Masih tertarik dengan Terminal XAU/USD?`, html: shell(
+          p(`Hai <b>${nama}</b>,`) +
+          p(`Ini email terakhir kami soal langganan Terminal — kami tidak ingin memenuhi inbox Anda.`) +
+          p(`Kalau memang belum cocok atau belum waktunya, abaikan saja. Akun Anda tetap aktif dan tidak ada tagihan apa pun.`) +
+          p(`Kalau ternyata hanya tertunda, pintunya masih terbuka: <b>${rp(total)} per bulan</b>, berhenti kapan saja.`) +
+          btn(`${site}/checkout`, 'Lihat Langganan') +
+          small(`Setelah ini kami tidak mengirim pengingat lagi.`),
+          `Email terakhir kami soal langganan Terminal`, site) }
+      }
       const subject = `Kode unik Anda kami lepas besok`
       return { subject, html: shell(
         p(`Hai <b>${nama}</b>,`) +

@@ -997,6 +997,7 @@ function EmailManager({ users }: { users: UserRow[] }) {
   const [subject, setSubject] = useState('')
   const [busy, setBusy] = useState<'preview' | 'send' | null>(null)
   const [log, setLog] = useState<{ template: string; subject: string; created_at: string }[]>([])
+  const [hasOrder, setHasOrder] = useState<boolean | null>(null)
 
   const tpl = TEMPLATES.find(t => t.id === tplId)!
   const picked = users.find(u => u.id === uid) || null
@@ -1023,6 +1024,7 @@ function EmailManager({ users }: { users: UserRow[] }) {
       const j = await res.json()
       if (!res.ok) { toast.error(j.error || 'Gagal'); return }
       setSubject(j.subject || '')
+      if (typeof j.hasOrder === 'boolean') setHasOrder(j.hasOrder)
       if (mode === 'preview') { setHtml(j.html || ''); toast.success('Pratinjau dimuat') }
       else { toast.success(`Terkirim ke ${j.to}`); if (j.logNote) toast.info(j.logNote); loadLog(uid) }
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal') } finally { setBusy(null) }
@@ -1035,7 +1037,7 @@ function EmailManager({ users }: { users: UserRow[] }) {
     const j = await res.json().catch(() => ({ log: [] }))
     setLog(j.log || [])
   }
-  useEffect(() => { setHtml(''); if (uid) loadLog(uid) }, [uid])
+  useEffect(() => { setHtml(''); setHasOrder(null); if (uid) loadLog(uid) }, [uid])
 
   return (
     <Card>
@@ -1070,7 +1072,7 @@ function EmailManager({ users }: { users: UserRow[] }) {
                 className={`text-left rounded-lg border p-3 transition-colors ${tplId === t.id ? 'border-primary bg-primary/10' : 'border-border/50 hover:bg-white/5'}`}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className="text-[12px] font-semibold">{t.label}</span>
-                  {t.needsOrder && <Badge variant="outline" className="text-[9px] px-1">butuh order</Badge>}
+                  {t.usesOrder && <Badge variant="outline" className="text-[9px] px-1">2 varian</Badge>}
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-snug">{t.desc}</p>
               </button>
@@ -1117,6 +1119,10 @@ function EmailManager({ users }: { users: UserRow[] }) {
         {html && (
           <div>
             <p className="text-[11px] text-muted-foreground mb-1.5">Subjek: <b className="text-foreground">{subject}</b></p>
+            {tpl.usesOrder && hasOrder !== null && (
+              <p className="text-[11px] mb-1.5">Varian: <b className={hasOrder ? 'text-emerald-400' : 'text-amber-400'}>
+                {hasOrder ? 'ada order — nominal + kode unik disertakan' : 'tanpa order — diarahkan membuat pesanan, rekening tidak ditampilkan'}</b></p>
+            )}
             {/* sandbox="" = tanpa script, tanpa akses same-origin. Pratinjau murni visual. */}
             <iframe srcDoc={html} sandbox="" title="Pratinjau email" className="w-full h-[520px] rounded-lg border border-border/50 bg-white" />
           </div>

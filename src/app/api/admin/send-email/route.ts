@@ -63,15 +63,15 @@ export async function POST(req: Request) {
     .eq('user_id', userId).eq('status', 'menunggu_pembayaran')
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-  if (tpl.needsOrder && !order) {
-    return NextResponse.json({
-      error: 'User ini tidak punya pesanan berstatus "menunggu pembayaran", jadi nominal dan kode unik tidak bisa diisi. Pakai template status, atau minta user checkout ulang.',
-    }, { status: 409 })
-  }
+  // Tanpa order, template checkout memakai varian tanpa nominal/kode unik —
+  // bukan ditolak. Banyak user membuka halaman langganan tanpa pernah membuat
+  // order, dan justru merekalah yang paling perlu di-follow up.
+  const hasOrder = !!order
 
   const vars: TemplateVars = {
     name: displayName(target, got.user.user_metadata),
     siteUrl: SITE,
+    hasOrder,
     total: Number(order?.total ?? 0),
     uniqueCode: order?.unique_code ? Number(order.unique_code) : undefined,
     planLabel: order?.plan ? planName(order.plan as PlanId) : 'Datalitiq AI Terminal',
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   }
 
   const { subject, html } = renderTemplate(templateId, vars)
-  if (preview) return NextResponse.json({ preview: true, to: target, subject, html })
+  if (preview) return NextResponse.json({ preview: true, to: target, subject, html, hasOrder })
 
   const key = process.env.RESEND_API_KEY
   if (!key) return NextResponse.json({ error: 'RESEND_API_KEY belum diset di environment.' }, { status: 500 })
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
   })
 
   return NextResponse.json({
-    sent: true, to: target, subject, id: j?.id ?? null,
+    sent: true, to: target, subject, id: j?.id ?? null, hasOrder,
     logged: !logErr,
     logNote: logErr ? 'Email terkirim, tapi gagal dicatat ke email_log (tabel belum dibuat?).' : undefined,
   })
