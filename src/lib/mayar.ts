@@ -79,11 +79,17 @@ export async function getMayarInvoice(apiKey: string, production: boolean, invoi
 
 // Peta status Mayar → status internal payment_orders.
 //
-// Dokumentasi hanya menyebut 'unpaid' secara eksplisit. Karena itu daftar status
-// lunas di bawah sengaja dibuat KONSERVATIF: apa pun yang tidak dikenali TIDAK
-// mengaktifkan langganan, melainkan tetap menunggu. Arah kegagalannya aman —
-// aktivasi yang tertunda bisa diperbaiki manual oleh admin, sedangkan aktivasi
-// yang salah berarti akses gratis.
+// Kasing status TIDAK konsisten antar-endpoint (terkonfirmasi dari docs):
+//   - webhook payment.received memakai "SUCCESS" (huruf besar)
+//   - GET invoice/{id} memakai "unpaid" (huruf kecil)
+// Karena itu input di-normalisasi ke lowercase sebelum dicocokkan.
+//
+// Daftar lunas tetap KONSERVATIF: apa pun yang tidak dikenali TIDAK mengaktifkan
+// langganan, melainkan tetap menunggu. 'success' terkonfirmasi dari dokumentasi
+// webhook; sisanya (settled/completed/closed) sinonim wajar yang aman karena
+// aktivasi butuh verifikasi balik ke API Mayar. Arah kegagalannya aman —
+// aktivasi tertunda bisa diperbaiki manual oleh admin, aktivasi salah berarti
+// akses gratis.
 const PAID = ['paid', 'settled', 'success', 'completed', 'closed']
 const FAILED = ['expired', 'cancelled', 'canceled', 'failed', 'refunded']
 

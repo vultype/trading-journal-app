@@ -16,6 +16,11 @@ import { grantTopup } from '@/lib/credits-server'
 // dengan API key kita sendiri untuk menanyakan status invoice yang sebenarnya.
 // Tanpa jawaban dari Mayar, langganan TIDAK PERNAH diaktifkan — sehingga webhook
 // palsu tidak menghasilkan akses gratis.
+//
+// Event Mayar (terkonfirmasi dari docs): payment.received, payment.reminder.
+// Kita tidak bercabang per-event: apa pun eventnya, status invoice ditanyakan
+// ulang ke Mayar, jadi payment.reminder untuk invoice yang belum lunas otomatis
+// tidak mengaktifkan apa pun.
 export const dynamic = 'force-dynamic'
 
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
