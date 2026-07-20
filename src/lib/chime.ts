@@ -1,29 +1,58 @@
-// Bunyi notifikasi (chime 2-nada) via Web Audio — tanpa file aset. Dipakai oleh notifikasi
-// perubahan regime di terminal, dan tombol "Test Sound" di admin Dev Tools.
-export function playRegimeChime() {
+// Bunyi notifikasi via Web Audio — tanpa file aset.
+//
+// Tiap parameter punya pola nada sendiri, dan arahnya menentukan nada naik atau
+// turun. Tujuannya supaya trader tahu APA yang berubah dan KE MANA arahnya tanpa
+// harus melihat layar — saat sedang membaca chart, bunyi yang seragam untuk semua
+// kejadian tidak memberi informasi apa pun.
+//
+//   regime   → 2 nada, register tengah
+//   momentum → 2 nada pendek, register tinggi
+//   signal   → 3 nada (paling penting, paling menonjol)
+//
+//   naik → nada menaik   ·   turun → nada menurun   ·   datar → dua nada sama
+export type ChimeKind = 'regime' | 'momentum' | 'signal'
+export type ChimeDir = 'up' | 'down' | 'flat'
+
+const PATTERNS: Record<ChimeKind, { base: number[]; dur: number; gap: number }> = {
+  regime:   { base: [784, 1047], dur: 0.20, gap: 0.13 },        // G5 → C6
+  momentum: { base: [988, 1319], dur: 0.11, gap: 0.09 },        // B5 → E6, lebih pendek
+  signal:   { base: [659, 880, 1175], dur: 0.17, gap: 0.12 },   // E5 → A5 → D6
+}
+
+export function playChime(kind: ChimeKind = 'regime', dir: ChimeDir = 'up') {
   if (typeof window === 'undefined') return
   try {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!AC) return
     const ctx = new AC()
+    const pat = PATTERNS[kind]
+    // 'flat' memakai satu nada berulang: perubahan ke netral bukan kabar baik
+    // maupun buruk, jadi tidak pantas berbunyi naik atau turun.
+    const freqs = dir === 'down' ? [...pat.base].reverse()
+      : dir === 'flat' ? pat.base.map(() => pat.base[0])
+      : pat.base
+
     // Browser modern sering start AudioContext dalam state 'suspended' sampai di-resume
     // eksplisit setelah user gesture — tanpa ini, tone() jalan tanpa error tapi SENYAP.
     const play = () => {
       const t0 = ctx.currentTime
-      const tone = (freq: number, start: number, dur: number) => {
+      freqs.forEach((freq, i) => {
+        const start = i * pat.gap
         const o = ctx.createOscillator(), g = ctx.createGain()
         o.type = 'sine'; o.frequency.value = freq
         o.connect(g); g.connect(ctx.destination)
         g.gain.setValueAtTime(0.0001, t0 + start)
         g.gain.exponentialRampToValueAtTime(0.3, t0 + start + 0.02)
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur)
-        o.start(t0 + start); o.stop(t0 + start + dur + 0.02)
-      }
-      tone(784, 0, 0.18)      // G5
-      tone(1047, 0.13, 0.22)  // C6 (naik, seperti "ding-dong")
-      setTimeout(() => ctx.close().catch(() => {}), 700)
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + pat.dur)
+        o.start(t0 + start); o.stop(t0 + start + pat.dur + 0.02)
+      })
+      const total = (freqs.length - 1) * pat.gap + pat.dur
+      setTimeout(() => ctx.close().catch(() => {}), (total + 0.4) * 1000)
     }
     if (ctx.state === 'suspended') ctx.resume().then(play).catch(() => {})
     else play()
   } catch { /* diamkan */ }
 }
+
+// Nama lama — dipakai tombol uji di admin Dev Tools.
+export const playRegimeChime = () => playChime('regime', 'up')

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
 import { Confetti } from '@/components/ui/Confetti'
-import { playRegimeChime } from '@/lib/chime'
+import { playChime } from '@/lib/chime'
 import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper, Wrench, PartyPopper, Bell, Mail } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
 import { TEMPLATES, EMAIL_LOGO_SPEC, type TemplateId } from '@/lib/email-templates'
@@ -1358,9 +1358,19 @@ function DevToolsManager() {
         </div>
 
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Bell size={12} /> Bunyi Notifikasi (chime regime)</p>
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => playRegimeChime()}><Bell size={14} className="text-primary" /> Putar Bunyi</Button>
-          <p className="text-[11px] text-muted-foreground/70 mt-1.5">Chime yang sama dipakai saat regime pasar berubah (Ranging ⇄ Trending) di terminal. Kalau tak terdengar di sini, cek volume perangkat/tab browser — bukan masalah kode.</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Bell size={12} /> Bunyi Notifikasi Terminal</p>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['regime', 'up', 'Regime → Trending'], ['regime', 'flat', 'Regime → Ranging'],
+              ['momentum', 'up', 'Momentum Bullish'], ['momentum', 'down', 'Momentum Bearish'],
+              ['signal', 'up', 'Signal BULLISH'], ['signal', 'down', 'Signal BEARISH'],
+            ] as const).map(([kind, dir, text]) => (
+              <Button key={text} size="sm" variant="outline" className="gap-1.5" onClick={() => playChime(kind, dir)}>
+                <Bell size={13} className="text-primary" /> {text}
+              </Button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground/70 mt-2">Tiap parameter punya pola nada sendiri, dan arahnya menentukan nada naik atau turun — jadi bisa dibedakan tanpa melihat layar. Kalau tak terdengar di sini, cek volume perangkat/tab browser, bukan kodenya.</p>
         </div>
 
         <div>

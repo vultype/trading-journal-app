@@ -18,7 +18,7 @@ import {
   Lock, Crown, Check, Volume2, VolumeX,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
-import { playRegimeChime } from '@/lib/chime'
+import { playChime, type ChimeDir } from '@/lib/chime'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
@@ -818,9 +818,18 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const [soundOn, setSoundOn] = useState<boolean>(() => { if (typeof window === 'undefined') return true; return localStorage.getItem('dtq_regime_sound') !== 'off' })
   // Nyalakan → putar preview chime (langsung terdengar, sekaligus "membuka" izin audio browser
   // di titik ini — bukan menunggu regime berubah, yang mungkin tak terjadi selama Anda tes).
-  const toggleSound = () => setSoundOn(v => { const n = !v; try { localStorage.setItem('dtq_regime_sound', n ? 'on' : 'off') } catch { } ; if (n) playRegimeChime(); return n })
+  const toggleSound = () => setSoundOn(v => { const n = !v; try { localStorage.setItem('dtq_regime_sound', n ? 'on' : 'off') } catch { } ; if (n) playChime('regime', 'up'); return n })
   const regimePhaseRef = useRef<RegimePhase | undefined>(undefined)  // histeresis regime (fase sebelumnya)
   const notifiedRegime = useRef<{ phase: RegimePhase; label: string } | null>(null)  // deteksi perubahan regime utk notif
+  // Momentum & Signal Meter memakai ambang keras (±15 dan ±20), jadi nilai yang
+  // bergoyang di sekitar ambang bisa memicu notifikasi berkali-kali. Label baru
+  // harus BERTAHAN selama CONFIRM_MS sebelum dibunyikan — display tetap berubah
+  // seketika, hanya notifikasinya yang menunggu konfirmasi.
+  const CONFIRM_MS = 45_000
+  const notifiedMom = useRef<string | null>(null)
+  const pendingMom = useRef<{ label: string; since: number } | null>(null)
+  const notifiedSig = useRef<string | null>(null)
+  const pendingSig = useRef<{ label: string; since: number } | null>(null)
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -936,11 +945,44 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       const label = regime.label, toTrending = regime.phase === 'trending', beep = soundOn
       setTimeout(() => {
         toast[toTrending ? 'success' : 'info'](`Regime berubah → ${label}${toTrending ? ' · tren mulai jalan' : ' · pasar menyamping'}`)
-        if (beep) playRegimeChime()
+        if (beep) playChime('regime', toTrending ? 'up' : 'flat')
       }, 0)
     }
   }
   const avgMomentum = (feed.tf.M5.momentum + feed.tf.M15.momentum + feed.tf.H1.momentum) / 3
+
+  // ── Notifikasi MOMENTUM & SIGNAL METER ──
+  // Ambang di sini harus sama persis dengan yang dipakai untuk menampilkan label,
+  // supaya bunyi tidak pernah bertentangan dengan yang terbaca di layar.
+  {
+    const notifyStable = (
+      cur: string,
+      notified: React.RefObject<string | null>,
+      pending: React.RefObject<{ label: string; since: number } | null>,
+      fire: (label: string) => void,
+    ) => {
+      if (notified.current === null) { notified.current = cur; pending.current = null; return }  // render pertama: rekam saja
+      if (cur === notified.current) { pending.current = null; return }
+      const t = Date.now()
+      if (pending.current?.label !== cur) { pending.current = { label: cur, since: t }; return }
+      if (t - pending.current.since < CONFIRM_MS) return   // belum cukup bertahan
+      notified.current = cur; pending.current = null
+      setTimeout(() => fire(cur), 0)
+    }
+    const dirOf = (l: string): ChimeDir => l === 'Bullish' || l === 'BULLISH' ? 'up' : l === 'Bearish' || l === 'BEARISH' ? 'down' : 'flat'
+    const beep = soundOn
+
+    const momLabel = avgMomentum > 15 ? 'Bullish' : avgMomentum < -15 ? 'Bearish' : 'Netral'
+    notifyStable(momLabel, notifiedMom, pendingMom, l => {
+      toast[l === 'Netral' ? 'info' : l === 'Bullish' ? 'success' : 'error'](`Momentum → ${l} · skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)}`)
+      if (beep) playChime('momentum', dirOf(l))
+    })
+
+    notifyStable(sc.label, notifiedSig, pendingSig, l => {
+      toast[l === 'NETRAL' ? 'info' : l === 'BULLISH' ? 'success' : 'error'](`Signal Meter → ${l} · skor ${sc.overall >= 0 ? '+' : ''}${sc.overall.toFixed(0)}`)
+      if (beep) playChime('signal', dirOf(l))
+    })
+  }
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
   const curve2s10 = macro?.us10y && macro?.us02y ? macro.us10y.value - macro.us02y.value : null
@@ -1854,7 +1896,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                 <span className="hidden lg:flex items-center gap-1.5 text-[11px] text-white/50"><Circle size={7} className="fill-primary text-primary" /> {session}</span>
                 <span className="hidden sm:flex items-center gap-1 text-[11px] text-white/40"><Clock size={11} /> {clock}</span>
                 <span className={`flex items-center gap-1 text-[10px] ${live.status === 'live' ? 'text-emerald-400' : 'text-amber-400'}`}>{live.status === 'live' ? <Wifi size={12} /> : <RefreshCw size={11} className="animate-spin" />} live</span>
-                <button onClick={toggleSound} title={soundOn ? 'Bunyi notifikasi regime: AKTIF' : 'Bunyi notifikasi regime: MATI'} className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${soundOn ? 'text-primary hover:bg-primary/10' : 'text-white/35 hover:bg-white/5'}`}>{soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
+                <button onClick={toggleSound} title={soundOn ? 'Bunyi notifikasi (regime · momentum · signal meter): AKTIF' : 'Bunyi notifikasi (regime · momentum · signal meter): MATI'} className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${soundOn ? 'text-primary hover:bg-primary/10' : 'text-white/35 hover:bg-white/5'}`}>{soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}</button>
               </div>
             </div>
           </header>
