@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google"
 import { ThemeProvider } from "@/components/ThemeProvider"
 import { MetaPixel } from "@/components/MetaPixel"
 import { GoogleAnalytics } from "@/components/GoogleAnalytics"
+import { Toaster } from "@/components/ui/toaster"
 import { getSiteConfig } from "@/lib/site-config"
 import "./globals.css"
 
@@ -33,6 +34,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="h-full bg-background text-foreground font-sans antialiased">
         <MetaPixel pixelId={c.pixelId} enabled={c.pixelEnabled} />
         <GoogleAnalytics gaId={c.gaId} enabled={c.gaEnabled} />
+        {/* Toaster dipasang SEKALI di root → semua halaman (checkout, login, account,
+            admin, terminal) dapat notifikasi. Sebelumnya hanya di layout (app), sehingga
+            toast di halaman standalone tak pernah terlihat (tombol terasa "tak bereaksi"). */}
+        <Toaster />
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

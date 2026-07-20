@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase'
 import { Sidebar, BottomNav } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { SetupWizard } from '@/components/onboarding/SetupWizard'
-import { Toaster } from '@/components/ui/toaster'
 import { Loader2, AlertTriangle, X, RefreshCw } from 'lucide-react'
 
 function SyncErrorBanner() {
@@ -112,7 +111,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <StoreProvider>
       <AppContent>{children}</AppContent>
-      <Toaster />
     </StoreProvider>
   )
 }

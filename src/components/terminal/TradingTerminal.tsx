@@ -18,7 +18,6 @@ import {
   Lock, Crown, Check, Volume2, VolumeX,
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
-import { Toaster } from '@/components/ui/toaster'
 import { playRegimeChime } from '@/lib/chime'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
@@ -1772,7 +1771,6 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white">
-      <Toaster />
       {chartFull && (
         <div className="fixed inset-0 z-[60] bg-[#060a09] p-3 flex flex-col">
           <div className="flex items-center justify-between mb-2"><span className="text-sm font-bold flex items-center gap-2"><Activity size={15} className="text-primary" /> XAU/USD — {f2(feed.price)} · TradingView</span><button onClick={() => setChartFull(false)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white bg-white/5 rounded-lg px-3 py-1.5"><X size={14} /> Tutup</button></div>

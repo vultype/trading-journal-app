@@ -1,3 +1,10 @@
+'use client'
+
+// WAJIB 'use client': modul ini menyimpan STATE modul (_items/_listeners) yang harus
+// SATU instance untuk semua pemakai. Tanpa directive ini, saat <Toaster /> dipasang dari
+// root layout (server component), Next.js membuat instance modul terpisah → toast yang
+// dikirim halaman masuk ke Set listener yang berbeda dari yang didengar Toaster,
+// sehingga notifikasi tak pernah muncul.
 type ToastType = 'success' | 'error' | 'info'
 export type ToastItem = { id: string; message: string; type: ToastType }
 type Listener = (items: ToastItem[]) => void
