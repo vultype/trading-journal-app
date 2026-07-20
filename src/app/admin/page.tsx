@@ -12,8 +12,9 @@ import { BrandLogo } from '@/components/layout/BrandLogo'
 import { toast } from '@/lib/toast'
 import { Confetti } from '@/components/ui/Confetti'
 import { playRegimeChime } from '@/lib/chime'
-import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper, Wrench, PartyPopper, Bell } from 'lucide-react'
+import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper, Wrench, PartyPopper, Bell, Mail } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
+import { TEMPLATES, type TemplateId } from '@/lib/email-templates'
 import type { Trade, Transfer } from '@/types'
 
 const fmt = (n: number) => rp(n)
@@ -982,6 +983,164 @@ from auth.users where email = 'cahyaduadelapan@gmail.com';`}</code>
 }
 
 // ── Dev Tools — testing manual komponen UI (toast, confetti) tanpa perlu memicu alur asli ──
+// ————— Kirim Email Manual —————
+// Admin memilih user + template, melihat pratinjau, lalu mengirim.
+// Nominal & kode unik diambil server-side dari order user, tidak diketik manual.
+function EmailManager({ users }: { users: UserRow[] }) {
+  const [q, setQ] = useState('')
+  const [uid, setUid] = useState('')
+  const [tplId, setTplId] = useState<TemplateId>('checkout_pending')
+  const [expiresAt, setExpiresAt] = useState('')
+  const [daysLeft, setDaysLeft] = useState('')
+  const [slaText, setSlaText] = useState('')
+  const [html, setHtml] = useState('')
+  const [subject, setSubject] = useState('')
+  const [busy, setBusy] = useState<'preview' | 'send' | null>(null)
+  const [log, setLog] = useState<{ template: string; subject: string; created_at: string }[]>([])
+
+  const tpl = TEMPLATES.find(t => t.id === tplId)!
+  const picked = users.find(u => u.id === uid) || null
+  const shown = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return (s ? users.filter(u => u.email.toLowerCase().includes(s)) : users).slice(0, 40)
+  }, [users, q])
+
+  async function call(mode: 'preview' | 'send') {
+    if (!uid) { toast.error('Pilih user dulu'); return }
+    if (mode === 'send' && !window.confirm(`Kirim "${tpl.label}" ke ${picked?.email}?\n\nEmail akan langsung terkirim ke user.`)) return
+    setBusy(mode)
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { toast.error('Sesi habis, login ulang'); return }
+      const res = await fetch('/api/admin/send-email', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: uid, templateId: tplId, preview: mode === 'preview',
+          overrides: { expiresAt: expiresAt || undefined, daysLeft: daysLeft ? Number(daysLeft) : undefined, slaText: slaText || undefined },
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'Gagal'); return }
+      setSubject(j.subject || '')
+      if (mode === 'preview') { setHtml(j.html || ''); toast.success('Pratinjau dimuat') }
+      else { toast.success(`Terkirim ke ${j.to}`); if (j.logNote) toast.info(j.logNote); loadLog(uid) }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal') } finally { setBusy(null) }
+  }
+
+  async function loadLog(id: string) {
+    const { data: { session } } = await createClient().auth.getSession()
+    if (!session || !id) return
+    const res = await fetch(`/api/admin/send-email?userId=${id}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+    const j = await res.json().catch(() => ({ log: [] }))
+    setLog(j.log || [])
+  }
+  useEffect(() => { setHtml(''); if (uid) loadLog(uid) }, [uid])
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Mail size={16} /> Kirim Email ke User</CardTitle></CardHeader>
+      <CardContent className="space-y-5">
+
+        {/* 1. Pilih user */}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2">1 · Pilih Penerima</p>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Cari email…"
+            className="w-full h-9 px-2.5 mb-2 rounded-md bg-background border border-border/60 text-[12px] outline-none focus:border-primary/60" />
+          <div className="max-h-52 overflow-y-auto rounded-lg border border-border/50 divide-y divide-border/40">
+            {shown.length === 0 ? <p className="p-3 text-[12px] text-muted-foreground">Tidak ada user cocok.</p> : shown.map(u => (
+              <button key={u.id} onClick={() => setUid(u.id)}
+                className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors ${uid === u.id ? 'bg-primary/15' : 'hover:bg-white/5'}`}>
+                <span className="text-[12px] truncate">{u.email}</span>
+                <Badge variant={u.sub === 'pro' ? 'default' : 'outline'} className="text-[10px] shrink-0">
+                  {u.sub === 'pro' ? 'Pro' : u.sub === 'expired' ? 'Expired' : 'Free'}
+                </Badge>
+              </button>
+            ))}
+          </div>
+          {picked && <p className="text-[11px] text-muted-foreground mt-1.5">Penerima: <b className="text-foreground">{picked.email}</b></p>}
+        </div>
+
+        {/* 2. Pilih template */}
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2">2 · Pilih Template</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {TEMPLATES.map(t => (
+              <button key={t.id} onClick={() => { setTplId(t.id); setHtml('') }}
+                className={`text-left rounded-lg border p-3 transition-colors ${tplId === t.id ? 'border-primary bg-primary/10' : 'border-border/50 hover:bg-white/5'}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[12px] font-semibold">{t.label}</span>
+                  {t.needsOrder && <Badge variant="outline" className="text-[9px] px-1">butuh order</Badge>}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">{t.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Variabel opsional — hanya yang relevan dengan template terpilih */}
+        {(tplId === 'pro_active' || tplId === 'pro_expiring' || tplId === 'checkout_pending') && (
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2">3 · Isian Tambahan</p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {tplId === 'checkout_pending' && (
+                <div><label className="text-[11px] font-semibold text-muted-foreground block mb-1">Janji aktivasi</label>
+                  <input value={slaText} onChange={e => setSlaText(e.target.value)} placeholder="1x24 jam"
+                    className="w-full h-9 px-2.5 rounded-md bg-background border border-border/60 text-[12px] outline-none focus:border-primary/60" /></div>
+              )}
+              {(tplId === 'pro_active' || tplId === 'pro_expiring') && (
+                <div><label className="text-[11px] font-semibold text-muted-foreground block mb-1">Berlaku sampai</label>
+                  <input value={expiresAt} onChange={e => setExpiresAt(e.target.value)}
+                    placeholder={picked?.expiresAt ? fmtDate(picked.expiresAt) : '20 Agu 2026'}
+                    className="w-full h-9 px-2.5 rounded-md bg-background border border-border/60 text-[12px] outline-none focus:border-primary/60" /></div>
+              )}
+              {tplId === 'pro_expiring' && (
+                <div><label className="text-[11px] font-semibold text-muted-foreground block mb-1">Sisa hari</label>
+                  <input type="number" value={daysLeft} onChange={e => setDaysLeft(e.target.value)}
+                    placeholder={picked?.daysLeft != null ? String(picked.daysLeft) : '3'}
+                    className="w-full h-9 px-2.5 rounded-md bg-background border border-border/60 text-[12px] outline-none focus:border-primary/60" /></div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 4. Pratinjau & kirim */}
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => call('preview')} disabled={busy !== null || !uid}>
+            {busy === 'preview' ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />} Pratinjau
+          </Button>
+          <Button size="sm" className="gap-1.5" onClick={() => call('send')} disabled={busy !== null || !uid}>
+            {busy === 'send' ? <><Loader2 size={13} className="animate-spin" /> Mengirim…</> : <><Mail size={13} /> Kirim Email</>}
+          </Button>
+        </div>
+
+        {html && (
+          <div>
+            <p className="text-[11px] text-muted-foreground mb-1.5">Subjek: <b className="text-foreground">{subject}</b></p>
+            {/* sandbox="" = tanpa script, tanpa akses same-origin. Pratinjau murni visual. */}
+            <iframe srcDoc={html} sandbox="" title="Pratinjau email" className="w-full h-[520px] rounded-lg border border-border/50 bg-white" />
+          </div>
+        )}
+
+        {log.length > 0 && (
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2">Riwayat Kirim</p>
+            <div className="space-y-1">
+              {log.map((l, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 text-[11px] py-1 border-b border-border/30">
+                  <span className="truncate">{TEMPLATES.find(t => t.id === l.template)?.label || l.template}</span>
+                  <span className="text-muted-foreground shrink-0">{new Date(l.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </CardContent>
+    </Card>
+  )
+}
+
 type NotifChannel = { configured: boolean; ok: boolean; detail: string }
 type NotifDiag = {
   config: { target: string; resendKey: boolean; resendFrom: string; usingDefaultFrom: boolean; telegram: boolean }
@@ -1393,7 +1552,7 @@ export default function AdminPage() {
   const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi' | 'dev' | 'bayar'>('users')
+  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi' | 'dev' | 'bayar' | 'email'>('users')
 
   useEffect(() => {
     if (!sub.loading && !sub.isAdmin) router.replace('/hub')
@@ -1513,6 +1672,7 @@ export default function AdminPage() {
           <button onClick={() => setTab('seo')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'seo' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>SEO & Analytics</button>
           <button onClick={() => setTab('publikasi')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'publikasi' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Outlook & Blog</button>
           <button onClick={() => setTab('bayar')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'bayar' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Pembayaran</button>
+          <button onClick={() => setTab('email')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'email' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Email</button>
           <button onClick={() => setTab('dev')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'dev' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Dev Tools</button>
         </div>
 
@@ -1586,6 +1746,10 @@ export default function AdminPage() {
         ) : tab === 'bayar' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <PaymentGatewayManager />
+          </div>
+        ) : tab === 'email' ? (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <EmailManager users={rows} />
           </div>
         ) : tab === 'publikasi' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
