@@ -1044,6 +1044,8 @@ function PaymentGatewayManager() {
   const [dokuSecret, setDokuSecret] = useState('')
   const [ipaymuKey, setIpaymuKey] = useState('')
   const [midServer, setMidServer] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testRes, setTestRes] = useState<{ ok: boolean; message: string; mode?: string; endpoint?: string; va?: string; apiKey?: string; channels?: number } | null>(null)
 
   async function authFetch(init?: RequestInit) {
     const { data: { session } } = await createClient().auth.getSession()
@@ -1081,6 +1083,24 @@ function PaymentGatewayManager() {
       setDokuSecret(''); setIpaymuKey(''); setMidServer('')
       const r2 = await authFetch(); if (r2.ok) setCfg(await r2.json())
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal menyimpan') } finally { setSaving(false) }
+  }
+
+  // Tes kredensial TERSIMPAN ke iPaymu (endpoint baca-saja, tak membuat transaksi).
+  async function testGateway(gateway: string) {
+    setTesting(true); setTestRes(null)
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { toast.error('Sesi habis, login ulang'); setTesting(false); return }
+      const res = await fetch('/api/admin/payment-config/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ gateway }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'Gagal tes'); setTesting(false); return }
+      setTestRes(j)
+      if (j.ok) toast.success('Kredensial iPaymu valid'); else toast.error('Ditolak iPaymu: ' + j.message)
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal tes') } finally { setTesting(false) }
   }
 
   if (needsMigration) return (
@@ -1146,8 +1166,22 @@ alter table public.payment_config enable row level security;`} /></CardContent>
           <div><label className="text-xs font-semibold text-muted-foreground">VA (nomor Virtual Account merchant)</label><input value={cfg.ipaymu.va} onChange={e => set({ ipaymu: { ...cfg.ipaymu, va: e.target.value } })} placeholder="mis. 1179000899" className={`${inp} mt-1`} /></div>
           {secretField('API Key', cfg.ipaymu.apiKeyMask, ipaymuKey, setIpaymuKey)}
           <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.ipaymu.production} onChange={e => set({ ipaymu: { ...cfg.ipaymu, production: e.target.checked } })} /> Mode Produksi <span className="text-[11px] text-muted-foreground">(uncheck = sandbox)</span></label>
+          {/* Tes kredensial tersimpan — endpoint baca-saja, tidak membuat transaksi */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => testGateway('ipaymu')} disabled={testing}>
+              {testing ? <><Loader2 size={14} className="animate-spin" /> Menguji…</> : <><RefreshCw size={14} /> Test Koneksi</>}
+            </Button>
+            <span className="text-[11px] text-muted-foreground">Simpan dulu, baru tes. Tidak membuat transaksi.</span>
+          </div>
+          {testRes && (
+            <div className={`rounded-xl border p-3 text-[12px] ${testRes.ok ? 'border-emerald-500/30 bg-emerald-500/[0.07] text-emerald-300' : 'border-red-500/30 bg-red-500/[0.07] text-red-300'}`}>
+              <p className="font-bold flex items-center gap-1.5">{testRes.ok ? <><CheckCircle2 size={13} /> Kredensial valid</> : <><XCircle size={13} /> Ditolak: {testRes.message}</>}</p>
+              <p className="text-[11px] opacity-80 mt-1">Mode <b>{testRes.mode}</b> → {testRes.endpoint} · VA <b>{testRes.va}</b> · API Key <b>{testRes.apiKey}</b>{testRes.channels != null ? ` · ${testRes.channels} channel aktif` : ''}</p>
+              {!testRes.ok && <p className="text-[11px] opacity-80 mt-1.5">Cek: VA &amp; API Key harus dari <b>mode yang sama</b> ({testRes.mode}). Kredensial sandbox ≠ produksi — ambil di dashboard iPaymu menu <b>Integrasi</b>.</p>}
+            </div>
+          )}
           <div className="rounded-xl bg-muted/30 border border-border/40 p-3">
-            <p className="text-[11px] text-muted-foreground/80 leading-relaxed">Ambil VA & API Key di dashboard iPaymu → <strong>Integrasi/API</strong>. Set <strong>URL Notifikasi</strong> di iPaymu ke:</p>
+            <p className="text-[11px] text-muted-foreground/80 leading-relaxed">Ambil VA & API Key di dashboard iPaymu → <strong>Integrasi</strong>. Set <strong>URL Notifikasi</strong> di iPaymu ke:</p>
             <code className="block rounded bg-black/40 border border-border/50 px-2 py-1.5 text-[11px] text-emerald-300 mt-1.5 overflow-x-auto">https://datalitiq.com/api/payment/ipaymu/notification</code>
           </div>
         </CardContent>

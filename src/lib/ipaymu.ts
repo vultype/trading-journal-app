@@ -99,6 +99,28 @@ export async function createIpaymuPayment(p: IpaymuParams): Promise<{ paymentUrl
   return { paymentUrl: String(payUrl), sessionId: data?.SessionID ?? data?.sessionId }
 }
 
+// Tes kredensial (VA + API Key + mode) TANPA membuat transaksi: panggil payment-channels
+// yang sifatnya baca-saja. Dipakai tombol "Test Koneksi" di Admin → Pembayaran.
+export async function testIpaymuCredentials(va: string, apiKey: string, production: boolean): Promise<{ ok: boolean; message: string; channels?: number }> {
+  if (!va || !apiKey) return { ok: false, message: 'VA / API Key belum diisi' }
+  try {
+    const payload = ipaymuPayload({})   // '{}' — sesuai contoh resmi utk GET
+    const signature = ipaymuSignature('GET', va, apiKey, payload)
+    const res = await fetch(`${ipaymuBase(production)}/payment-channels`, {
+      method: 'GET',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', va, signature, timestamp: ipaymuTimestamp() },
+      cache: 'no-store',
+    })
+    const j = await res.json().catch(() => ({}))
+    const status = Number(j?.Status ?? j?.status ?? res.status)
+    const msg = j?.Message || j?.message || `HTTP ${res.status}`
+    if (status === 200) return { ok: true, message: 'Kredensial valid', channels: Array.isArray(j?.Data) ? j.Data.length : undefined }
+    return { ok: false, message: msg }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'gagal menghubungi iPaymu' }
+  }
+}
+
 // Petakan status notifikasi iPaymu → status order internal.
 // iPaymu mengirim `status` (berhasil|pending|gagal) dan/atau `status_code` (1|0|-2 dst).
 export function mapIpaymuStatus(status: string, statusCode?: string | number): 'aktif' | 'menunggu_pembayaran' | 'batal' {
