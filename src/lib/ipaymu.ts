@@ -58,18 +58,25 @@ export type IpaymuParams = {
 export async function createIpaymuPayment(p: IpaymuParams): Promise<{ paymentUrl: string; sessionId?: string }> {
   if (!p.va || !p.apiKey) throw new Error('Kredensial iPaymu belum diatur')
   const url = `${ipaymuBase(p.production)}/payment`
+  // ⚠️ JANGAN kirim field bernilai string kosong. iPaymu menolaknya dengan
+  // "unauthorized signature" (server mereka tampaknya membuang field kosong sebelum
+  // menghitung ulang hash → hash tak cocok). Diverifikasi ke sandbox:
+  //   { buyerPhone: '', cancelUrl: '' } → 401 unauthorized signature
+  //   field kosong dihilangkan          → 200 Success
+  // Karena itu field opsional hanya disertakan bila benar-benar ada isinya.
   const body: Record<string, unknown> = {
     product: [p.itemName],
     qty: [1],
     price: [Math.round(p.amount)],
     referenceId: p.referenceId,
     buyerName: p.buyerName || 'Pelanggan',
-    buyerEmail: p.buyerEmail || '',
-    buyerPhone: p.buyerPhone || '',
-    returnUrl: p.returnUrl || '',
-    cancelUrl: p.cancelUrl || '',
-    notifyUrl: p.notifyUrl || '',
   }
+  const addIf = (key: string, v?: string) => { if (v && v.trim()) body[key] = v.trim() }
+  addIf('buyerEmail', p.buyerEmail)
+  addIf('buyerPhone', p.buyerPhone)
+  addIf('returnUrl', p.returnUrl)
+  addIf('cancelUrl', p.cancelUrl)
+  addIf('notifyUrl', p.notifyUrl)
   const payload = ipaymuPayload(body)
   const signature = ipaymuSignature('POST', p.va, p.apiKey, payload)
   const res = await fetch(url, {
