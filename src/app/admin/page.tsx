@@ -1023,6 +1023,151 @@ function DevToolsManager() {
   )
 }
 
+// ── Payment Gateway — pilih gateway aktif + kelola kredensial (secret tak pernah dikirim balik) ──
+type GwCfg = {
+  activeGateway: string
+  doku: { clientId: string; secretKeyMask: string; production: boolean }
+  ipaymu: { va: string; apiKeyMask: string; production: boolean }
+  midtrans: { clientKey: string; serverKeyMask: string; production: boolean }
+}
+const GW_LIST = [
+  { id: 'doku', label: 'DOKU', note: 'Redirect checkout · kartu, QRIS, e-wallet, VA' },
+  { id: 'ipaymu', label: 'iPaymu', note: 'Redirect payment · QRIS, VA, retail, e-wallet' },
+  { id: 'midtrans', label: 'Midtrans', note: 'Snap popup · kartu, QRIS, e-wallet, VA' },
+] as const
+
+function PaymentGatewayManager() {
+  const [cfg, setCfg] = useState<GwCfg | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [needsMigration, setNeedsMigration] = useState(false)
+  // Input secret dibiarkan kosong = "jangan ubah". Server hanya menimpa bila diisi.
+  const [dokuSecret, setDokuSecret] = useState('')
+  const [ipaymuKey, setIpaymuKey] = useState('')
+  const [midServer, setMidServer] = useState('')
+
+  async function authFetch(init?: RequestInit) {
+    const { data: { session } } = await createClient().auth.getSession()
+    if (!session) throw new Error('Sesi habis, login ulang')
+    return fetch('/api/admin/payment-config', { ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...(init?.headers || {}) } })
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await authFetch()
+        const j = await res.json()
+        if (!res.ok) { if (j.needsMigration) setNeedsMigration(true); else toast.error(j.error || 'Gagal memuat'); setLoading(false); return }
+        setCfg(j); setLoading(false)
+      } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal memuat'); setLoading(false) }
+    })()
+  }, [])
+
+  async function save() {
+    if (!cfg) return
+    setSaving(true)
+    try {
+      const res = await authFetch({
+        method: 'POST',
+        body: JSON.stringify({
+          activeGateway: cfg.activeGateway,
+          doku: { clientId: cfg.doku.clientId, secretKey: dokuSecret, production: cfg.doku.production },
+          ipaymu: { va: cfg.ipaymu.va, apiKey: ipaymuKey, production: cfg.ipaymu.production },
+          midtrans: { clientKey: cfg.midtrans.clientKey, serverKey: midServer, production: cfg.midtrans.production },
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'Gagal menyimpan'); setSaving(false); return }
+      toast.success('Pengaturan pembayaran disimpan')
+      setDokuSecret(''); setIpaymuKey(''); setMidServer('')
+      const r2 = await authFetch(); if (r2.ok) setCfg(await r2.json())
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Gagal menyimpan') } finally { setSaving(false) }
+  }
+
+  if (needsMigration) return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Wallet size={15} className="text-primary" /> Payment Gateway</CardTitle></CardHeader>
+      <CardContent><MigrationBanner sql={`-- Jalankan isi file supabase-payment-config.sql
+create table if not exists public.payment_config (
+  id int primary key default 1 check (id = 1),
+  active_gateway text not null default 'none',
+  doku_client_id text, doku_secret_key text, doku_production boolean not null default false,
+  ipaymu_va text, ipaymu_api_key text, ipaymu_production boolean not null default false,
+  midtrans_server_key text, midtrans_client_key text, midtrans_production boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+insert into public.payment_config (id) values (1) on conflict (id) do nothing;
+alter table public.payment_config enable row level security;`} /></CardContent>
+    </Card>
+  )
+  if (loading || !cfg) return <Card><CardContent className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" size={18} /></CardContent></Card>
+
+  const set = (patch: Partial<GwCfg>) => setCfg(c => c ? { ...c, ...patch } : c)
+  const secretField = (label: string, mask: string, val: string, onChange: (v: string) => void) => (
+    <div>
+      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <input type="password" value={val} onChange={e => onChange(e.target.value)} placeholder={mask ? `Tersimpan (${mask}) — isi untuk ganti` : 'Belum diatur'}
+        className={`${inp} mt-1`} autoComplete="new-password" />
+      <p className="text-[11px] text-muted-foreground/70 mt-1">{mask ? 'Kosongkan bila tak ingin mengubah.' : 'Wajib diisi agar gateway ini bisa dipakai.'}</p>
+    </div>
+  )
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Wallet size={15} className="text-primary" /> Gateway Aktif</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">Pilih SATU gateway yang dipakai di halaman checkout. Gateway lain tetap tersimpan kredensialnya (tinggal ganti kapan saja).</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            <button onClick={() => set({ activeGateway: 'none' })} className={`text-left rounded-xl border p-3 transition-colors ${cfg.activeGateway === 'none' ? 'border-amber-500/40 bg-amber-500/[0.08]' : 'border-border/50 hover:border-white/25'}`}>
+              <p className="text-sm font-bold">Nonaktif</p><p className="text-[11px] text-muted-foreground">Checkout menampilkan pesan “belum aktif”</p>
+            </button>
+            {GW_LIST.map(g => (
+              <button key={g.id} onClick={() => set({ activeGateway: g.id })} className={`text-left rounded-xl border p-3 transition-colors ${cfg.activeGateway === g.id ? 'border-primary/50 bg-primary/[0.08]' : 'border-border/50 hover:border-white/25'}`}>
+                <p className="text-sm font-bold flex items-center gap-2">{g.label}{cfg.activeGateway === g.id && <span className="text-[8px] font-bold uppercase rounded-full bg-primary/20 text-primary px-1.5 py-0.5">aktif</span>}</p>
+                <p className="text-[11px] text-muted-foreground">{g.note}</p>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">DOKU</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div><label className="text-xs font-semibold text-muted-foreground">Client ID</label><input value={cfg.doku.clientId} onChange={e => set({ doku: { ...cfg.doku, clientId: e.target.value } })} className={`${inp} mt-1`} /></div>
+          {secretField('Secret Key', cfg.doku.secretKeyMask, dokuSecret, setDokuSecret)}
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.doku.production} onChange={e => set({ doku: { ...cfg.doku, production: e.target.checked } })} /> Mode Produksi <span className="text-[11px] text-muted-foreground">(uncheck = sandbox)</span></label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">iPaymu</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div><label className="text-xs font-semibold text-muted-foreground">VA (nomor Virtual Account merchant)</label><input value={cfg.ipaymu.va} onChange={e => set({ ipaymu: { ...cfg.ipaymu, va: e.target.value } })} placeholder="mis. 1179000899" className={`${inp} mt-1`} /></div>
+          {secretField('API Key', cfg.ipaymu.apiKeyMask, ipaymuKey, setIpaymuKey)}
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.ipaymu.production} onChange={e => set({ ipaymu: { ...cfg.ipaymu, production: e.target.checked } })} /> Mode Produksi <span className="text-[11px] text-muted-foreground">(uncheck = sandbox)</span></label>
+          <div className="rounded-xl bg-muted/30 border border-border/40 p-3">
+            <p className="text-[11px] text-muted-foreground/80 leading-relaxed">Ambil VA & API Key di dashboard iPaymu → <strong>Integrasi/API</strong>. Set <strong>URL Notifikasi</strong> di iPaymu ke:</p>
+            <code className="block rounded bg-black/40 border border-border/50 px-2 py-1.5 text-[11px] text-emerald-300 mt-1.5 overflow-x-auto">https://datalitiq.com/api/payment/ipaymu/notification</code>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm">Midtrans</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div><label className="text-xs font-semibold text-muted-foreground">Client Key <span className="text-[10px] text-muted-foreground/60">(publik, dipakai di browser)</span></label><input value={cfg.midtrans.clientKey} onChange={e => set({ midtrans: { ...cfg.midtrans, clientKey: e.target.value } })} className={`${inp} mt-1`} /></div>
+          {secretField('Server Key', cfg.midtrans.serverKeyMask, midServer, setMidServer)}
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={cfg.midtrans.production} onChange={e => set({ midtrans: { ...cfg.midtrans, production: e.target.checked } })} /> Mode Produksi <span className="text-[11px] text-muted-foreground">(uncheck = sandbox)</span></label>
+        </CardContent>
+      </Card>
+
+      <Button onClick={save} disabled={saving} className="gap-1.5">{saving ? <><Loader2 size={14} className="animate-spin" /> Menyimpan…</> : 'Simpan Pengaturan Pembayaran'}</Button>
+    </>
+  )
+}
+
 // ── Verifikasi pembayaran manual (transfer bank) — bukti diunggah user, admin approve/tolak ──
 type PayOrder = {
   id: string; user_id: string; plan: PlanId; months: number; total: number; unique_code: number
@@ -1121,7 +1266,7 @@ export default function AdminPage() {
   const [orders, setOrders]   = useState<PayRow[]>([])
   const [journalCount, setJournalCount] = useState(0)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi' | 'dev'>('users')
+  const [tab, setTab] = useState<'users' | 'content' | 'marketing' | 'seo' | 'publikasi' | 'dev' | 'bayar'>('users')
 
   useEffect(() => {
     if (!sub.loading && !sub.isAdmin) router.replace('/hub')
@@ -1241,6 +1386,7 @@ export default function AdminPage() {
           <button onClick={() => setTab('marketing')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'marketing' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Marketing & Iklan</button>
           <button onClick={() => setTab('seo')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'seo' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>SEO & Analytics</button>
           <button onClick={() => setTab('publikasi')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'publikasi' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Outlook & Blog</button>
+          <button onClick={() => setTab('bayar')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'bayar' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Pembayaran</button>
           <button onClick={() => setTab('dev')} className={`text-sm font-semibold rounded-lg px-4 py-2 transition-colors ${tab === 'dev' ? 'bg-primary text-primary-foreground' : 'border border-white/15 text-white/70 hover:bg-white/5'}`}>Dev Tools</button>
         </div>
 
@@ -1310,6 +1456,10 @@ export default function AdminPage() {
         ) : tab === 'seo' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
             <SeoManager />
+          </div>
+        ) : tab === 'bayar' ? (
+          <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <PaymentGatewayManager />
           </div>
         ) : tab === 'publikasi' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">

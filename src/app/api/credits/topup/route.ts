@@ -12,7 +12,7 @@ const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_UR
 const SUPA_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
 export async function POST(req: Request) {
-  if (!dokuConfigured()) return NextResponse.json({ error: 'Pembayaran online belum aktif — DOKU key belum diset' }, { status: 503 })
+  if (!(await dokuConfigured())) return NextResponse.json({ error: 'Pembayaran online belum aktif — DOKU key belum diset' }, { status: 503 })
   try {
     const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
     if (!token) return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 })

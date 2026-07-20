@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     const signature = req.headers.get('signature') || ''
 
     // 1) Verifikasi keaslian notifikasi (cegah pemalsuan)
-    if (!verifyDokuNotification({ clientId, requestId, timestamp, requestTarget: NOTIF_TARGET, rawBody, signature })) {
+    if (!(await verifyDokuNotification({ clientId, requestId, timestamp, requestTarget: NOTIF_TARGET, rawBody, signature }))) {
       return NextResponse.json({ error: 'signature tidak valid' }, { status: 403 })
     }
     if (!SUPA_URL || !SERVICE_KEY) return NextResponse.json({ error: 'server belum dikonfigurasi' }, { status: 503 })

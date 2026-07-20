@@ -13,14 +13,14 @@ const ADMIN_EMAIL = 'vultype@gmail.com'
 
 export async function POST(req: Request) {
   try {
-    if (!SUPA_URL || !SERVICE) return NextResponse.json({ error: 'Server belum dikonfigurasi (SERVICE_ROLE_KEY).' }, { status: 503 })
-
-    // 1) Verifikasi pemanggil = admin, dari token sesi.
+    // 1) Verifikasi pemanggil = admin DULU (jangan bocorkan status konfigurasi server
+    //    ke pemanggil anonim lewat perbedaan pesan error).
     const token = (req.headers.get('authorization') || '').replace('Bearer ', '')
-    if (!token) return NextResponse.json({ error: 'Tidak terautentikasi.' }, { status: 401 })
+    if (!token || !SUPA_URL) return NextResponse.json({ error: 'Tidak terautentikasi.' }, { status: 401 })
     const authed = createClient(SUPA_URL, ANON, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } })
     const { data: { user } } = await authed.auth.getUser()
     if (!user || user.email !== ADMIN_EMAIL) return NextResponse.json({ error: 'Akses ditolak — khusus admin.' }, { status: 403 })
+    if (!SERVICE) return NextResponse.json({ error: 'Server belum dikonfigurasi (SERVICE_ROLE_KEY).' }, { status: 503 })
 
     // 2) Input.
     const body = await req.json().catch(() => ({}))

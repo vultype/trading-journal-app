@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { pkgPrice, planBase, planName, DURATIONS, type PlanId } from '@/lib/pricing'
-import { createDokuCheckout, dokuConfigured } from '@/lib/doku'
+import { createIpaymuPayment } from '@/lib/ipaymu'
+import { getPaymentConfig } from '@/lib/payment-config'
 
-// Buat order + sesi DOKU Checkout. Harga DIHITUNG DI SERVER (jangan percaya client).
+// Buat order + sesi pembayaran iPaymu. Harga DIHITUNG DI SERVER (jangan percaya client).
 // User diverifikasi dari access token Supabase (Authorization: Bearer ...).
 export const dynamic = 'force-dynamic'
 
@@ -11,8 +12,12 @@ const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_UR
 const SUPA_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
 export async function POST(req: Request) {
-  if (!(await dokuConfigured())) return NextResponse.json({ error: 'Pembayaran online belum aktif — DOKU key belum diset' }, { status: 503 })
   try {
+    const cfg = await getPaymentConfig()
+    if (!cfg.ipaymu.va || !cfg.ipaymu.apiKey) {
+      return NextResponse.json({ error: 'Pembayaran iPaymu belum aktif — kredensial belum diatur' }, { status: 503 })
+    }
+
     const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
     if (!token) return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 })
 
@@ -25,29 +30,29 @@ export async function POST(req: Request) {
     const dur = DURATIONS.find(d => d.months === Number(monthsRaw)) ?? DURATIONS[0]
     const amount = pkgPrice(planBase(plan), dur.months, dur.off) // harga bersih dari server
 
-    // Buat order — invoice_number ter-generate otomatis oleh trigger DB.
     const { data: order, error: oErr } = await sb.from('payment_orders').insert({
       user_id: user.id, plan, months: dur.months,
       base_amount: amount, unique_code: 0, total: amount,
-      bank: 'DOKU', account_no: '-', status: 'menunggu_pembayaran', method: 'doku',
+      bank: 'iPaymu', account_no: '-', status: 'menunggu_pembayaran', method: 'ipaymu',
     }).select('id, invoice_number').single()
     if (oErr || !order || !order.invoice_number) {
       return NextResponse.json({ error: 'Gagal membuat pesanan: ' + (oErr?.message ?? 'invoice kosong') }, { status: 500 })
     }
 
     const pubBase = origin && String(origin).startsWith('https') ? String(origin) : 'https://www.datalitiq.com'
-    const checkout = await createDokuCheckout({
-      invoiceNumber: order.invoice_number,
+    const pay = await createIpaymuPayment({
+      va: cfg.ipaymu.va, apiKey: cfg.ipaymu.apiKey, production: cfg.ipaymu.production,
+      referenceId: order.invoice_number,
       amount,
       itemName: `Datalitiq ${planName(plan)} ${dur.months} bln`,
-      customerId: user.id,
-      customerName: (user.user_metadata?.full_name as string) || user.email?.split('@')[0],
-      customerEmail: user.email,
-      callbackUrl: `${pubBase}/checkout?status=finish&inv=${encodeURIComponent(order.invoice_number)}`,
-      notificationUrl: `${pubBase}/api/payment/doku/notification`,
+      buyerName: (user.user_metadata?.full_name as string) || user.email?.split('@')[0],
+      buyerEmail: user.email,
+      returnUrl: `${pubBase}/checkout?status=finish&inv=${encodeURIComponent(order.invoice_number)}`,
+      cancelUrl: `${pubBase}/checkout?status=cancel`,
+      notifyUrl: `${pubBase}/api/payment/ipaymu/notification`,
     })
 
-    return NextResponse.json({ paymentUrl: checkout.paymentUrl, orderId: order.id, invoice: order.invoice_number, amount })
+    return NextResponse.json({ paymentUrl: pay.paymentUrl, orderId: order.id, invoice: order.invoice_number, amount })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'gagal membuat transaksi' }, { status: 502 })
   }

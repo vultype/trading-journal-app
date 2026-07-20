@@ -19,12 +19,10 @@ declare global {
   interface Window { snap?: { pay: (token: string, opts?: Record<string, unknown>) => void } }
 }
 
-const CLIENT_KEY = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ''
-const IS_SANDBOX = CLIENT_KEY.startsWith('SB-')
-const SNAP_URL = IS_SANDBOX ? 'https://app.sandbox.midtrans.com/snap/snap.js' : 'https://app.midtrans.com/snap/snap.js'
-// DOKU sebagai gateway online utama (redirect-based). Flag publik hanya penanda tampil,
-// kredensial asli tetap server-side.
-const DOKU_ENABLED = process.env.NEXT_PUBLIC_DOKU_ENABLED === 'true'
+// Gateway aktif TIDAK lagi dari env — diambil dari /api/payment/gateway (diatur admin
+// lewat UI). Endpoint itu hanya mengembalikan nama gateway + client key Midtrans (publik);
+// semua secret tetap server-side.
+type GatewayInfo = { gateway: 'none' | 'doku' | 'ipaymu' | 'midtrans'; midtransClientKey: string; midtransProduction: boolean }
 
 const INCLUDED = [
   'Kesimpulan arah pasar + tingkat keyakinan real-time',
@@ -48,6 +46,16 @@ function CheckoutInner() {
   const [step, setStep] = useState<'review' | 'processing' | 'success'>(params.get('status') === 'finish' ? 'processing' : 'review')
   const [busy, setBusy] = useState(false)
   const [snapReady, setSnapReady] = useState(false)
+  const [gw, setGw] = useState<GatewayInfo | null>(null)   // null = masih memuat
+
+  // Ambil gateway aktif dari server (diatur admin lewat UI)
+  useEffect(() => {
+    let stop = false
+    fetch('/api/payment/gateway').then(r => r.json())
+      .then(j => { if (!stop) setGw({ gateway: j.gateway ?? 'none', midtransClientKey: j.midtransClientKey ?? '', midtransProduction: !!j.midtransProduction }) })
+      .catch(() => { if (!stop) setGw({ gateway: 'none', midtransClientKey: '', midtransProduction: false }) })
+    return () => { stop = true }
+  }, [])
 
   useEffect(() => {
     const sb = createClient()
@@ -85,14 +93,17 @@ function CheckoutInner() {
     return () => { stop = true; clearInterval(id); clearTimeout(stopAt) }
   }, [step, params])
 
+  // Snap.js hanya dimuat kalau Midtrans yang aktif.
   useEffect(() => {
-    if (!CLIENT_KEY || DOKU_ENABLED) return
+    if (gw?.gateway !== 'midtrans' || !gw.midtransClientKey) return
     if (document.getElementById('midtrans-snap')) { setSnapReady(true); return }
     const s = document.createElement('script')
-    s.id = 'midtrans-snap'; s.src = SNAP_URL; s.setAttribute('data-client-key', CLIENT_KEY); s.async = true
+    s.id = 'midtrans-snap'
+    s.src = gw.midtransProduction ? 'https://app.midtrans.com/snap/snap.js' : 'https://app.sandbox.midtrans.com/snap/snap.js'
+    s.setAttribute('data-client-key', gw.midtransClientKey); s.async = true
     s.onload = () => setSnapReady(true)
     document.body.appendChild(s)
-  }, [])
+  }, [gw])
 
   async function payWithMidtrans() {
     if (!userId) return
@@ -123,8 +134,8 @@ function CheckoutInner() {
     }
   }
 
-  // DOKU: redirect-based. Buat order + sesi checkout di server → arahkan ke halaman DOKU.
-  async function payWithDoku() {
+  // Gateway redirect-based (DOKU / iPaymu): buat order + sesi di server → arahkan ke halaman bayar.
+  async function payRedirect(endpoint: string) {
     if (!userId) return
     track('InitiateCheckout', { content_name: `Paket ${planName(plan)}`, value: base, currency: 'IDR' })
     setBusy(true)
@@ -132,7 +143,7 @@ function CheckoutInner() {
       const sb = createClient()
       const { data: { session } } = await sb.auth.getSession()
       if (!session) { toast.error('Sesi habis, silakan login ulang'); setBusy(false); return }
-      const res = await fetch('/api/payment/doku/create', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ plan, months: dur.months, origin: window.location.origin }),
@@ -146,7 +157,8 @@ function CheckoutInner() {
     }
   }
 
-  const onlineActive = DOKU_ENABLED || !!CLIENT_KEY
+  const activeGw = gw?.gateway ?? 'none'
+  const onlineActive = activeGw !== 'none'
 
   if (userId === undefined) {
     return <div className="min-h-screen flex items-center justify-center bg-[#060a09]"><Loader2 className="animate-spin text-primary" /></div>
@@ -194,9 +206,11 @@ function CheckoutInner() {
               <span className="text-xl font-black text-primary">{rp(base)}</span>
             </div>
 
-            {DOKU_ENABLED ? (
+            {!gw ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-sm text-white/40"><Loader2 size={15} className="animate-spin" /> Menyiapkan pembayaran…</div>
+            ) : activeGw === 'doku' || activeGw === 'ipaymu' ? (
               <>
-                <button onClick={payWithDoku} disabled={busy || !userId}
+                <button onClick={() => payRedirect(activeGw === 'doku' ? '/api/payment/doku/create' : '/api/payment/ipaymu/create')} disabled={busy || !userId}
                   className="group w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-primary/25">
                   {busy ? <><Loader2 size={16} className="animate-spin" /> Mengalihkan ke pembayaran…</> : <><CreditCard size={16} /> Bayar Online <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></>}
                 </button>
@@ -205,7 +219,7 @@ function CheckoutInner() {
                 </div>
                 <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman & terenkripsi · Akses aktif otomatis</p>
               </>
-            ) : CLIENT_KEY ? (
+            ) : activeGw === 'midtrans' ? (
               <>
                 <button onClick={payWithMidtrans} disabled={busy || !userId || !snapReady}
                   className="group w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-primary/25">
@@ -213,7 +227,7 @@ function CheckoutInner() {
                 </button>
                 <div className="flex items-center justify-center gap-2 text-[11px] text-white/40 mt-3">
                   <Wallet size={12} /> Kartu · QRIS · GoPay/OVO/Dana · Virtual Account
-                  {IS_SANDBOX && <span className="text-amber-400 font-semibold">· MODE SANDBOX</span>}
+                  {!gw.midtransProduction && <span className="text-amber-400 font-semibold">· MODE SANDBOX</span>}
                 </div>
                 <p className="text-[11px] text-white/35 text-center flex items-center justify-center gap-1.5 mt-2"><ShieldCheck size={12} className="text-primary/70" /> Pembayaran aman via Midtrans · Akses aktif otomatis</p>
               </>

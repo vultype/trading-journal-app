@@ -5,16 +5,19 @@ import crypto from 'crypto'
 
 const CREATE_TARGET = '/checkout/v1/payment'
 
-export function dokuConfig() {
-  const clientId = process.env.DOKU_CLIENT_ID || ''
-  const secretKey = process.env.DOKU_SECRET_KEY || ''
-  const isProduction = process.env.DOKU_ENV === 'production'
+// Kredensial dari DB (payment_config, diatur lewat UI admin) dengan fallback ke ENV
+// supaya setup lama tetap jalan. Async karena baca DB.
+export async function dokuConfig() {
+  const { getPaymentConfig } = await import('@/lib/payment-config')
+  const c = await getPaymentConfig()
+  const { clientId, secretKey, production: isProduction } = c.doku
   const apiBase = isProduction ? 'https://api.doku.com' : 'https://api-sandbox.doku.com'
   return { clientId, secretKey, isProduction, apiBase }
 }
 
-export function dokuConfigured() {
-  return !!(process.env.DOKU_CLIENT_ID && process.env.DOKU_SECRET_KEY)
+export async function dokuConfigured() {
+  const { clientId, secretKey } = await dokuConfig()
+  return !!(clientId && secretKey)
 }
 
 // Timestamp ISO8601 UTC tanpa milidetik: 2020-08-11T08:45:42Z
@@ -57,8 +60,8 @@ export type DokuCheckoutParams = {
 
 // Buat sesi DOKU Checkout → { paymentUrl }. Lempar Error dgn pesan DOKU bila gagal.
 export async function createDokuCheckout(p: DokuCheckoutParams): Promise<{ paymentUrl: string; tokenId?: string }> {
-  const { clientId, secretKey, apiBase } = dokuConfig()
-  if (!clientId || !secretKey) throw new Error('DOKU_CLIENT_ID / DOKU_SECRET_KEY belum diset')
+  const { clientId, secretKey, apiBase } = await dokuConfig()
+  if (!clientId || !secretKey) throw new Error('Kredensial DOKU belum diatur (Admin → Pembayaran)')
 
   const body = {
     order: {
@@ -109,10 +112,10 @@ export async function createDokuCheckout(p: DokuCheckoutParams): Promise<{ payme
 
 // Verifikasi signature notifikasi (webhook). requestTarget = path webhook kita.
 // Digunakan bersama header yang DOKU kirim: Client-Id, Request-Id, Request-Timestamp, Signature.
-export function verifyDokuNotification(opts: {
+export async function verifyDokuNotification(opts: {
   clientId: string; requestId: string; timestamp: string; requestTarget: string; rawBody: string; signature: string
-}): boolean {
-  const { secretKey } = dokuConfig()
+}): Promise<boolean> {
+  const { secretKey } = await dokuConfig()
   if (!secretKey) return false
   const expected = buildSignature({
     clientId: opts.clientId, requestId: opts.requestId, timestamp: opts.timestamp,
