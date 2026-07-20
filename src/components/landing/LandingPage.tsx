@@ -31,7 +31,7 @@ const C = {
       badge: 'Data > Feeling · Jurnal & Analitik AI',
       title: ['Stop Rugi Karena Feeling.', 'Trading Disiplin Berbasis Data.'],
       sub: 'Trader konsisten menang bukan karena hoki — tapi karena punya data. Datalitiq kasih kamu AI insight, skor performa, dan analisa mendalam supaya kamu lebih disiplin dan berhenti mengulang kerugian.',
-      cta1: 'Mulai dengan Standar', cta2: 'Lihat Fitur', trust: 'Data-driven · Disiplin · Konsisten',
+      cta1: 'Mulai Sekarang', cta2: 'Lihat Fitur', trust: 'Data-driven · Disiplin · Konsisten',
       floatA: 'Win Rate naik 12%', floatB: 'Datalitiq Score 87',
     },
     trustBar: 'Dipercaya trader XAUUSD, Forex, Crypto & Saham',
@@ -115,7 +115,7 @@ const C = {
       badge: 'Data > Feeling · AI Trading Journal & Analytics',
       title: ['Stop Losing on Feelings.', 'Trade with Data & Discipline.'],
       sub: "Consistent traders don't win on luck — they win on data. Datalitiq gives you AI insights, a performance score, and deep analytics so you stay disciplined and stop repeating losses.",
-      cta1: 'Start with Standard', cta2: 'See Features', trust: 'Data-driven · Disciplined · Consistent',
+      cta1: 'Get Started', cta2: 'See Features', trust: 'Data-driven · Disciplined · Consistent',
       floatA: 'Win Rate up 12%', floatB: 'Datalitiq Score 87',
     },
     trustBar: 'Trusted by XAUUSD, Forex, Crypto & Stock traders',
@@ -439,10 +439,9 @@ export function LandingPage() {
   function switchLang(l: Lang) { setLang(l); if (typeof window !== 'undefined') localStorage.setItem('dtq_lang', l) }
 
   const primaryHref = loggedIn ? '/jurnal' : '/login'
-  const checkoutHref = (plan: string, months: number) => {
-    const target = `/checkout?plan=${plan}&months=${months}`
-    return loggedIn ? target : `/login?next=${encodeURIComponent(target)}`
-  }
+  // Jurnal Tools = BONUS Pro (tak dijual terpisah). CTA diarahkan ke halaman langganan
+  // Terminal, bukan checkout paket standar/pro yang sudah tidak dijual.
+  const proHref = loggedIn ? '/upgrade' : `/login?next=${encodeURIComponent('/upgrade')}`
 
   return (
     <div className="min-h-screen bg-[#060a09] text-white overflow-x-hidden">
@@ -483,7 +482,7 @@ export function LandingPage() {
             </h1>
             <p className="text-base text-white/60 mt-5 leading-relaxed max-w-lg">{t.hero.sub}</p>
             <div className="flex flex-wrap items-center gap-3 mt-7">
-              <Link href={loggedIn ? '/jurnal' : checkoutHref('standar', 1)} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
+              <Link href={loggedIn ? '/jurnal' : proHref} className="group inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-xl shadow-primary/25 hover:shadow-primary/40">
                 {loggedIn ? t.nav.dash : t.hero.cta1} <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
               </Link>
               <a href="#features" className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors">{t.hero.cta2}</a>
@@ -654,69 +653,38 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── Pricing ── */}
-      <section id="pricing" className="max-w-4xl mx-auto px-5 py-16">
+      {/* ── Jurnal Tools = BONUS Pro: tidak dijual terpisah, tidak ada checkout ── */}
+      <section id="pricing" className="max-w-3xl mx-auto px-5 py-16">
         <Reveal>
-          <div className="text-center mb-12">
+          <div className="text-center mb-10">
             <span className="text-xs font-bold uppercase tracking-widest text-primary">{t.nav.pricing}</span>
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">{t.pricingTitle}</h2>
-            <p className="text-sm text-white/50 mt-3">{t.pricingSub}</p>
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-2">Gratis untuk Pelanggan Pro</h2>
+            <p className="text-sm text-white/50 mt-3 max-w-lg mx-auto leading-relaxed">Jurnal Trading Tools tidak dijual terpisah. Semuanya <b className="text-white/80">otomatis terbuka</b> begitu langganan Datalitiq AI Terminal aktif.</p>
           </div>
         </Reveal>
-        {/* Duration toggle */}
-        <Reveal>
-          <div className="flex justify-center mb-8">
-            <div className="inline-flex flex-wrap items-center justify-center gap-1 rounded-2xl bg-white/5 p-1">
-              {DURATIONS.map((d, i) => (
-                <button key={i} onClick={() => setDur(i)}
-                  className={`relative rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${dur === i ? 'bg-primary text-primary-foreground' : 'text-white/50 hover:text-white'}`}>
-                  {d[lang]}
-                  {d.off > 0 && <span className={`ml-1.5 text-[9px] font-bold ${dur === i ? 'text-primary-foreground/80' : 'text-primary'}`}>-{d.off}%</span>}
-                </button>
-              ))}
+        <Reveal delay={100}>
+          <div className="relative rounded-3xl p-[1px] bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30">
+            <div className="rounded-3xl bg-[#0a1110] p-7 md:p-9 text-center">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/12 text-primary text-[11px] font-bold uppercase tracking-widest px-3 py-1 mb-4">
+                <Crown size={12} /> Bonus Langganan Pro
+              </span>
+              <p className="text-3xl md:text-4xl font-black tracking-tight">Termasuk Gratis</p>
+              <p className="text-sm text-white/50 mt-2">Tanpa biaya tambahan · tanpa checkout terpisah</p>
+              <ul className="grid sm:grid-cols-2 gap-2.5 text-left mt-7 mb-8">
+                {['Jurnal Trading & statistik lengkap', 'Strategy Backtesting', 'KPI Projection Tools', 'Kalkulator Lot & Risk Management'].map(f => (
+                  <li key={f} className="flex items-start gap-2.5 text-sm">
+                    <span className="shrink-0 mt-0.5 rounded-full bg-primary/15 p-0.5"><Check size={12} className="text-primary" /></span>
+                    <span className="text-white/80">{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/upgrade" className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary text-primary-foreground px-6 py-3.5 text-sm font-bold shadow-lg shadow-primary/25 hover:opacity-90 transition-opacity">
+                <Crown size={15} /> Lihat Langganan Terminal Pro
+              </Link>
+              <p className="text-[11px] text-white/35 mt-3">Aktifkan Terminal Pro — semua tools di atas langsung terbuka.</p>
             </div>
           </div>
         </Reveal>
-
-        <div className="grid md:grid-cols-2 gap-5">
-          {t.plans.map((p, i) => {
-            const base = p.highlight ? BASE.pro : BASE.standar
-            const d = DURATIONS[dur]
-            const total = pkgPrice(base, d.months, d.off)
-            const perMonth = total / d.months
-            return (
-              <Reveal key={i} delay={i * 120}>
-                <div className={`relative rounded-3xl p-[1px] h-full ${p.highlight ? 'bg-gradient-to-br from-primary/70 via-primary/20 to-cyan-500/30' : 'bg-white/10'}`}>
-                  <div className="rounded-3xl bg-[#0a1110] h-full p-7 flex flex-col">
-                    {p.highlight && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-full">{t.popular}</span>}
-                    <div className="flex items-center gap-2 mb-1">
-                      {p.highlight ? <Crown size={18} className="text-primary" /> : <Sparkles size={18} className="text-white/60" />}
-                      <h3 className="text-xl font-black">{p.name}</h3>
-                    </div>
-                    <p className="text-xs text-white/45 mb-5">{p.tagline}</p>
-                    <div className="mb-1 flex items-end gap-1.5">
-                      <span className="text-4xl font-black tracking-tight">{rp(total)}</span>
-                      <span className="text-sm text-white/40 mb-1">/ {d[lang].toLowerCase()}</span>
-                    </div>
-                    <p className="text-xs text-white/40 mb-6">
-                      {d.months > 1 ? `≈ ${rp(perMonth)}${t.month} · ` : ''}
-                      {d.off > 0 ? <span className="text-primary font-semibold">hemat {d.off}%</span> : rp(base) + t.month}
-                    </p>
-                    <ul className="space-y-2.5 mb-7 flex-1">
-                      {p.features.map(f => (
-                        <li key={f} className="flex items-start gap-2.5 text-sm">
-                          <span className={`shrink-0 mt-0.5 rounded-full p-0.5 ${p.highlight ? 'bg-primary/15' : 'bg-white/10'}`}><Check size={12} className={p.highlight ? 'text-primary' : 'text-white/60'} /></span>
-                          <span className="text-white/80">{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link href={checkoutHref(p.highlight ? 'pro' : 'standar', d.months)} className={`w-full text-center rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90 ${p.highlight ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25' : 'bg-white/10 text-white'}`}>{p.cta}</Link>
-                  </div>
-                </div>
-              </Reveal>
-            )
-          })}
-        </div>
         <Reveal><p className="text-center text-xs text-white/40 mt-6">Pembayaran via transfer bank Mandiri · Aktivasi setelah verifikasi · Bisa berhenti kapan saja</p></Reveal>
       </section>
 
@@ -733,7 +701,7 @@ export function LandingPage() {
             <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-96 h-96 bg-primary/20 blur-[100px] rounded-full pointer-events-none dtq-pulse" />
             <h2 className="relative text-2xl md:text-4xl font-black tracking-tight max-w-2xl mx-auto leading-tight">{t.finalTitle}</h2>
             <p className="relative text-sm text-white/60 mt-4 max-w-lg mx-auto">{t.finalSub}</p>
-            <Link href={loggedIn ? '/jurnal' : checkoutHref('standar', 1)} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
+            <Link href={loggedIn ? '/jurnal' : proHref} className="relative inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-8 py-4 text-sm font-semibold mt-7 hover:opacity-90 transition-opacity shadow-xl shadow-primary/30">
               {loggedIn ? t.nav.dash : t.finalCta} <ArrowRight size={16} />
             </Link>
           </div>

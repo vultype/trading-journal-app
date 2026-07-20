@@ -88,6 +88,12 @@ export default function LoginPage() {
         })
         if (err) { setError(err.message); setBusy(false); return }
         track('CompleteRegistration', { content_name: 'Daftar Datalitiq' })
+        // Notifikasi admin (gagal-diam, tak menghalangi user lanjut)
+        fetch('/api/notify/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {}) },
+          body: JSON.stringify({ email, name: name.trim() }),
+        }).catch(() => {})
         if (data.session) { router.replace(nextTarget()); return }
         setDone(true); setBusy(false); return
       }

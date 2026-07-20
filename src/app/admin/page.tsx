@@ -1030,6 +1030,7 @@ type GwCfg = {
   midtrans: { clientKey: string; serverKeyMask: string; production: boolean }
 }
 const GW_LIST = [
+  { id: 'manual', label: 'Transfer Manual', note: 'Transfer bank + upload bukti · verifikasi admin' },
   { id: 'doku', label: 'DOKU', note: 'Redirect checkout · kartu, QRIS, e-wallet, VA' },
   { id: 'ipaymu', label: 'iPaymu', note: 'Redirect payment · QRIS, VA, retail, e-wallet' },
   { id: 'midtrans', label: 'Midtrans', note: 'Snap popup · kartu, QRIS, e-wallet, VA' },

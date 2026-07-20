@@ -6,7 +6,7 @@
 // (DOKU_*, MIDTRANS_*) supaya integrasi yang sudah berjalan tidak putus.
 import { createClient } from '@supabase/supabase-js'
 
-export type Gateway = 'none' | 'doku' | 'ipaymu' | 'midtrans'
+export type Gateway = 'none' | 'doku' | 'ipaymu' | 'midtrans' | 'manual'
 
 export type PaymentConfig = {
   activeGateway: Gateway
@@ -53,7 +53,7 @@ export async function getPaymentConfig(): Promise<PaymentConfig> {
     const s = (v: string | null, fb: string) => (v && v.trim() ? v.trim() : fb)
     const g = (r.active_gateway || 'none') as Gateway
     return {
-      activeGateway: ['doku', 'ipaymu', 'midtrans', 'none'].includes(g) ? g : 'none',
+      activeGateway: ['doku', 'ipaymu', 'midtrans', 'manual', 'none'].includes(g) ? g : 'none',
       doku: { clientId: s(r.doku_client_id, env.doku.clientId), secretKey: s(r.doku_secret_key, env.doku.secretKey), production: !!r.doku_production },
       ipaymu: { va: s(r.ipaymu_va, env.ipaymu.va), apiKey: s(r.ipaymu_api_key, env.ipaymu.apiKey), production: !!r.ipaymu_production },
       midtrans: { serverKey: s(r.midtrans_server_key, env.midtrans.serverKey), clientKey: s(r.midtrans_client_key, env.midtrans.clientKey), production: !!r.midtrans_production },
@@ -67,5 +67,7 @@ export function gatewayReady(c: PaymentConfig) {
     doku: !!(c.doku.clientId && c.doku.secretKey),
     ipaymu: !!(c.ipaymu.va && c.ipaymu.apiKey),
     midtrans: !!(c.midtrans.serverKey && c.midtrans.clientKey),
+    manual: true,   // transfer bank tak butuh kredensial apa pun → selalu siap
+    none: false,
   }
 }

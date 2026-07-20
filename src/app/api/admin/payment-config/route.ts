@@ -13,7 +13,7 @@ const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_UR
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const ADMIN_EMAIL = 'vultype@gmail.com'
-const GATEWAYS = ['none', 'doku', 'ipaymu', 'midtrans']
+const GATEWAYS = ['none', 'doku', 'ipaymu', 'midtrans', 'manual']
 
 const mask = (v: string | null) => { const s = (v || '').trim(); return s ? '••••' + s.slice(-4) : '' }
 

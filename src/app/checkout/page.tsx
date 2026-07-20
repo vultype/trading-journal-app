@@ -1,18 +1,19 @@
 'use client'
 
 // Checkout — standalone (bukan di dalam layout Jurnal Tools), gaya gelap konsisten
-// dengan /terminal, /hub, /upgrade. Pembayaran online saja (DOKU utama, Midtrans
-// fallback). Transfer manual sudah dihapus.
+// dengan /terminal, /hub, /upgrade. Mendukung gateway online (DOKU/iPaymu/Midtrans)
+// DAN transfer manual (upload bukti + kode unik), dipilih dari Admin → Pembayaran.
 import { useState, useMemo, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
-import { DURATIONS, pkgPrice, planBase, planName, rp, type PlanId } from '@/lib/pricing'
+import { DURATIONS, pkgPrice, planBase, planName, rp, BANK, type PlanId } from '@/lib/pricing'
 import { Confetti } from '@/components/ui/Confetti'
 import { track, trackPurchaseOnce } from '@/lib/pixel'
 import {
   Crown, Sparkles, ShieldCheck, ArrowLeft, Loader2, CreditCard, Wallet, Check, ArrowRight, AlertCircle, PartyPopper,
+  Building2, Copy, Upload, Clock,
 } from 'lucide-react'
 
 declare global {
@@ -22,7 +23,9 @@ declare global {
 // Gateway aktif TIDAK lagi dari env — diambil dari /api/payment/gateway (diatur admin
 // lewat UI). Endpoint itu hanya mengembalikan nama gateway + client key Midtrans (publik);
 // semua secret tetap server-side.
-type GatewayInfo = { gateway: 'none' | 'doku' | 'ipaymu' | 'midtrans'; midtransClientKey: string; midtransProduction: boolean }
+type GatewayInfo = { gateway: 'none' | 'doku' | 'ipaymu' | 'midtrans' | 'manual'; midtransClientKey: string; midtransProduction: boolean }
+// Order transfer manual yang sudah dibuat (menunggu transfer + bukti)
+type ManualOrder = { orderId: string; invoice: string; baseAmount: number; uniqueCode: number; total: number }
 
 const INCLUDED = [
   'Kesimpulan arah pasar + tingkat keyakinan real-time',
@@ -47,6 +50,9 @@ function CheckoutInner() {
   const [busy, setBusy] = useState(false)
   const [snapReady, setSnapReady] = useState(false)
   const [gw, setGw] = useState<GatewayInfo | null>(null)   // null = masih memuat
+  const [manual, setManual] = useState<ManualOrder | null>(null)  // order transfer manual aktif
+  const [uploading, setUploading] = useState(false)
+  const [proofDone, setProofDone] = useState(false)
 
   // Ambil gateway aktif dari server (diatur admin lewat UI)
   useEffect(() => {
@@ -157,6 +163,53 @@ function CheckoutInner() {
     }
   }
 
+  // ── Transfer manual: buat order (server hitung harga + kode unik) ──
+  async function startManual() {
+    if (!userId) return
+    track('InitiateCheckout', { content_name: `Paket ${planName(plan)}`, value: base, currency: 'IDR' })
+    setBusy(true)
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { toast.error('Sesi habis, silakan login ulang'); return }
+      const res = await fetch('/api/payment/manual/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ plan, months: dur.months }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'Gagal membuat pesanan'); return }
+      setManual({ orderId: j.orderId, invoice: j.invoice, baseAmount: j.baseAmount, uniqueCode: j.uniqueCode, total: j.total })
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan') } finally { setBusy(false) }
+  }
+
+  // ── Unggah bukti transfer: upload ke storage, lalu server tandai menunggu verifikasi ──
+  async function uploadProof(file: File) {
+    if (!manual || !userId) return
+    if (!file.type.startsWith('image/')) { toast.error('File harus berupa gambar (JPG/PNG)'); return }
+    if (file.size > 5_000_000) { toast.error('Ukuran gambar maksimal 5 MB'); return }
+    setUploading(true)
+    try {
+      const sb = createClient()
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { toast.error('Sesi habis, silakan login ulang'); return }
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `bukti-transfer/${userId}-${manual.invoice}-${Date.now()}.${ext}`
+      const up = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+      if (up.error) { toast.error('Upload gagal: ' + up.error.message); return }
+      const { data: pub } = sb.storage.from('trade-screenshots').getPublicUrl(path)
+      const res = await fetch('/api/payment/manual/proof', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ orderId: manual.orderId, proofUrl: pub.publicUrl }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast.error(j.error || 'Gagal mengirim bukti'); return }
+      setProofDone(true)
+      toast.success('Bukti transfer terkirim — menunggu verifikasi admin')
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Terjadi kesalahan') } finally { setUploading(false) }
+  }
+
+  const copy = (t: string, label: string) => { navigator.clipboard?.writeText(t).then(() => toast.success(`${label} disalin`)).catch(() => {}) }
   const activeGw = gw?.gateway ?? 'none'
   const onlineActive = activeGw !== 'none'
 
@@ -208,6 +261,51 @@ function CheckoutInner() {
 
             {!gw ? (
               <div className="flex items-center justify-center gap-2 py-4 text-sm text-white/40"><Loader2 size={15} className="animate-spin" /> Menyiapkan pembayaran…</div>
+            ) : activeGw === 'manual' ? (
+              !manual ? (
+                <>
+                  <button onClick={startManual} disabled={busy || !userId}
+                    className="group w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3.5 text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-primary/25">
+                    {busy ? <><Loader2 size={16} className="animate-spin" /> Menyiapkan…</> : <><Building2 size={16} /> Bayar via Transfer Bank <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></>}
+                  </button>
+                  <div className="flex items-center justify-center gap-2 text-[11px] text-white/40 mt-3"><Building2 size={12} /> Transfer manual ke {BANK.name} · verifikasi oleh admin</div>
+                </>
+              ) : proofDone ? (
+                <div className="rounded-xl border border-blue-500/25 bg-blue-500/[0.07] p-5 text-center space-y-2">
+                  <Clock size={26} className="text-blue-400 mx-auto" />
+                  <p className="text-sm font-black">Bukti transfer diterima</p>
+                  <p className="text-[12px] text-white/60 leading-relaxed">Invoice <b className="text-white/85">{manual.invoice}</b> sedang diverifikasi admin (biasanya &lt; 1×24 jam). Akses Pro otomatis aktif setelah disetujui.</p>
+                  <button onClick={() => router.push('/account')} className="text-[12px] font-semibold text-primary hover:underline mt-1">Lihat status langganan →</button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Nominal WAJIB persis (termasuk kode unik) */}
+                  <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Transfer tepat sejumlah</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-black tabular-nums">{rp(manual.total)}</span>
+                      <button onClick={() => copy(String(manual.total), 'Nominal')} className="text-white/40 hover:text-primary" title="Salin nominal"><Copy size={14} /></button>
+                    </div>
+                    <p className="text-[11px] text-white/55 mt-1.5">{rp(manual.baseAmount)} + <b className="text-primary">{manual.uniqueCode}</b> (kode unik). <b className="text-white/80">Jangan dibulatkan</b> — kode unik dipakai untuk mencocokkan pembayaranmu otomatis.</p>
+                  </div>
+                  {/* Rekening tujuan */}
+                  <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Rekening Tujuan</p>
+                    <div className="flex items-center justify-between"><span className="text-[12px] text-white/50">Bank</span><span className="text-[13px] font-bold">{BANK.name}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-[12px] text-white/50">No. Rekening</span><span className="flex items-center gap-2"><span className="text-[13px] font-black tabular-nums">{BANK.number}</span><button onClick={() => copy(BANK.number, 'Nomor rekening')} className="text-white/40 hover:text-primary"><Copy size={13} /></button></span></div>
+                    <div className="flex items-center justify-between"><span className="text-[12px] text-white/50">Atas Nama</span><span className="text-[13px] font-bold">{BANK.holder}</span></div>
+                    <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]"><span className="text-[12px] text-white/50">Invoice</span><span className="text-[12px] font-mono text-white/70">{manual.invoice}</span></div>
+                  </div>
+                  {/* Upload bukti */}
+                  <div>
+                    <label className={`flex items-center justify-center gap-2 w-full rounded-xl border border-dashed border-primary/40 bg-primary/[0.04] px-4 py-4 text-sm font-bold cursor-pointer hover:bg-primary/[0.08] transition-colors ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                      {uploading ? <><Loader2 size={16} className="animate-spin" /> Mengunggah…</> : <><Upload size={16} className="text-primary" /> Unggah Bukti Transfer</>}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadProof(f) }} />
+                    </label>
+                    <p className="text-[11px] text-white/35 text-center mt-2">JPG/PNG, maks 5 MB. Setelah diunggah, admin akan memverifikasi & mengaktifkan akses Pro.</p>
+                  </div>
+                </div>
+              )
             ) : activeGw === 'doku' || activeGw === 'ipaymu' ? (
               <>
                 <button onClick={() => payRedirect(activeGw === 'doku' ? '/api/payment/doku/create' : '/api/payment/ipaymu/create')} disabled={busy || !userId}

@@ -1,5 +1,10 @@
 // Harga & paket langganan (dipakai subscription, checkout, billing)
-export const BASE = { standar: 59000, pro: 129000, terminal: 179000 } as const
+// Semua tools berbayar = Rp99.000/bulan. Jurnal Tools TIDAK dijual terpisah —
+// statusnya bonus untuk pelanggan Pro (lihat JURNAL_IS_BONUS di bawah).
+export const BASE = { standar: 99000, pro: 99000, terminal: 99000 } as const
+
+// Jurnal Tools adalah BONUS Pro: tak punya harga & tak bisa di-checkout.
+export const JURNAL_IS_BONUS = true
 
 export type PlanId = 'standar' | 'pro' | 'terminal'
 
@@ -19,11 +24,11 @@ export const planName = (plan: PlanId) => (plan === 'terminal' ? 'Datalitiq AI T
 
 export const rp = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID')
 
-// Rekening tujuan pembayaran (dummy)
+// Rekening tujuan pembayaran manual (transfer bank)
 export const BANK = {
-  name: 'Mandiri',
-  number: '1370098765432',
-  holder: 'PT DATALITIQ INDONESIA',
+  name: 'Bank Mandiri',
+  number: '1270012873343',
+  holder: 'MEGA SESVA',
   wa: '6281212124512',
 }
 
