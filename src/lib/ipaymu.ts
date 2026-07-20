@@ -1,9 +1,10 @@
 // Integrasi iPaymu API v2 (redirect payment) — server-side. Secret HANYA server-side.
 // Signature (per dok resmi iPaymu v2):
-//   bodyHash     = lowercase( sha256( JSON.stringify(body) ) )
+//   payload      = JSON body, serialisasi ala PHP json_encode ('/' → '\/') — lihat ipaymuPayload
+//   bodyHash     = lowercase( sha256( payload ) )
 //   stringToSign = METHOD(UPPER) + ':' + va + ':' + bodyHash + ':' + apiKey
 //   signature    = hex( HMAC-SHA256( stringToSign, apiKey ) )
-//   timestamp    = YYYYMMDDHHmmss
+//   timestamp    = YYYYMMDDHHmmss (WIB)
 // Header: va, signature, timestamp, Content-Type: application/json
 import crypto from 'crypto'
 
@@ -14,14 +15,25 @@ export function ipaymuBase(production: boolean) {
   return production ? BASE_PROD : BASE_SANDBOX
 }
 
-function tsNow(d = new Date()) {
+// Timestamp WIB (Asia/Jakarta) — server Vercel jalan UTC, iPaymu layanan Indonesia.
+// Digeser +7 jam lalu dibaca pakai getter UTC agar hasilnya tak bergantung TZ server.
+export function ipaymuTimestamp(d = new Date()) {
+  const j = new Date(d.getTime() + 7 * 3_600_000)
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+  return `${j.getUTCFullYear()}${p(j.getUTCMonth() + 1)}${p(j.getUTCDate())}${p(j.getUTCHours())}${p(j.getUTCMinutes())}${p(j.getUTCSeconds())}`
 }
 
-export function ipaymuSignature(method: string, va: string, apiKey: string, body: unknown) {
-  const json = JSON.stringify(body ?? {})
-  const bodyHash = crypto.createHash('sha256').update(json, 'utf8').digest('hex').toLowerCase()
+// ⚠️ Serialisasi body HARUS meniru PHP json_encode: '/' di-escape jadi '\/'.
+// iPaymu (PHP) meng-encode ULANG body yang diterima untuk menghitung hash pembanding.
+// JSON.stringify JS tidak meng-escape '/', jadi tanpa ini hash kita ≠ hash mereka dan
+// server menolak dengan "unauthorized signature" (body kita berisi URL: returnUrl dll).
+// String hasil fungsi ini WAJIB dipakai untuk hash DAN sebagai body request (harus sama).
+export function ipaymuPayload(body: unknown): string {
+  return JSON.stringify(body ?? {}).replace(/\//g, '\\/')
+}
+
+export function ipaymuSignature(method: string, va: string, apiKey: string, payload: string) {
+  const bodyHash = crypto.createHash('sha256').update(payload, 'utf8').digest('hex').toLowerCase()
   const stringToSign = `${method.toUpperCase()}:${va}:${bodyHash}:${apiKey}`
   return crypto.createHmac('sha256', apiKey).update(stringToSign, 'utf8').digest('hex')
 }
@@ -57,7 +69,8 @@ export async function createIpaymuPayment(p: IpaymuParams): Promise<{ paymentUrl
     cancelUrl: p.cancelUrl || '',
     notifyUrl: p.notifyUrl || '',
   }
-  const signature = ipaymuSignature('POST', p.va, p.apiKey, body)
+  const payload = ipaymuPayload(body)
+  const signature = ipaymuSignature('POST', p.va, p.apiKey, payload)
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -65,9 +78,9 @@ export async function createIpaymuPayment(p: IpaymuParams): Promise<{ paymentUrl
       'Content-Type': 'application/json',
       va: p.va,
       signature,
-      timestamp: tsNow(),
+      timestamp: ipaymuTimestamp(),
     },
-    body: JSON.stringify(body),   // WAJIB sama persis dgn yg di-hash utk signature
+    body: payload,   // WAJIB string yang SAMA PERSIS dengan yang di-hash
     cache: 'no-store',
   })
   const j = await res.json().catch(() => ({}))

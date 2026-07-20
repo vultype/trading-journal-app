@@ -23,15 +23,13 @@ async function verifyTrx(trxId: string): Promise<{ status: string; statusCode?: 
   try {
     const cfg = await getPaymentConfig()
     if (!cfg.ipaymu.va || !cfg.ipaymu.apiKey || !trxId) return null
-    const { ipaymuBase, ipaymuSignature } = await import('@/lib/ipaymu')
-    const body = { transactionId: trxId }
-    const signature = ipaymuSignature('POST', cfg.ipaymu.va, cfg.ipaymu.apiKey, body)
-    const p = (n: number) => String(n).padStart(2, '0'); const d = new Date()
-    const timestamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+    const { ipaymuBase, ipaymuSignature, ipaymuPayload, ipaymuTimestamp } = await import('@/lib/ipaymu')
+    const payload = ipaymuPayload({ transactionId: trxId })
+    const signature = ipaymuSignature('POST', cfg.ipaymu.va, cfg.ipaymu.apiKey, payload)
     const res = await fetch(`${ipaymuBase(cfg.ipaymu.production)}/transaction`, {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', va: cfg.ipaymu.va, signature, timestamp },
-      body: JSON.stringify(body), cache: 'no-store',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', va: cfg.ipaymu.va, signature, timestamp: ipaymuTimestamp() },
+      body: payload, cache: 'no-store',   // string sama persis dengan yang di-hash
     })
     const j = await res.json().catch(() => ({}))
     const data = j?.Data ?? j?.data
