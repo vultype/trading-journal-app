@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ADMIN_EMAIL } from '@/lib/notify-admin'
-import { renderTemplate, TEMPLATES, type TemplateId, type TemplateVars } from '@/lib/email-templates'
+import { renderTemplate, TEMPLATES, SUPPORT_EMAIL, type TemplateId, type TemplateVars } from '@/lib/email-templates'
 import { planName, type PlanId } from '@/lib/pricing'
 
 // Kirim email transaksional MANUAL ke satu user (ADMIN-ONLY).
@@ -94,7 +94,8 @@ export async function POST(req: Request) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: FROM, to: [target], subject, html, reply_to: ADMIN_EMAIL }),
+    // Balasan pelanggan masuk ke support, bukan inbox pribadi admin.
+    body: JSON.stringify({ from: FROM, to: [target], subject, html, reply_to: SUPPORT_EMAIL }),
   })
   const j = await res.json().catch(() => ({}))
   if (!res.ok) {

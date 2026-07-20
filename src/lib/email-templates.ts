@@ -24,6 +24,11 @@ const LINE = '#E3E9E6'
 const CANVAS = '#EEF3F0'       // latar luar, abu kehijauan
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif"
 
+// Alamat kontak yang ditampilkan ke pelanggan. Balasan email juga diarahkan
+// ke sini, bukan ke inbox pribadi admin.
+export const SUPPORT_EMAIL = 'support@datalitiq.com'
+export const SUPPORT_NAME = 'Tim Datalitiq'
+
 // Spesifikasi logo email — dipakai kode DAN ditampilkan sebagai panduan di admin,
 // supaya syarat yang divalidasi dan yang ditulis tidak pernah berbeda.
 export const EMAIL_LOGO_SPEC = {
@@ -161,11 +166,11 @@ function shell(bodyHtml: string, preheader: string, siteUrl: string, logoUrl?: s
 
   <tr><td style="padding:24px 36px 30px;border-top:1px solid ${LINE};background:#F8FAF9">
     <p style="margin:0 0 14px;font:400 13px/1.6 ${FONT};color:${BODY}">
-      Ada pertanyaan? Balas email ini, atau hubungi kami di
-      <a href="https://wa.me/${BANK.wa}" style="color:${TEXT};font-weight:600;text-decoration:none">WhatsApp +${BANK.wa}</a>.
+      Ada pertanyaan? Balas email ini, atau hubungi
+      <a href="mailto:${SUPPORT_EMAIL}" style="color:${TEXT};font-weight:600;text-decoration:none">${SUPPORT_EMAIL}</a>.
     </p>
     <div style="height:1px;background:${LINE};margin:0 0 14px"></div>
-    <p style="margin:0 0 6px;font:600 12px/1.5 ${FONT};color:${TEXT}">Datalitiq &middot; Terminal Analisa XAU/USD</p>
+    <p style="margin:0 0 6px;font:600 12px/1.5 ${FONT};color:${TEXT}">${SUPPORT_NAME} &middot; Terminal Analisa XAU/USD</p>
     <p style="margin:0 0 10px;font:400 11px/1.65 ${FONT};color:${MUTED}">
       <a href="${siteUrl}/terminal" style="color:${MUTED};text-decoration:none">Terminal</a> &nbsp;&middot;&nbsp;
       <a href="${siteUrl}/blog" style="color:${MUTED};text-decoration:none">Blog</a> &nbsp;&middot;&nbsp;
