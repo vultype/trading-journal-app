@@ -11,6 +11,11 @@
 export const mayarBase = (production: boolean) =>
   production ? 'https://api.mayar.id/hl/v1' : 'https://api.mayar.club/hl/v1'
 
+// Placeholder nomor HP — Mayar mewajibkan `mobile` tapi checkout belum
+// mengumpulkannya. Format Indonesia valid (08 + 10 digit), semua nol agar tak
+// pernah cocok dengan nomor WhatsApp aktif milik siapa pun.
+const MAYAR_DUMMY_MOBILE = '08000000000'
+
 export type MayarCreateArgs = {
   apiKey: string
   production: boolean
@@ -69,8 +74,11 @@ export async function createMayarInvoice(a: MayarCreateArgs): Promise<{ paymentU
     // route notification.
     extraData: { noCustomer: a.referenceId, idProd: 'datalitiq-terminal' },
   }
-  const phone = (a.buyerPhone || '').trim()
-  if (phone) body.mobile = phone
+  // Mayar MEWAJIBKAN `mobile`. Kita belum mengumpulkan nomor HP di checkout,
+  // jadi dipakai placeholder dulu. Sengaja semua nol setelah prefix agar tidak
+  // pernah menjadi nomor WhatsApp orang sungguhan yang bisa terkirim notifikasi.
+  // TODO: kumpulkan nomor asli di halaman checkout, lalu teruskan lewat buyerPhone.
+  body.mobile = (a.buyerPhone || '').trim() || MAYAR_DUMMY_MOBILE
 
   const j = await mayarFetch(`${mayarBase(a.production)}/invoice/create`, a.apiKey, { method: 'POST', body: JSON.stringify(body) })
   const d = j.data || {}
