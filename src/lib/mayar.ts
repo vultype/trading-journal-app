@@ -35,18 +35,31 @@ async function mayarFetch(url: string, apiKey: string, init?: RequestInit) {
   })
   const j = await res.json().catch(() => ({} as Record<string, unknown>))
   if (!res.ok) {
-    const msg = (j as { messages?: string; message?: string }).messages || (j as { message?: string }).message || `HTTP ${res.status}`
-    throw new Error(`Mayar: ${msg}`)
+    const o = j as { messages?: string; message?: string; data?: unknown }
+    // Validation error Mayar sering menaruh detail per-field di `data` (array
+    // {field/name, message}). Tanpa ini yang terlihat cuma "validation error"
+    // tanpa tahu field mana — persis masalah yang menyulitkan di iPaymu.
+    let detail = ''
+    if (Array.isArray(o.data)) {
+      detail = (o.data as Array<Record<string, unknown>>)
+        .map(e => `${e.field ?? e.name ?? '?'}: ${e.message ?? e.msg ?? JSON.stringify(e)}`).join('; ')
+    } else if (o.data && typeof o.data === 'object') {
+      detail = JSON.stringify(o.data).slice(0, 300)
+    }
+    const base = o.messages || o.message || `HTTP ${res.status}`
+    throw new Error(`Mayar: ${base}${detail ? ` — ${detail}` : ''}`)
   }
   return j as { statusCode?: number; messages?: string; data?: Record<string, unknown> }
 }
 
 export async function createMayarInvoice(a: MayarCreateArgs): Promise<{ paymentUrl: string; invoiceId: string; transactionId: string }> {
   const mins = a.expiresInMinutes ?? 60 * 24
-  const body = {
+  // Field opsional yang KOSONG jangan dikirim sama sekali. Pelajaran dari iPaymu:
+  // string kosong ("mobile":"") memicu validation error, sedangkan bila field-nya
+  // dihilangkan Mayar menerimanya. Jadi mobile hanya disertakan bila ada isinya.
+  const body: Record<string, unknown> = {
     name: a.buyerName || 'Pelanggan Datalitiq',
-    email: a.buyerEmail || '',
-    mobile: a.buyerPhone || '',
+    email: a.buyerEmail || 'noreply@datalitiq.com',
     redirectUrl: a.redirectUrl,
     description: a.description || a.itemName,
     expiredAt: new Date(Date.now() + mins * 60_000).toISOString(),
@@ -56,6 +69,8 @@ export async function createMayarInvoice(a: MayarCreateArgs): Promise<{ paymentU
     // route notification.
     extraData: { noCustomer: a.referenceId, idProd: 'datalitiq-terminal' },
   }
+  const phone = (a.buyerPhone || '').trim()
+  if (phone) body.mobile = phone
 
   const j = await mayarFetch(`${mayarBase(a.production)}/invoice/create`, a.apiKey, { method: 'POST', body: JSON.stringify(body) })
   const d = j.data || {}
