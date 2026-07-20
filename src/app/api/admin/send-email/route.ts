@@ -57,6 +57,10 @@ export async function POST(req: Request) {
   if (uErr || !got?.user?.email) return NextResponse.json({ error: 'User tidak ditemukan.' }, { status: 404 })
   const target = got.user.email
 
+  // Logo email dari CMS. Gagal baca bukan alasan membatalkan kirim — template
+  // otomatis jatuh ke wordmark teks.
+  const { data: cfg } = await svc.from('app_config').select('email_logo_url').eq('id', 1).maybeSingle()
+
   // Order terakhir yang masih menunggu pembayaran — sumber nominal + kode unik.
   const { data: order } = await svc.from('payment_orders')
     .select('plan, total, unique_code, status, created_at')
@@ -71,6 +75,7 @@ export async function POST(req: Request) {
   const vars: TemplateVars = {
     name: displayName(target, got.user.user_metadata),
     siteUrl: SITE,
+    logoUrl: (cfg?.email_logo_url as string | null) || undefined,
     hasOrder,
     total: Number(order?.total ?? 0),
     uniqueCode: order?.unique_code ? Number(order.unique_code) : undefined,

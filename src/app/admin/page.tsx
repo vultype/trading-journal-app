@@ -14,7 +14,7 @@ import { Confetti } from '@/components/ui/Confetti'
 import { playRegimeChime } from '@/lib/chime'
 import { Shield, Users, TrendingUp, Activity, Loader2, AlertTriangle, RefreshCw, ImageIcon, Upload, Trash2, Info, Receipt, CheckCircle2, XCircle, ExternalLink, Clock, ArrowLeft, LogOut, Crown, Wallet, Search, Megaphone, Globe, Plus, Pencil, Eye, EyeOff, CalendarDays, Newspaper, Wrench, PartyPopper, Bell, Mail } from 'lucide-react'
 import { rp, planName, type PlanId } from '@/lib/pricing'
-import { TEMPLATES, type TemplateId } from '@/lib/email-templates'
+import { TEMPLATES, EMAIL_LOGO_SPEC, type TemplateId } from '@/lib/email-templates'
 import type { Trade, Transfer } from '@/types'
 
 const fmt = (n: number) => rp(n)
@@ -983,6 +983,100 @@ from auth.users where email = 'cahyaduadelapan@gmail.com';`}</code>
 }
 
 // ── Dev Tools — testing manual komponen UI (toast, confetti) tanpa perlu memicu alur asli ──
+// ————— Logo Email —————
+// Terpisah dari logo aplikasi: header email berlatar TERANG, sedangkan logo
+// aplikasi biasanya putih untuk header terminal yang gelap.
+function EmailLogoManager() {
+  const [url, setUrl] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const S = EMAIL_LOGO_SPEC
+
+  useEffect(() => {
+    createClient().from('app_config').select('email_logo_url').eq('id', 1).maybeSingle()
+      .then(({ data }) => setUrl((data?.email_logo_url as string | null) ?? null))
+  }, [])
+
+  async function save(next: string | null) {
+    setUrl(next)
+    const { error } = await createClient().from('app_config')
+      .upsert({ id: 1, email_logo_url: next, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) toast.error('Gagal menyimpan: ' + error.message + ' — jalankan supabase-email-logo.sql?')
+  }
+
+  // Baca dimensi asli sebelum upload. Logo yang terlalu kecil akan buram di
+  // layar retina, dan yang terlalu kotak merusak tinggi header email.
+  function measure(file: File) {
+    return new Promise<{ w: number; h: number }>((res, rej) => {
+      const img = new Image()
+      img.onload = () => { res({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(img.src) }
+      img.onerror = () => rej(new Error('File gambar tidak terbaca'))
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  async function upload(file: File) {
+    if (file.type === 'image/svg+xml') { toast.error('SVG tidak didukung klien email. Pakai PNG.'); return }
+    if (!['image/png', 'image/jpeg'].includes(file.type)) { toast.error('Format harus PNG (disarankan) atau JPG'); return }
+    if (file.size > S.maxBytes) { toast.error(`Ukuran file maksimal ${Math.round(S.maxBytes / 1000)} KB`); return }
+    setBusy(true)
+    try {
+      const { w, h } = await measure(file)
+      const ratio = w / h
+      if (h < S.minH) { toast.error(`Tinggi minimal ${S.minH}px agar tajam di layar retina (file Anda ${h}px)`); return }
+      if (w > S.maxW) { toast.error(`Lebar maksimal ${S.maxW}px (file Anda ${w}px)`); return }
+      if (ratio > S.maxRatio || ratio < S.minRatio) {
+        toast.error(`Rasio ${ratio.toFixed(1)}:1 di luar rentang. Pakai logo mendatar antara ${S.minRatio}:1 dan ${S.maxRatio}:1.`); return
+      }
+      const sb = createClient()
+      const ext = file.type === 'image/png' ? 'png' : 'jpg'
+      const path = `branding/email-logo-${Date.now()}.${ext}`
+      const { error } = await sb.storage.from('trade-screenshots').upload(path, file, { upsert: true })
+      if (error) { toast.error('Upload gagal: ' + error.message); return }
+      await save(sb.storage.from('trade-screenshots').getPublicUrl(path).data.publicUrl)
+      toast.success(`Logo email diperbarui (${w}×${h}px)`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Upload gagal')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><ImageIcon size={15} className="text-primary" /> Logo Email</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        {/* Pratinjau di atas putih — persis kondisi header email */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center justify-center min-w-[200px] h-20 rounded-xl border border-border/50 bg-white px-5">
+            {url
+              ? <img src={url} alt="Logo email" style={{ height: S.displayH, width: 'auto' }} />
+              : <span className="text-[13px] font-bold text-slate-900">Datalitiq <span className="font-medium text-slate-500 text-[10px] tracking-wide">XAU/USD TERMINAL</span></span>}
+          </div>
+          <div className="flex gap-2">
+            <label className={`inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold cursor-pointer ${busy ? 'opacity-60 pointer-events-none' : 'hover:opacity-90'}`}>
+              {busy ? <><Loader2 size={15} className="animate-spin" /> Mengupload…</> : <><Upload size={15} /> Upload Logo Email</>}
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f) }} />
+            </label>
+            {url && <Button variant="outline" size="sm" className="gap-1.5 text-destructive" onClick={() => { save(null); toast.success('Logo email dihapus') }}><Trash2 size={14} /> Hapus</Button>}
+          </div>
+        </div>
+        {!url && <p className="text-[11px] text-amber-400">Belum ada logo — email memakai wordmark teks &ldquo;Datalitiq&rdquo;. Itu tetap tampil rapi dan aman.</p>}
+
+        <div className="rounded-xl bg-muted/30 border border-border/40 p-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 flex items-center gap-1.5"><Info size={12} /> Syarat Logo Email</p>
+          <ul className="text-[13px] text-muted-foreground space-y-1.5 leading-relaxed">
+            <li><b className="text-foreground">Format PNG</b> dengan latar transparan. SVG ditolak — hampir semua klien email membuangnya. JPG boleh, tapi tidak bisa transparan.</li>
+            <li><b className="text-foreground">Ukuran file maksimal {Math.round(S.maxBytes / 1000)} KB.</b> Logo berat memperlambat pemuatan dan menaikkan skor spam.</li>
+            <li><b className="text-foreground">Tinggi file minimal {S.minH}px</b> (2× dari tinggi tampil {S.displayH}px). Di bawah itu logo terlihat buram di layar retina.</li>
+            <li><b className="text-foreground">Lebar maksimal {S.maxW}px</b>, rasio mendatar antara {S.minRatio}:1 dan {S.maxRatio}:1. Logo kotak membuat header email terlalu tinggi.</li>
+            <li><b className="text-foreground">Ukuran ideal: 360 × 90px</b> — tampil sebagai 180 × 45px, tajam di semua layar.</li>
+            <li><b className="text-foreground">Warna harus terbaca di atas PUTIH.</b> Header email berlatar terang, jadi logo putih akan hilang. Pakai versi gelap dari logo Anda.</li>
+            <li>Tanpa margin kosong berlebih di sekeliling gambar — potong mepet ke tepi logo.</li>
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ————— Kirim Email Manual —————
 // Admin memilih user + template, melihat pratinjau, lalu mengirim.
 // Nominal & kode unik diambil server-side dari order user, tidak diketik manual.
@@ -1755,6 +1849,7 @@ export default function AdminPage() {
           </div>
         ) : tab === 'email' ? (
           <div className="space-y-6 [&_.bg-card]:bg-white/[0.02] [&_.text-card-foreground]:text-white">
+            <EmailLogoManager />
             <EmailManager users={rows} />
           </div>
         ) : tab === 'publikasi' ? (
