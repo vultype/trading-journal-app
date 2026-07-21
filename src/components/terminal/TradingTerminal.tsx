@@ -835,6 +835,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   // R&D Sniper (khusus admin): state fase sebelumnya + kunci notifikasi terakhir
   const phasePrevRef = useRef<PhaseState | null>(null)
   const notifiedPhase = useRef<string | null>(null)
+  const notifiedEntry = useRef<string | null>(null)   // satu alert per kunjungan zona entry
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -1010,6 +1011,34 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
               body: JSON.stringify({ phase: p.phase, dir: p.dir, label: p.label, score: p.score, price: priceNow, reasons: p.reasons, zoneNote: p.zone?.note ?? '' }),
+            }).catch(() => {})
+          })
+        }, 0)
+      }
+    }
+
+    // Notifikasi SETUP ENTRY (konfluensi zona + Fib). Terpisah dari notif fase:
+    // ini yang benar-benar "boleh dieksekusi", jadi dibedakan bunyinya.
+    // Kunci = sisi + zona dibulatkan → satu alert per kunjungan zona, bukan tiap tick.
+    const eKey = phase.entry ? `${phase.entry.side}:${Math.round(phase.entry.zoneLo)}` : null
+    if (notifiedEntry.current !== eKey) {
+      notifiedEntry.current = eKey
+      if (phase.entry) {
+        const en = phase.entry, beep = soundOn, priceNow = feed.price
+        setTimeout(() => {
+          toast.success(`🎯 SETUP ${en.side} · skor ${en.score} · zona $${en.zoneLo.toFixed(1)}–$${en.zoneHi.toFixed(1)} · R:R 1:${en.rr.toFixed(1)}`)
+          if (beep) playChime('ignition', en.side === 'BUY' ? 'up' : 'down')
+          createClient().auth.getSession().then(({ data: { session } }) => {
+            if (!session) return
+            fetch('/api/admin/phase-alert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({
+                phase: 'ignition', dir: en.side === 'BUY' ? 'bull' : 'bear',
+                label: `SETUP ${en.side}`, score: en.score, price: priceNow,
+                reasons: en.factors,
+                zoneNote: `Entry $${en.zoneLo.toFixed(1)}–$${en.zoneHi.toFixed(1)} · SL $${en.sl.toFixed(1)} · TP1 $${en.tp1.toFixed(1)} · R:R 1:${en.rr.toFixed(1)}`,
+              }),
             }).catch(() => {})
           })
         }, 0)
@@ -2141,6 +2170,88 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                     info="Tool riset (khusus admin). Coiling = siaga; Ignition = momen cari entry; Trending = kelola posisi, bukan entry. Skor = keyakinan — catat semua sinyal ke Jurnal Backtest sebelum dipercaya untuk uang sungguhan."
                     right={<span className="text-[10px] font-bold" style={{ color: pc }}>skor {phase.score}/100</span>}>
                     <div className="space-y-4">
+                      {/* ARAH SEKARANG — pertanyaan pertama trader: BUY atau SELL? */}
+                      {(() => {
+                        const b = phase.bias
+                        const bc = b === 'bullish' ? '#10b981' : b === 'bearish' ? '#ef4444' : '#64748b'
+                        return (
+                          <div className="rounded-2xl border p-4" style={{ background: `${bc}14`, borderColor: `${bc}55` }}>
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Arah Sekarang</p>
+                                <p className="text-2xl font-black tracking-tight" style={{ color: bc }}>
+                                  {b === 'bullish' ? '▲ BULLISH' : b === 'bearish' ? '▼ BEARISH' : '↔ NETRAL'}
+                                </p>
+                              </div>
+                              <div className="px-4 py-2 rounded-xl font-black text-sm" style={{ background: b === 'netral' ? '#64748b22' : `${bc}26`, color: bc }}>
+                                {b === 'bullish' ? 'CARI BUY' : b === 'bearish' ? 'CARI SELL' : 'TUNGGU'}
+                              </div>
+                            </div>
+                            <p className="text-[12px] text-white/60 mt-2">{phase.biasNote}</p>
+                            {phase.srNote && <p className="text-[11px] text-white/45 mt-1">{phase.srNote}</p>}
+                          </div>
+                        )
+                      })()}
+
+                      {/* SETUP SIAP EKSEKUSI — muncul hanya saat konfluensi cukup */}
+                      {phase.entry && (() => {
+                        const en = phase.entry
+                        const ec = en.side === 'BUY' ? '#10b981' : '#ef4444'
+                        return (
+                          <div className="rounded-2xl border-2 p-4" style={{ borderColor: ec, background: `${ec}12` }}>
+                            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                              <span className="text-lg font-black" style={{ color: ec }}>🎯 SETUP {en.side} — skor {en.score}/100</span>
+                              <span className="text-[12px] font-bold px-2.5 py-1 rounded-lg" style={{ background: `${ec}22`, color: ec }}>R:R 1:{en.rr.toFixed(1)}</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="rounded-lg bg-white/[0.04] p-2.5">
+                                <p className="text-[9px] font-bold uppercase tracking-wider text-white/40">Zona Entry</p>
+                                <p className="text-sm font-black tabular-nums">${en.zoneLo.toFixed(1)}–${en.zoneHi.toFixed(1)}</p>
+                              </div>
+                              <div className="rounded-lg bg-red-500/10 p-2.5">
+                                <p className="text-[9px] font-bold uppercase tracking-wider text-red-300/60">Stop Loss</p>
+                                <p className="text-sm font-black tabular-nums text-red-300">${en.sl.toFixed(1)}</p>
+                              </div>
+                              <div className="rounded-lg bg-emerald-500/10 p-2.5">
+                                <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-300/60">Target 1</p>
+                                <p className="text-sm font-black tabular-nums text-emerald-300">${en.tp1.toFixed(1)}</p>
+                              </div>
+                            </div>
+                            <ul className="space-y-1">
+                              {en.factors.map((f, i) => (
+                                <li key={i} className="flex items-start gap-2 text-[12px] text-white/75 leading-relaxed">
+                                  <span className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ background: ec }} />{f}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Fibonacci golden zone */}
+                      {phase.fib && (() => {
+                        const fb = phase.fib
+                        return (
+                          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Fibonacci · leg {fb.up ? 'naik' : 'turun'} ${fb.legLo.toFixed(1)}–${fb.legHi.toFixed(1)}</p>
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md" style={{ background: fb.inGolden ? '#f59e0b26' : '#ffffff0d', color: fb.inGolden ? '#fbbf24' : 'rgba(255,255,255,.45)' }}>
+                                {fb.inGolden ? 'DI GOLDEN ZONE' : `retrace ${Math.round(fb.pct * 100)}%`}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-2 text-center">
+                              {([['38.2%', fb.f382, false], ['50%', fb.f500, true], ['61.8%', fb.f618, true], ['78.6%', fb.f786, false]] as const).map(([l, v, gold]) => (
+                                <div key={l} className="rounded-lg p-2" style={{ background: gold ? '#f59e0b14' : '#ffffff08', border: gold ? '1px solid #f59e0b33' : '1px solid transparent' }}>
+                                  <p className="text-[9px] font-bold" style={{ color: gold ? '#fbbf24' : 'rgba(255,255,255,.4)' }}>{l}</p>
+                                  <p className="text-[12px] font-black tabular-nums text-white/80">${v.toFixed(1)}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[10px] text-white/30 mt-2">Golden zone 50–61.8% = area pullback klasik untuk entry sniper searah tren.</p>
+                          </div>
+                        )
+                      })()}
+
                       {/* Timeline fase */}
                       <div className="grid grid-cols-3 gap-2">
                         {STEPS.map((st, i) => {

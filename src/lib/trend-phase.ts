@@ -19,6 +19,29 @@ import { bollinger, macdCalc, type Boll, type Macd } from './indicators'
 
 export type PhaseId = 'idle' | 'coiling' | 'ignition' | 'confirmed'
 export type PhaseDir = 'bull' | 'bear' | null
+export type Bias = 'bullish' | 'bearish' | 'netral'
+
+// Fibonacci retracement dari leg impuls TERAKHIR di M5 (fokus scalping).
+// Golden zone 50–61.8% = area pullback klasik untuk entry sniper.
+export type FibInfo = {
+  legLo: number; legHi: number      // batas leg impuls
+  up: boolean                       // leg naik (retrace = turun) atau sebaliknya
+  f382: number; f500: number; f618: number; f786: number
+  gzLo: number; gzHi: number        // golden zone (antara 50% & 61.8%)
+  inGolden: boolean                 // harga sedang di dalam golden zone
+  pct: number                       // posisi retracement harga saat ini (0..1)
+}
+
+// Setup entry siap-eksekusi — hasil KONFLUENSI beberapa faktor di satu harga.
+export type EntrySetup = {
+  side: 'BUY' | 'SELL'
+  zoneLo: number; zoneHi: number
+  score: number                     // 0..100 kualitas konfluensi
+  factors: string[]                 // faktor yang terpenuhi (bahan jurnal)
+  sl: number
+  tp1: number
+  rr: number                        // risk:reward ke TP1
+}
 
 export type TFSlice = {
   candles: Candle[]
@@ -44,6 +67,12 @@ export type PhaseState = {
   mature: boolean        // tren sudah jauh — JANGAN dikejar
   matureNote: string | null
   sinceTs: number        // kapan fase ini mulai (utk durasi & expiry ignition)
+  // ── Arah & aksi (yang paling dicari trader: "sekarang cari BUY atau SELL?") ──
+  bias: Bias             // arah dominan saat ini
+  biasNote: string       // instruksi ringkas: "Cari setup BUY saja" dst
+  fib: FibInfo | null    // Fibonacci leg impuls terakhir
+  entry: EntrySetup | null   // setup siap-eksekusi bila konfluensi cukup
+  srNote: string         // posisi harga terhadap zona S/R searah bias
   // Readout live — SELALU terisi (bahkan saat idle) supaya panel tak pernah
   // terlihat "mati". Angka-angka price action mentah yang update tiap tick.
   metrics: {
@@ -87,10 +116,12 @@ export type StructInfo = {
   lastLow: number
   event: StructEvent
   eventNote: string
+  highs: number[]          // swing high terkini→lama (untuk zona resistance)
+  lows: number[]           // swing low terkini→lama (untuk zona support)
 }
 
 function analyzeStructure(c: Candle[], left = 2, right = 2): StructInfo {
-  const none: StructInfo = { label: 'Sideways', seq: 'data kurang', lastHigh: 0, lastLow: 0, event: null, eventNote: '' }
+  const none: StructInfo = { label: 'Sideways', seq: 'data kurang', lastHigh: 0, lastLow: 0, event: null, eventNote: '', highs: [], lows: [] }
   if (c.length < left + right + 8) return none
   // Pivot dari bar TERKONFIRMASI saja (kecualikan `right` bar terakhir yang belum final)
   const conf = c.slice(0, -right)
@@ -123,7 +154,36 @@ function analyzeStructure(c: Candle[], left = 2, right = 2): StructInfo {
       ? `ChoCh turun: close menembus HL terakhir ($${l1.toFixed(1)}) — awal pembalikan ke bawah`
       : `BOS turun: close menembus LL terakhir ($${l1.toFixed(1)}) — tren turun berlanjut`
   }
-  return { label, seq, lastHigh: h1, lastLow: l1, event, eventNote }
+  return {
+    label, seq, lastHigh: h1, lastLow: l1, event, eventNote,
+    highs: highs.slice(-6).map(x => x.p).reverse(),
+    lows: lows.slice(-6).map(x => x.p).reverse(),
+  }
+}
+
+// Fibonacci dari leg impuls terakhir M5. Leg = jarak antara swing low & high
+// terakhir; arah leg ditentukan mana yang lebih baru secara harga relatif tren.
+function calcFib(struct: StructInfo, price: number, up: boolean): FibInfo | null {
+  const lo = struct.lastLow, hi = struct.lastHigh
+  if (!lo || !hi || hi <= lo) return null
+  const range = hi - lo
+  // Retracement diukur dari ujung impuls: leg naik → retrace turun dari hi.
+  const lvl = (r: number) => (up ? hi - range * r : lo + range * r)
+  const f382 = lvl(0.382), f500 = lvl(0.5), f618 = lvl(0.618), f786 = lvl(0.786)
+  const gzLo = Math.min(f500, f618), gzHi = Math.max(f500, f618)
+  const pct = up ? (hi - price) / range : (price - lo) / range
+  return { legLo: lo, legHi: hi, up, f382, f500, f618, f786, gzLo, gzHi, inGolden: price >= gzLo && price <= gzHi, pct }
+}
+
+// Zona S/R terdekat SEARAH bias: bullish → support di bawah harga (peluang BUY);
+// bearish → resistance di atas harga (peluang SELL). Lebar zona skala ATR,
+// sama seperti panel zona di terminal utama supaya konsisten.
+function nearestZone(levels: number[], price: number, atr: number, below: boolean) {
+  const w = Math.max(1, Math.min(5, atr * 0.5))
+  const cands = levels.filter(p => p > 0 && (below ? p <= price + w : p >= price - w))
+  if (!cands.length) return null
+  const lvl = below ? Math.max(...cands) : Math.min(...cands)
+  return { mid: lvl, lo: lvl - w, hi: lvl + w, inside: price >= lvl - w && price <= lvl + w }
 }
 
 // Donchian channel dari N bar tertutup SEBELUM bar penutup terakhir.
@@ -182,9 +242,12 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   const now = Date.now()
   const zeroMetrics: PhaseState['metrics'] = { er: 0, adx: 0, atrContraction: 1, bwPctile: 0.5, distEmaAtr: 0, rangeAtr: 0, rsi: 50, dchHi: 0, dchLo: 0, m15Up: true, structLabel: 'Sideways', structSeq: '—', structEvent: null, structEventNote: '', structHigh: 0, structLow: 0 }
   let liveMetrics = zeroMetrics   // diisi ulang begitu metrik terhitung
+  let liveBias: Bias = 'netral', liveBiasNote = 'Arah belum jelas — tunggu, jangan paksa entry.'
+  let liveFib: FibInfo | null = null, liveEntry: EntrySetup | null = null, liveSrNote = ''
   const mk = (p: Partial<PhaseState>): PhaseState => ({
     phase: 'idle', dir: null, label: 'Tidak Ada Setup', score: 0, reasons: [],
-    zone: null, mature: false, matureNote: null, sinceTs: now, metrics: liveMetrics, ...p,
+    zone: null, mature: false, matureNote: null, sinceTs: now, metrics: liveMetrics,
+    bias: liveBias, biasNote: liveBiasNote, fib: liveFib, entry: liveEntry, srNote: liveSrNote, ...p,
   })
   if (c5.length < 60 || m15.candles.length < 40) return mk({ reasons: ['data candle belum cukup'] })
 
@@ -209,8 +272,13 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
 
   // ── Kematangan tren: jarak dari mean dalam satuan ATR + RSI ekstrem.
   //    Dipakai untuk MENCEGAH entry telat (obat FOMO), apa pun fasenya.
-  const distMean = Math.abs(price - e21) / (atr5 || 1)
-  const mature = distMean > 2.2 || m5.rsi >= 72 || m5.rsi <= 28
+  // Jarak BERTANDA dari mean: positif = di atas EMA21, negatif = di bawah.
+  // Ini penting — jauh di ATAS mean saat naik = kelewat jauh (jangan dikejar),
+  // tapi jauh di BAWAH mean saat uptrend = pullback dalam (justru dicari sniper).
+  // Memakai nilai absolut menyamakan keduanya dan itu keliru.
+  const distSigned = (price - e21) / (atr5 || 1)
+  const distMean = Math.abs(distSigned)
+  const mature = (distSigned > 2.2 && m5.rsi >= 65) || (distSigned < -2.2 && m5.rsi <= 35) || m5.rsi >= 75 || m5.rsi <= 25
   const pbLo = Math.min(e9, e21), pbHi = Math.max(e9, e21)
 
   // Readout live — dipakai panel untuk selalu menampilkan angka meski idle.
@@ -219,6 +287,86 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
     distEmaAtr: distMean, rangeAtr: atr5 > 0 ? lastRange / atr5 : 0, rsi: m5.rsi,
     dchHi: dch.hi, dchLo: dch.lo, m15Up: m15DirUp,
     structLabel: struct.label, structSeq: struct.seq, structEvent: struct.event, structEventNote: struct.eventNote, structHigh: struct.lastHigh, structLow: struct.lastLow,
+  }
+
+  // ══ ARAH (BIAS) — jawaban untuk "sekarang cari BUY atau SELL?" ══
+  // Struktur adalah suara utama (price action), M15 & EMA sebagai penguat.
+  // Butuh minimal 2 dari 3 setuju; kalau tidak → netral (jangan paksa entry).
+  const emaUp = e9 > e21
+  const votesUp = [struct.label === 'Uptrend', m15DirUp, emaUp].filter(Boolean).length
+  const votesDn = [struct.label === 'Downtrend', !m15DirUp, !emaUp].filter(Boolean).length
+  if (struct.label !== 'Sideways' && votesUp >= 2 && struct.label === 'Uptrend') liveBias = 'bullish'
+  else if (struct.label !== 'Sideways' && votesDn >= 2 && struct.label === 'Downtrend') liveBias = 'bearish'
+  else if (votesUp === 3) liveBias = 'bullish'
+  else if (votesDn === 3) liveBias = 'bearish'
+  liveBiasNote = liveBias === 'bullish' ? 'Cari setup BUY saja — abaikan sinyal jual.'
+    : liveBias === 'bearish' ? 'Cari setup SELL saja — abaikan sinyal beli.'
+    : 'Arah belum jelas — tunggu, jangan paksa entry.'
+
+  const biasUp = liveBias === 'bullish'
+  liveFib = liveBias === 'netral' ? null : calcFib(struct, price, biasUp)
+
+  // ══ KONFLUENSI ENTRY — hanya searah bias, di zona yang benar ══
+  if (liveBias !== 'netral') {
+    // bullish → cari SUPPORT di bawah (BUY); bearish → RESISTANCE di atas (SELL)
+    const z = nearestZone(biasUp ? struct.lows : struct.highs, price, atr5, biasUp)
+    liveSrNote = z
+      ? (z.inside
+        ? `Harga DI DALAM zona ${biasUp ? 'support' : 'resistance'} $${f1(z.lo)}–$${f1(z.hi)}`
+        : `Zona ${biasUp ? 'support' : 'resistance'} terdekat $${f1(z.lo)}–$${f1(z.hi)} (${f1(Math.abs(price - z.mid))} dari harga)`)
+      : `Belum ada zona ${biasUp ? 'support' : 'resistance'} terdeteksi`
+
+    let cs = 0
+    const factors: string[] = []
+    if (z?.inside) { cs += 30; factors.push(`Di zona ${biasUp ? 'support' : 'resistance'} $${f1(z.lo)}–$${f1(z.hi)}`) }
+    if (liveFib?.inGolden) { cs += 25; factors.push(`Di Fib golden zone 50–61.8% ($${f1(liveFib.gzLo)}–$${f1(liveFib.gzHi)})`) }
+    if (Math.abs(price - e21) <= atr5 * 0.4) { cs += 15; factors.push(`Menempel EMA21 ($${f1(e21)})`) }
+    if (Math.abs(price - m5.vwap) <= atr5 * 0.4) { cs += 10; factors.push(`Menempel VWAP sesi ($${f1(m5.vwap)})`) }
+    // RSI "reset": pullback sudah mendingin tapi belum berbalik arah total
+    if (biasUp ? (m5.rsi >= 38 && m5.rsi <= 58) : (m5.rsi >= 42 && m5.rsi <= 62)) { cs += 12; factors.push(`RSI ${Math.round(m5.rsi)} sudah reset — pullback matang`) }
+    if (struct.label === (biasUp ? 'Uptrend' : 'Downtrend')) { cs += 10; factors.push(`Struktur ${struct.seq} searah`) }
+    if (activeSession) { cs += 8; factors.push('Sesi London/NY') }
+    // Penalti hanya bila harga kelewat jauh SEARAH tren (pullback belum terjadi).
+    // Harga jauh di sisi berlawanan justru berarti pullback sudah dalam — bagus.
+    const overExtended = biasUp ? distSigned > 2.2 : distSigned < -2.2
+    if (overExtended) { cs -= 15; factors.push('⚠ harga masih jauh searah tren — pullback belum terjadi') }
+
+    if (cs >= 55 && z) {
+      // SL di INVALIDASI TERDEKAT, bukan level jauh mana pun. Kandidat: batas
+      // zona S/R (bila harga sedang di dalamnya) dan Fib 78.6% (bila tertembus,
+      // retracement dianggap gagal). Diambil yang PALING DEKAT ke harga →
+      // stop paling ketat yang masih masuk akal, lalu diberi buffer 0.5×ATR.
+      // Memakai level jauh membuat risiko membengkak tanpa menambah proteksi.
+      const slCands: number[] = []
+      if (z.inside) slCands.push(biasUp ? z.lo : z.hi)
+      if (liveFib) slCands.push(liveFib.f786)
+      slCands.push(biasUp ? price - atr5 * 1.5 : price + atr5 * 1.5)   // fallback berbasis volatilitas
+      const valid = slCands.filter(v => (biasUp ? v < price : v > price))
+      const anchor = valid.length ? (biasUp ? Math.max(...valid) : Math.min(...valid)) : (biasUp ? price - atr5 * 1.5 : price + atr5 * 1.5)
+      const slRaw = biasUp ? anchor - atr5 * 0.5 : anchor + atr5 * 0.5
+      const tp1 = biasUp ? struct.lastHigh : struct.lastLow
+      const risk = Math.abs(price - slRaw), reward = Math.abs(tp1 - price)
+      const rr = risk > 0 ? reward / risk : 0
+      // SYARAT R:R MINIMUM. Konfluensi bagus tapi imbalan lebih kecil dari risiko
+      // = trade rugi secara ekspektasi. Setup seperti itu TIDAK ditampilkan,
+      // sebaik apa pun skornya — menahan diri lebih baik daripada entry jelek.
+      if (rr >= 1.2) {
+        if (rr >= 2) { cs += 8; factors.push(`R:R 1:${rr.toFixed(1)} — imbalan jauh di atas risiko`) }
+        // Zona entry = zona tempat harga BERADA sekarang (S/R bila di dalamnya,
+        // kalau tidak golden zone Fib). Menampilkan zona S/R yang jauh saat
+        // pemicunya Fib akan menyesatkan — trader melihat harga di luar zona.
+        const eLo = z.inside ? z.lo : liveFib?.inGolden ? liveFib.gzLo : price - atr5 * 0.3
+        const eHi = z.inside ? z.hi : liveFib?.inGolden ? liveFib.gzHi : price + atr5 * 0.3
+        liveEntry = {
+          side: biasUp ? 'BUY' : 'SELL',
+          zoneLo: eLo, zoneHi: eHi,
+          score: Math.min(95, cs), factors,
+          sl: slRaw, tp1, rr,
+        }
+      } else {
+        liveSrNote += ` · setup ditahan: R:R hanya 1:${rr.toFixed(1)} (minimal 1:1.2)`
+      }
+    }
   }
   const matureNote = mature
     ? `Harga sudah ${f1(distMean)}×ATR dari EMA21${m5.rsi >= 72 ? ` · RSI ${Math.round(m5.rsi)} jenuh beli` : m5.rsi <= 28 ? ` · RSI ${Math.round(m5.rsi)} jenuh jual` : ''} — JANGAN dikejar. Tunggu pullback ke $${f1(pbLo)}–$${f1(pbHi)}.`
