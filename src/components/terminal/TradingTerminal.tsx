@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Activity, Gauge as GaugeIcon, Newspaper, Layers, Radio, ArrowLeft, Clock, Wifi, WifiOff,
-  Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw,
+  Landmark, Circle, Sparkles, Target, Waves, Crosshair, Compass, BarChart3, Loader2, RefreshCw, Route,
   Info, Users, CalendarClock, Lightbulb, Brain, ExternalLink, ShieldAlert, Eye,
   LayoutDashboard, BookOpen, Maximize2, X, Flame, TrendingUp, TrendingDown, CheckCircle2, MinusCircle, LineChart,
   Zap, Scale, GitBranch, Signal, ArrowUpDown, Coins, Server, MessageSquarePlus, ChevronUp, ChevronDown, ChevronRight,
@@ -20,6 +20,7 @@ import {
 import { toast } from '@/lib/toast'
 import { playChime, type ChimeDir } from '@/lib/chime'
 import { detectTrendPhase, type PhaseState } from '@/lib/trend-phase'
+import { buildProjection, type ProjLevel } from '@/lib/projection'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
@@ -1197,6 +1198,80 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       <p className="text-[11px] font-bold tabular-nums text-white/85 mt-0.5">{f2(z.low)} – {f2(z.high)}</p>
     </div>
   )
+  // ── Proyeksi: arah leg, target, kedalaman koreksi, sisa ruang harian ──
+  // Sengaja dibingkai "level proyeksi", BUKAN prediksi: yang dihitung adalah
+  // tempat harga cenderung bereaksi (Fib extension/retracement dari leg nyata),
+  // bukan klaim ke mana harga pasti pergi.
+  const proj = buildProjection({
+    m15: feed.tf.M15.candles, h1: feed.tf.H1.candles, price: feed.price,
+    ema21: feed.tf.M15.ema21[feed.tf.M15.ema21.length - 1] ?? feed.price,
+    atr: feed.tf.M15.atr, dayHigh: feed.dayHigh, dayLow: feed.dayLow,
+  })
+  const projC = proj.dir === 'naik' ? '#10b981' : proj.dir === 'turun' ? '#ef4444' : '#64748b'
+  const ProjLevelRow = ({ l, tone }: { l: ProjLevel; tone: string }) => (
+    <div className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 ${l.reached ? 'bg-white/[0.06]' : 'bg-white/[0.02]'}`}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-[11px] font-bold shrink-0 w-14" style={{ color: l.reached ? 'rgba(255,255,255,.45)' : tone }}>{l.label}</span>
+        <span className="text-[10px] text-white/35 truncate">{l.basis}</span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-[12px] font-black tabular-nums">${l.price.toFixed(1)}</span>
+        <span className="text-[10px] tabular-nums w-12 text-right" style={{ color: l.distPct >= 0 ? '#34d399' : '#f87171' }}>
+          {l.distPct >= 0 ? '+' : ''}{l.distPct.toFixed(2)}%
+        </span>
+        {l.reached && <span className="text-[9px] text-white/35">✓</span>}
+      </div>
+    </div>
+  )
+  const ProjeksiPanel = (
+    <Panel title="Proyeksi Harga · Target & Koreksi" icon={Route} accent={projC}
+      info="Level terukur dari leg impuls M15 terakhir: target = Fibonacci extension + swing sebelumnya; koreksi = retracement 38.2/50/61.8/78.6%. Tanda ✓ = sudah tersentuh. INI BUKAN PREDIKSI — hanya area di mana harga secara historis cenderung bereaksi."
+      right={<span className="text-[10px] font-bold" style={{ color: projC }}>{proj.dir === 'naik' ? '▲ LEG NAIK' : proj.dir === 'turun' ? '▼ LEG TURUN' : '↔ CAMPUR'}</span>}>
+      {proj.targets.length === 0 ? (
+        <p className="text-[12px] text-white/45 py-3">{proj.note}</p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[11px] text-white/55 leading-relaxed">{proj.dirNote}</p>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Target — bila lanjut</p>
+            <div className="space-y-1">{proj.targets.map((l, i) => <ProjLevelRow key={i} l={l} tone={projC} />)}</div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Koreksi — sampai mana masih wajar</p>
+            <div className="space-y-1">{proj.retracements.map((l, i) => <ProjLevelRow key={i} l={l} tone="#fbbf24" />)}</div>
+          </div>
+
+          {proj.invalidation && (
+            <div className="flex items-start gap-2 rounded-lg bg-red-500/[0.07] border border-red-500/25 p-2.5">
+              <ShieldAlert size={14} className="text-red-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-red-200/85 leading-relaxed">{proj.invalidation.note}</p>
+            </div>
+          )}
+
+          {proj.room && (
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Ruang Gerak Hari Ini</span>
+                <span className="text-[11px] font-black tabular-nums" style={{ color: proj.room.usedPct >= 100 ? '#f87171' : proj.room.usedPct >= 70 ? '#fbbf24' : '#34d399' }}>
+                  {Math.round(proj.room.usedPct)}% terpakai
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, proj.room.usedPct)}%`, background: proj.room.usedPct >= 100 ? '#ef4444' : proj.room.usedPct >= 70 ? '#f59e0b' : '#10b981' }} />
+              </div>
+              <p className="text-[10px] text-white/40 mt-1.5 leading-relaxed">
+                Range hari ini ${proj.room.todayRange.toFixed(1)} vs rata-rata ${proj.room.typical.toFixed(1)} — {proj.room.note}
+              </p>
+            </div>
+          )}
+
+          <p className="text-[10px] text-white/25 leading-relaxed">{proj.note}</p>
+        </div>
+      )}
+    </Panel>
+  )
   const ZonaPanel = (
     <Panel title="Zona Support & Resistance (Scalping)" icon={Layers} info="Zona S/R TERDEKAT dari swing intraday M5 & M15 (paling relevan untuk scalping) + pivot harian. Tag M5/M15/Pivot menandai sumbernya. Lebar band ikut volatilitas (ATR M5). Resistance di atas (rem naik), support di bawah (rem turun). Amber = harga sedang di dalam zona.">
       {allZones.length ? (
@@ -2008,7 +2083,8 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{SignalMeterPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{HtfBiasPanel}{ReversalPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{OscillatorPanel}{MomentumPanel}</div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ZonaPanel}{IndicatorMatrix}</div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ProjeksiPanel}{ZonaPanel}</div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{IndicatorMatrix}</div>
             </div>)}
 
             {tab === 'makro' && (!isPro ? <LockedTab icon={Landmark} {...LOCKED_TAB_META.makro} /> : <div className="max-w-6xl mx-auto space-y-4 lg:space-y-5">
