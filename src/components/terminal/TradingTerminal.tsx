@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { playChime, type ChimeDir } from '@/lib/chime'
+import { detectTrendPhase, type PhaseState } from '@/lib/trend-phase'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
@@ -671,13 +672,14 @@ function RiskMeter({ riskOn }: { riskOn: number }) {
 }
 
 // ─────────────────────────── TAB ───────────────────────────
-type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'makro-lintas' | 'makro-inflasi' | 'makro-cot' | 'sentimen' | 'berita' | 'status' | 'panduan'
+type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'makro-lintas' | 'makro-inflasi' | 'makro-cot' | 'sentimen' | 'berita' | 'rnd' | 'status' | 'panduan'
 const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string; pro?: boolean }[] = [
   { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard, group: 'Analisa' },
   { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa', pro: true },
   { id: 'makro', label: 'Makro', icon: Landmark, group: 'Analisa', pro: true },
   { id: 'sentimen', label: 'Sentimen', icon: Users, group: 'Analisa', pro: true },
   { id: 'berita', label: 'Analisa News', icon: Newspaper, group: 'Analisa', pro: true },
+  { id: 'rnd', label: 'R&D Sniper', icon: Crosshair, group: 'Sistem' },
   { id: 'status', label: 'Status Server', icon: Server, group: 'Sistem' },
   { id: 'panduan', label: 'Panduan', icon: BookOpen, group: 'Sistem' },
 ]
@@ -830,6 +832,9 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const pendingMom = useRef<{ label: string; since: number } | null>(null)
   const notifiedSig = useRef<string | null>(null)
   const pendingSig = useRef<{ label: string; since: number } | null>(null)
+  // R&D Sniper (khusus admin): state fase sebelumnya + kunci notifikasi terakhir
+  const phasePrevRef = useRef<PhaseState | null>(null)
+  const notifiedPhase = useRef<string | null>(null)
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -982,6 +987,34 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       toast[l === 'NETRAL' ? 'info' : l === 'BULLISH' ? 'success' : 'error'](`Signal Meter → ${l} · skor ${sc.overall >= 0 ? '+' : ''}${sc.overall.toFixed(0)}`)
       if (beep) playChime('signal', dirOf(l))
     })
+  }
+
+  // ── R&D SNIPER (khusus admin): deteksi fase Coiling → Ignition → Confirmed ──
+  // Mesin murni di lib/trend-phase.ts; di sini hanya jalankan + notifikasi transisi.
+  const phase = isAdmin ? detectTrendPhase({ m5: feed.tf.M5, m15: feed.tf.M15, price: feed.price, utcHour: hh, prev: phasePrevRef.current }) : null
+  if (phase) {
+    phasePrevRef.current = phase
+    const key = `${phase.phase}:${phase.dir ?? '-'}`
+    if (notifiedPhase.current === null) notifiedPhase.current = key   // render pertama: rekam saja
+    else if (notifiedPhase.current !== key) {
+      notifiedPhase.current = key
+      if (phase.phase !== 'idle') {
+        const p = phase, beep = soundOn, priceNow = feed.price
+        setTimeout(() => {
+          toast[p.phase === 'ignition' ? 'success' : 'info'](`🎯 R&D: ${p.label}${p.dir ? ` (${p.dir === 'bull' ? 'Bullish' : 'Bearish'})` : ''} · skor ${p.score}`)
+          if (beep) playChime(p.phase === 'coiling' ? 'coiling' : p.phase === 'ignition' ? 'ignition' : 'regime', p.dir === 'bear' ? 'down' : p.dir === 'bull' ? 'up' : 'flat')
+          // Email admin — token diambil dari sesi; route memverifikasi admin + rate-limit
+          createClient().auth.getSession().then(({ data: { session } }) => {
+            if (!session) return
+            fetch('/api/admin/phase-alert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ phase: p.phase, dir: p.dir, label: p.label, score: p.score, price: priceNow, reasons: p.reasons, zoneNote: p.zone?.note ?? '' }),
+            }).catch(() => {})
+          })
+        }, 0)
+      }
+    }
   }
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
@@ -1807,7 +1840,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   )
 
   // Status Server hanya untuk admin — sembunyikan tab-nya dari user biasa.
-  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== 'status')
+  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== 'status' && t.id !== 'rnd')
   const navGroups = Array.from(new Set(visibleTabs.map(t => t.group ?? 'Menu')))
   const activeTab = TABS.find(t => t.id === tab)
 
@@ -2093,6 +2126,86 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
 
             {tab === 'berita' && (!isPro ? <LockedTab icon={Newspaper} {...LOCKED_TAB_META.berita} /> : <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4"><TerminalNewsAnalysis snapshot={snapshot} /></div>)}
 
+            {tab === 'rnd' && isAdmin && phase && (() => {
+              const pc = phase.phase === 'ignition' ? '#22c55e' : phase.phase === 'confirmed' ? (phase.dir === 'bull' ? '#10b981' : '#ef4444') : phase.phase === 'coiling' ? '#f59e0b' : '#64748b'
+              const STEPS = [
+                { id: 'coiling', t: 'Coiling', d: 'Energi terkumpul' },
+                { id: 'ignition', t: 'Cari Zona Open Posisi', d: 'Trigger sniper' },
+                { id: 'confirmed', t: 'Trending', d: 'Kelola posisi' },
+              ] as const
+              const activeIdx = STEPS.findIndex(st => st.id === phase.phase)
+              const durMin = Math.max(0, Math.round((Date.now() - phase.sinceTs) / 60_000))
+              return (
+                <div className="max-w-6xl mx-auto space-y-4">
+                  <Panel title="R&D Sniper — Fase Tren M5" icon={Crosshair} accent={pc}
+                    info="Tool riset (khusus admin). Coiling = siaga; Ignition = momen cari entry; Trending = kelola posisi, bukan entry. Skor = keyakinan — catat semua sinyal ke Jurnal Backtest sebelum dipercaya untuk uang sungguhan."
+                    right={<span className="text-[10px] font-bold" style={{ color: pc }}>skor {phase.score}/100</span>}>
+                    <div className="space-y-4">
+                      {/* Timeline fase */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {STEPS.map((st, i) => {
+                          const on = i === activeIdx
+                          const passed = activeIdx > i
+                          return (
+                            <div key={st.id} className={`rounded-xl border p-3 text-center transition-colors ${on ? 'border-transparent' : 'border-white/10'}`}
+                              style={on ? { background: `${pc}1a`, boxShadow: `inset 0 0 0 1px ${pc}66` } : undefined}>
+                              <p className={`text-[11px] font-black ${on ? '' : passed ? 'text-white/60' : 'text-white/30'}`} style={on ? { color: pc } : undefined}>{st.t}</p>
+                              <p className="text-[10px] text-white/35 mt-0.5">{st.d}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Status utama */}
+                      <div className="rounded-2xl border border-white/10 p-5 text-center" style={{ background: `${pc}0d` }}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{phase.phase === 'idle' ? 'Status' : `Fase aktif · ${durMin}m`}</p>
+                        <p className="text-2xl font-black tracking-tight" style={{ color: pc }}>
+                          {phase.label}{phase.dir ? <span className="ml-2">{phase.dir === 'bull' ? '▲' : '▼'}</span> : null}
+                        </p>
+                        <div className="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden max-w-sm mx-auto">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${phase.score}%`, background: pc }} />
+                        </div>
+                        <p className="text-[10px] text-white/35 mt-1.5">keyakinan {phase.score}/100 — ignition sengaja tak pernah 100: dini = tidak pasti</p>
+                      </div>
+
+                      {/* Peringatan kematangan — obat FOMO */}
+                      {phase.mature && phase.matureNote && (
+                        <div className="flex items-start gap-2.5 rounded-xl bg-red-500/10 border border-red-500/30 p-4">
+                          <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
+                          <p className="text-[12px] text-red-200/90 leading-relaxed"><b>Tren sudah matang.</b> {phase.matureNote}</p>
+                        </div>
+                      )}
+
+                      {/* Zona aksi */}
+                      {phase.zone && (
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Zona Aksi</p>
+                          <p className="text-lg font-black tabular-nums">${phase.zone.lo.toFixed(1)} — ${phase.zone.hi.toFixed(1)}</p>
+                          <p className="text-[11px] text-white/55 mt-1 leading-relaxed">{phase.zone.note}</p>
+                        </div>
+                      )}
+
+                      {/* Bukti price action — bahan jurnal backtest */}
+                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Bukti Price Action</p>
+                        <ul className="space-y-1.5">
+                          {phase.reasons.map((r, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[12px] text-white/70 leading-relaxed">
+                              <span className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ background: pc }} />{r}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <p className="text-[10px] text-white/30 leading-relaxed">
+                        🔔 Notifikasi transisi fase aktif: toast + bunyi (coiling = 2 nada rendah, ignition = 4 nada cepat, trending = chime regime) + email ke admin.
+                        ⚠️ Tool R&D — deteksi dini pasti punya false signal. Catat tiap sinyal di Jurnal Backtest (fase, skor, hasil) sebelum dipakai untuk uang sungguhan.
+                      </p>
+                    </div>
+                  </Panel>
+                </div>
+              )
+            })()}
             {tab === 'status' && isAdmin && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4">{ServerStatusContent}</div>}
 
             {tab === 'panduan' && <div className="max-w-6xl mx-auto"><PanduanContent /></div>}

@@ -10,13 +10,17 @@
 //   signal   → 3 nada (paling penting, paling menonjol)
 //
 //   naik → nada menaik   ·   turun → nada menurun   ·   datar → dua nada sama
-export type ChimeKind = 'regime' | 'momentum' | 'signal'
+export type ChimeKind = 'regime' | 'momentum' | 'signal' | 'coiling' | 'ignition'
 export type ChimeDir = 'up' | 'down' | 'flat'
 
 const PATTERNS: Record<ChimeKind, { base: number[]; dur: number; gap: number }> = {
   regime:   { base: [784, 1047], dur: 0.20, gap: 0.13 },        // G5 → C6
   momentum: { base: [988, 1319], dur: 0.11, gap: 0.09 },        // B5 → E6, lebih pendek
   signal:   { base: [659, 880, 1175], dur: 0.17, gap: 0.12 },   // E5 → A5 → D6
+  // R&D Sniper: coiling = 2 nada rendah pelan (siaga, bukan aksi);
+  // ignition = 4 nada cepat menanjak (urgensi — momen entry sedang lewat).
+  coiling:  { base: [440, 523], dur: 0.24, gap: 0.20 },          // A4 → C5
+  ignition: { base: [659, 784, 988, 1319], dur: 0.09, gap: 0.075 }, // E5→G5→B5→E6 rentetan cepat
 }
 
 export function playChime(kind: ChimeKind = 'regime', dir: ChimeDir = 'up') {
