@@ -2157,8 +2157,13 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
 
             {tab === 'rnd' && isAdmin && phase && (() => {
               const pc = phase.phase === 'ignition' ? '#22c55e' : phase.phase === 'confirmed' ? (phase.dir === 'bull' ? '#10b981' : '#ef4444') : phase.phase === 'coiling' ? '#f59e0b' : '#64748b'
+              // Tahap 1 punya dua wajah: kompresi tanpa arah (Coiling) vs kompresi
+              // searah tren (Koreksi). Label ikut menyesuaikan supaya tidak menyesatkan.
+              const isKoreksi = phase.phase === 'coiling' && phase.dir !== null
               const STEPS = [
-                { id: 'coiling', t: 'Coiling', d: 'Energi terkumpul' },
+                isKoreksi
+                  ? { id: 'coiling', t: 'Koreksi', d: 'Tunggu zona lanjutan' }
+                  : { id: 'coiling', t: 'Coiling', d: 'Energi terkumpul' },
                 { id: 'ignition', t: 'Cari Zona Open Posisi', d: 'Trigger sniper' },
                 { id: 'confirmed', t: 'Trending', d: 'Kelola posisi' },
               ] as const

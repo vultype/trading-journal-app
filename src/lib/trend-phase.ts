@@ -295,19 +295,21 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   // Menuntut struktur harus Uptrend/Downtrend membuat bias selalu netral saat
   // swing terakhir campur, padahal indikator lain bisa sudah jelas searah.
   const emaUp = e9 > e21
+  // Bobot sengaja condong ke TF lebih tinggi & struktur. Indikator jangka pendek
+  // M5 (EMA9/21, DI) MEMANG berbalik saat koreksi — kalau diberi bobot besar,
+  // bias ikut hilang persis saat kita paling butuh tahu arah dominannya.
   let vote = 0
   if (struct.label === 'Uptrend') vote += 2
-  else if (struct.label === 'Downtrend') vote -= 2      // Sideways = abstain (0)
-  vote += m15DirUp ? 1 : -1                              // filter TF besar
-  vote += emaUp ? 1 : -1                                 // EMA9 vs EMA21
+  else if (struct.label === 'Downtrend') vote -= 2       // Sideways = abstain (0)
+  vote += m15DirUp ? 2 : -2                              // arah M15 — paling otoritatif
+  vote += e9_15 > e21_15 ? 1 : -1                        // EMA M15
   vote += price > m5.vwap ? 1 : -1                       // sisi VWAP sesi
-  vote += m5.plusDI >= m5.minusDI ? 1 : -1               // dominasi DI
-  // Rentang -6..+6. Ambang 3, bukan 2: saat struktur abstain (Sideways) hanya
-  // 4 suara tersisa, dan 3-lawan-1 bisa terjadi murni karena kebetulan di pasar
-  // acak. Ambang 3 menuntut keempatnya searah, atau struktur ikut bersuara.
+  vote += emaUp ? 1 : -1                                 // EMA M5 (jangka pendek, minor)
+  // Rentang -7..+7. Ambang 3: cukup rendah agar bias bertahan saat koreksi M5,
+  // tapi cukup tinggi agar pasar acak tetap netral.
   if (vote >= 3) liveBias = 'bullish'
   else if (vote <= -3) liveBias = 'bearish'
-  const conf = `${Math.abs(vote)}/6 indikator searah`
+  const conf = `${Math.abs(vote)}/7 bobot searah`
   liveBiasNote = liveBias === 'bullish' ? `Cari setup BUY saja — abaikan sinyal jual. (${conf})`
     : liveBias === 'bearish' ? `Cari setup SELL saja — abaikan sinyal beli. (${conf})`
     : `Arah belum jelas (${conf}) — tunggu, jangan paksa entry.`
@@ -479,11 +481,39 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   if (er5 < 0.25) { cScore += 20; cReasons.push(`ER ${er5.toFixed(2)} — gerak acak, belum ada arah`) }
   if (m5.adx < 20) { cScore += 15; cReasons.push(`ADX ${Math.round(m5.adx)} rendah — pasar diam sebelum bergerak`) }
   if (cScore >= 50) {
+    // KOMPRESI vs KOREKSI — secara indikator keduanya identik (ATR menyempit,
+    // ER turun, ADX melemah), tapi implikasi tradingnya berlawanan:
+    //   arah netral  → Coiling: tunggu breakout, ke mana pun arahnya
+    //   arah jelas   → Koreksi: arah SUDAH diketahui, cari entry lanjutan searah
+    // Menyamakan keduanya menghilangkan informasi paling berharga bagi sniper —
+    // bahwa ini pullback yang harus dibeli (di uptrend), bukan range yang harus
+    // ditunggu breakout-nya.
+    const isPullback = liveBias !== 'netral'
+    if (isPullback) {
+      const up = liveBias === 'bullish'
+      const gz = liveFib ? `$${f1(liveFib.gzLo)}–$${f1(liveFib.gzHi)}` : null
+      return mk({
+        phase: 'coiling', dir: up ? 'bull' : 'bear',
+        label: up ? 'Koreksi Bullish' : 'Koreksi Bearish',
+        score: Math.min(90, cScore + (activeSession ? 10 : 0)),
+        reasons: [
+          `Kompresi terjadi SEARAH tren ${up ? 'naik' : 'turun'} — ini pullback, bukan range`,
+          ...cReasons,
+          gz ? `Incar zona lanjutan: Fib golden ${gz}` : `Incar zona ${up ? 'support' : 'resistance'} searah tren`,
+          `Rencana: tunggu harga masuk zona, lalu ${up ? 'BUY' : 'SELL'} — jangan lawan arah.`,
+        ],
+        zone: liveFib
+          ? { lo: liveFib.gzLo, hi: liveFib.gzHi, note: `Zona ${up ? 'BUY' : 'SELL'} lanjutan (Fib 50–61.8%). Tunggu harga masuk sini — jangan kejar di harga sekarang.` }
+          : { lo: dch.lo, hi: dch.hi, note: `Koreksi dalam tren ${up ? 'naik' : 'turun'} — cari entry searah, bukan breakout dua arah.` },
+        mature, matureNote,
+        sinceTs: keepSince('coiling', up ? 'bull' : 'bear'),
+      })
+    }
     return mk({
       phase: 'coiling', dir: null,
       label: 'Coiling',
       score: Math.min(90, cScore + (activeSession ? 10 : 0)),
-      reasons: [...cReasons, `Siaga: breakout valid bila close M5 di atas $${f1(dch.hi)} atau di bawah $${f1(dch.lo)}`],
+      reasons: [...cReasons, `Arah belum jelas — breakout valid bila close M5 di atas $${f1(dch.hi)} atau di bawah $${f1(dch.lo)}`],
       zone: { lo: dch.lo, hi: dch.hi, note: 'Range kompresi (Donchian-20). JANGAN entry di dalam range — tunggu penetrasi.' },
       mature: false, matureNote: null,
       sinceTs: keepSince('coiling', null),
