@@ -173,14 +173,17 @@ export async function beginAiCharge(req: Request, action: AiAction): Promise<Gat
 // Grant kredit topup (dipanggil dari webhook saat order topup lunas). Idempoten: cek
 // dulu apakah order ini sudah pernah di-grant; kalau race, partial unique index
 // (ref_order_id where reason='topup') menahan dgn 23505 yang diabaikan.
-export async function grantTopup(sb: SupabaseClient, userId: string, credits: number, orderId: string) {
+// Return: true bila kredit BARU diberikan, false bila sudah pernah (webhook
+// berulang). Dipakai pemanggil agar notifikasi topup terkirim tepat sekali.
+export async function grantTopup(sb: SupabaseClient, userId: string, credits: number, orderId: string): Promise<boolean> {
   const { data } = await sb.from('ai_credit_ledger').select('id')
     .eq('reason', 'topup').eq('ref_order_id', orderId).limit(1)
-  if (data && data.length) return
+  if (data && data.length) return false
   const { error } = await sb.from('ai_credit_ledger').insert(
     { user_id: userId, bucket: 'topup', delta: credits, reason: 'topup', ref_order_id: orderId, note: 'Topup pembayaran' },
   )
-  if (error && !isDuplicate(error)) throw error
+  if (error) { if (isDuplicate(error)) return false; throw error }
+  return true
 }
 
 // Grant kredit MANUAL (oleh admin) ke saldo topup user tertentu. Tanpa ref_order_id

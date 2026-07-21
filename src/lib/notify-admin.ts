@@ -74,3 +74,15 @@ export async function notifyAdmin(subject: string, lines: string[], opts: { to?:
   }
   return out
 }
+
+// Notifikasi admin saat user berhasil topup saldo kredit AI. Dipanggil dari
+// webhook pembayaran (DOKU/iPaymu/Mayar) HANYA saat kredit benar-benar baru
+// diberikan (grantTopup mengembalikan true), jadi tak ada email ganda.
+export function notifyTopupPaid(email: string, credits: number, gateway: string) {
+  return notifyAdmin(`💳 Topup kredit LUNAS (${gateway})`, [
+    `User: ${email}`,
+    `Kredit: +${credits.toLocaleString('id-ID')} kredit`,
+    `Waktu: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`,
+    `Saldo topup user sudah otomatis bertambah.`,
+  ])
+}

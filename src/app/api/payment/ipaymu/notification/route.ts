@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { mapIpaymuStatus } from '@/lib/ipaymu'
 import { getPaymentConfig } from '@/lib/payment-config'
 import { grantTopup } from '@/lib/credits-server'
+import { notifyTopupPaid } from '@/lib/notify-admin'
 
 // Webhook iPaymu (notifyUrl). iPaymu mengirim form-urlencoded / JSON berisi
 // reference_id (= invoice_number kita), status, status_code, trx_id.
@@ -70,7 +71,11 @@ export async function POST(req: Request) {
 
     // Topup lunas → grant kredit (idempoten via unique index ref_order_id).
     if (updated && updated.plan === 'topup' && status === 'aktif' && updated.credits && updated.credits > 0) {
-      await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+      const granted = await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+      if (granted) {
+        const { data: tu } = await sb.auth.admin.getUserById(updated.user_id)
+        after(() => notifyTopupPaid(tu?.user?.email ?? updated.user_id, updated.credits!, 'iPaymu'))
+      }
     }
 
     // Terminal lunas → expires_at menumpuk di atas sisa langganan aktif.

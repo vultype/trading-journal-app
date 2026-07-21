@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifyDokuNotification, mapDokuStatus } from '@/lib/doku'
 import { grantTopup } from '@/lib/credits-server'
+import { notifyTopupPaid } from '@/lib/notify-admin'
 
 // Webhook DOKU (HTTP Notification). URL ini di-set via override_notification_url saat
 // membuat transaksi. Verifikasi signature → update status payment_orders by invoice_number.
@@ -45,7 +46,11 @@ export async function POST(req: Request) {
     // Order TOPUP yang lunas → grant kredit ke saldo topup (permanen). Idempoten:
     // unique index (ref_order_id where reason='topup') menahan grant ganda dari notifikasi berulang.
     if (updated && updated.plan === 'topup' && status === 'aktif' && updated.credits && updated.credits > 0) {
-      await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+      const granted = await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+      if (granted) {
+        const { data: tu } = await sb.auth.admin.getUserById(updated.user_id)
+        after(() => notifyTopupPaid(tu?.user?.email ?? updated.user_id, updated.credits!, 'DOKU'))
+      }
     }
 
     // Order TERMINAL yang lunas → set expires_at yang MENUMPUK di atas sisa langganan

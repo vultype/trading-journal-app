@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { getMayarInvoice, mapMayarStatus, isKnownMayarStatus } from '@/lib/mayar'
 import { getPaymentConfig } from '@/lib/payment-config'
 import { grantTopup } from '@/lib/credits-server'
-import { notifyAdmin } from '@/lib/notify-admin'
+import { notifyAdmin, notifyTopupPaid } from '@/lib/notify-admin'
 
 // Webhook Mayar.
 //
@@ -101,7 +101,11 @@ export async function POST(req: Request) {
 
     // Topup lunas → grant kredit (idempoten via unique index ref_order_id).
     if (updated && updated.plan === 'topup' && status === 'aktif' && updated.credits && updated.credits > 0) {
-      await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+      const granted = await grantTopup(sb, updated.user_id, updated.credits, updated.id)
+      if (granted) {
+        const { data: tu } = await sb.auth.admin.getUserById(updated.user_id)
+        after(() => notifyTopupPaid(tu?.user?.email ?? updated.user_id, updated.credits!, 'Mayar'))
+      }
     }
 
     // Terminal lunas → expires_at menumpuk di atas sisa langganan aktif.
