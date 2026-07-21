@@ -44,6 +44,20 @@ export type PhaseState = {
   mature: boolean        // tren sudah jauh — JANGAN dikejar
   matureNote: string | null
   sinceTs: number        // kapan fase ini mulai (utk durasi & expiry ignition)
+  // Readout live — SELALU terisi (bahkan saat idle) supaya panel tak pernah
+  // terlihat "mati". Angka-angka price action mentah yang update tiap tick.
+  metrics: {
+    er: number           // Efficiency Ratio M5 (0..1) — makin tinggi makin terarah
+    adx: number          // ADX M5
+    atrContraction: number  // ATR(7)/ATR(14) — <1 menyempit
+    bwPctile: number     // persentil bandwidth Bollinger (0..1) — makin kecil makin squeeze
+    distEmaAtr: number    // jarak harga dari EMA21 dalam satuan ATR
+    rangeAtr: number     // range candle terakhir / ATR — >1 = candle ekspansi
+    rsi: number
+    dchHi: number        // level breakout atas (Donchian-20)
+    dchLo: number        // level breakout bawah
+    m15Up: boolean       // arah M15 (filter)
+  }
 }
 
 const f1 = (n: number) => n.toFixed(1)
@@ -102,9 +116,11 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   const { m5, m15, price, utcHour, prev } = inp
   const c5 = m5.candles
   const now = Date.now()
+  const zeroMetrics: PhaseState['metrics'] = { er: 0, adx: 0, atrContraction: 1, bwPctile: 0.5, distEmaAtr: 0, rangeAtr: 0, rsi: 50, dchHi: 0, dchLo: 0, m15Up: true }
+  let liveMetrics = zeroMetrics   // diisi ulang begitu metrik terhitung
   const mk = (p: Partial<PhaseState>): PhaseState => ({
     phase: 'idle', dir: null, label: 'Tidak Ada Setup', score: 0, reasons: [],
-    zone: null, mature: false, matureNote: null, sinceTs: now, ...p,
+    zone: null, mature: false, matureNote: null, sinceTs: now, metrics: liveMetrics, ...p,
   })
   if (c5.length < 60 || m15.candles.length < 40) return mk({ reasons: ['data candle belum cukup'] })
 
@@ -131,6 +147,13 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   const distMean = Math.abs(price - e21) / (atr5 || 1)
   const mature = distMean > 2.2 || m5.rsi >= 72 || m5.rsi <= 28
   const pbLo = Math.min(e9, e21), pbHi = Math.max(e9, e21)
+
+  // Readout live — dipakai panel untuk selalu menampilkan angka meski idle.
+  liveMetrics = {
+    er: er5, adx: m5.adx, atrContraction: contraction, bwPctile: bwPct,
+    distEmaAtr: distMean, rangeAtr: atr5 > 0 ? lastRange / atr5 : 0, rsi: m5.rsi,
+    dchHi: dch.hi, dchLo: dch.lo, m15Up: m15DirUp,
+  }
   const matureNote = mature
     ? `Harga sudah ${f1(distMean)}×ATR dari EMA21${m5.rsi >= 72 ? ` · RSI ${Math.round(m5.rsi)} jenuh beli` : m5.rsi <= 28 ? ` · RSI ${Math.round(m5.rsi)} jenuh jual` : ''} — JANGAN dikejar. Tunggu pullback ke $${f1(pbLo)}–$${f1(pbHi)}.`
     : null

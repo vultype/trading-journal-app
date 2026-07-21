@@ -2168,6 +2168,37 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                         <p className="text-[10px] text-white/35 mt-1.5">keyakinan {phase.score}/100 — ignition sengaja tak pernah 100: dini = tidak pasti</p>
                       </div>
 
+                      {/* Readout live — SELALU tampil (bukti tool hidup & menghitung tiap tick) */}
+                      {(() => {
+                        const m = phase.metrics
+                        const cell = (label: string, val: string, hint: string, good: boolean | null) => (
+                          <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-white/35">{label}</p>
+                            <p className={`text-sm font-black tabular-nums ${good === true ? 'text-emerald-400' : good === false ? 'text-white/50' : 'text-white/80'}`}>{val}</p>
+                            <p className="text-[9px] text-white/30 leading-tight mt-0.5">{hint}</p>
+                          </div>
+                        )
+                        return (
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2 flex items-center gap-1.5"><Radio size={10} className="text-emerald-400 animate-pulse" /> Metrik Live · M5 (update tiap tick)</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {cell('Efficiency', m.er.toFixed(2), m.er >= 0.4 ? 'terarah' : m.er < 0.25 ? 'acak/coiling' : 'campur', m.er >= 0.4 ? true : m.er < 0.25 ? false : null)}
+                              {cell('ADX', Math.round(m.adx).toString(), m.adx >= 23 ? 'tren kuat' : m.adx < 20 ? 'lemah/diam' : 'menanjak', m.adx >= 23 ? true : m.adx < 20 ? false : null)}
+                              {cell('Kontraksi ATR', m.atrContraction.toFixed(2), m.atrContraction < 0.8 ? 'menyempit' : 'normal', m.atrContraction < 0.8 ? true : null)}
+                              {cell('BB Squeeze', `p${Math.round(m.bwPctile * 100)}`, m.bwPctile <= 0.25 ? 'squeeze!' : 'longgar', m.bwPctile <= 0.25 ? true : false)}
+                              {cell('Jarak EMA21', `${m.distEmaAtr.toFixed(1)}×ATR`, m.distEmaAtr > 2.2 ? 'ekstrem' : 'wajar', m.distEmaAtr > 2.2 ? false : null)}
+                              {cell('Candle', `${m.rangeAtr.toFixed(1)}×ATR`, m.rangeAtr >= 1.2 ? 'ekspansi' : 'kecil', m.rangeAtr >= 1.2 ? true : null)}
+                              {cell('RSI', Math.round(m.rsi).toString(), m.rsi >= 72 ? 'jenuh beli' : m.rsi <= 28 ? 'jenuh jual' : m.rsi >= 52 ? 'bias naik' : m.rsi <= 48 ? 'bias turun' : 'netral', null)}
+                              {cell('M15 Filter', m.m15Up ? '▲ Bull' : '▼ Bear', 'arah TF besar', null)}
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              {cell('Level Breakout ↑', `$${m.dchHi.toFixed(1)}`, 'close M5 di atas = ignition bull', null)}
+                              {cell('Level Breakout ↓', `$${m.dchLo.toFixed(1)}`, 'close M5 di bawah = ignition bear', null)}
+                            </div>
+                          </div>
+                        )
+                      })()}
+
                       {/* Peringatan kematangan — obat FOMO */}
                       {phase.mature && phase.matureNote && (
                         <div className="flex items-start gap-2.5 rounded-xl bg-red-500/10 border border-red-500/30 p-4">
