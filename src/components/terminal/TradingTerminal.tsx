@@ -2199,6 +2199,32 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                         )
                       })()}
 
+                      {/* Struktur pasar (price action HH/HL) + event BOS/ChoCh */}
+                      {(() => {
+                        const m = phase.metrics
+                        const sc = m.structLabel === 'Uptrend' ? '#10b981' : m.structLabel === 'Downtrend' ? '#ef4444' : '#64748b'
+                        const isChoch = m.structEvent === 'ChoCh_up' || m.structEvent === 'ChoCh_down'
+                        return (
+                          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Struktur Pasar (Price Action)</p>
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-lg font-black" style={{ color: sc }}>
+                                {m.structLabel === 'Uptrend' ? '▲ Uptrend' : m.structLabel === 'Downtrend' ? '▼ Downtrend' : '↔ Sideways'}
+                              </span>
+                              <span className="text-[12px] font-bold px-2 py-0.5 rounded-md" style={{ background: `${sc}1a`, color: sc }}>{m.structSeq}</span>
+                              <span className="text-[11px] text-white/45 tabular-nums">Swing H <b className="text-white/70">${m.structHigh.toFixed(1)}</b> · L <b className="text-white/70">${m.structLow.toFixed(1)}</b></span>
+                            </div>
+                            {m.structEvent && (
+                              <div className="flex items-start gap-2 mt-3 rounded-lg p-2.5" style={{ background: isChoch ? '#a855f71a' : `${sc}14`, border: `1px solid ${isChoch ? '#a855f755' : sc + '44'}` }}>
+                                <span className="text-[11px] font-black shrink-0 mt-0.5" style={{ color: isChoch ? '#c084fc' : sc }}>{isChoch ? 'ChoCh' : 'BOS'}</span>
+                                <span className="text-[12px] text-white/75 leading-relaxed">{m.structEventNote}</span>
+                              </div>
+                            )}
+                            <p className="text-[10px] text-white/30 mt-2 leading-relaxed">HH·HL = higher high &amp; higher low (uptrend sehat). BOS = tren lanjut. <b style={{ color: '#c084fc' }}>ChoCh</b> = pembalikan dini — sinyal paling awal.</p>
+                          </div>
+                        )
+                      })()}
+
                       {/* Peringatan kematangan — obat FOMO */}
                       {phase.mature && phase.matureNote && (
                         <div className="flex items-start gap-2.5 rounded-xl bg-red-500/10 border border-red-500/30 p-4">

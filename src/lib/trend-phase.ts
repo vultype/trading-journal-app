@@ -57,10 +57,74 @@ export type PhaseState = {
     dchHi: number        // level breakout atas (Donchian-20)
     dchLo: number        // level breakout bawah
     m15Up: boolean       // arah M15 (filter)
+    structLabel: StructLabel   // Uptrend / Downtrend / Sideways (dari swing HH/HL)
+    structSeq: string          // "HH · HL" | "LH · LL" | "campur"
+    structEvent: StructEvent   // BOS / ChoCh terkini
+    structEventNote: string
+    structHigh: number         // swing high terakhir (level kunci reaksi)
+    structLow: number          // swing low terakhir
   }
 }
 
 const f1 = (n: number) => n.toFixed(1)
+
+// ── Struktur pasar (price action murni) ──
+// Deteksi swing pivot (fractal), klasifikasi HH/HL vs LH/LL, dan event
+// BOS (Break of Structure = lanjutan) / ChoCh (Change of Character = awal balik).
+//
+//   BOS naik   : struktur SUDAH uptrend, harga tembus swing-high terakhir → lanjut
+//   ChoCh naik : struktur MASIH downtrend, harga tembus swing-high terakhir → awal balik ke atas
+//   (kebalikannya untuk sisi bawah)
+//
+// ChoCh adalah sinyal PALING DINI — sering mendahului breakout Donchian, karena
+// swing-high bisa berada di dalam range 20 bar.
+export type StructLabel = 'Uptrend' | 'Downtrend' | 'Sideways'
+export type StructEvent = 'BOS_up' | 'BOS_down' | 'ChoCh_up' | 'ChoCh_down' | null
+export type StructInfo = {
+  label: StructLabel
+  seq: string              // "HH · HL" | "LH · LL" | "campur"
+  lastHigh: number
+  lastLow: number
+  event: StructEvent
+  eventNote: string
+}
+
+function analyzeStructure(c: Candle[], left = 2, right = 2): StructInfo {
+  const none: StructInfo = { label: 'Sideways', seq: 'data kurang', lastHigh: 0, lastLow: 0, event: null, eventNote: '' }
+  if (c.length < left + right + 8) return none
+  // Pivot dari bar TERKONFIRMASI saja (kecualikan `right` bar terakhir yang belum final)
+  const conf = c.slice(0, -right)
+  const highs: { p: number; i: number }[] = [], lows: { p: number; i: number }[] = []
+  for (let i = left; i < conf.length - right; i++) {
+    const win = conf.slice(i - left, i + right + 1)
+    if (conf[i].h === Math.max(...win.map(x => x.h))) highs.push({ p: conf[i].h, i })
+    if (conf[i].l === Math.min(...win.map(x => x.l))) lows.push({ p: conf[i].l, i })
+  }
+  if (highs.length < 2 || lows.length < 2) return { ...none, seq: 'swing belum jelas' }
+  const h1 = highs[highs.length - 1].p, h0 = highs[highs.length - 2].p
+  const l1 = lows[lows.length - 1].p, l0 = lows[lows.length - 2].p
+  const hh = h1 > h0, hl = l1 > l0
+  let label: StructLabel = 'Sideways'
+  let seq = 'campur (konsolidasi)'
+  if (hh && hl) { label = 'Uptrend'; seq = 'HH · HL' }
+  else if (!hh && !hl) { label = 'Downtrend'; seq = 'LH · LL' }
+
+  // Event break: bandingkan CLOSE bar tertutup terakhir dengan swing terakhir.
+  const close = c[c.length - 2]?.c ?? c[c.length - 1].c
+  let event: StructEvent = null, eventNote = ''
+  if (close > h1) {
+    event = label === 'Downtrend' ? 'ChoCh_up' : 'BOS_up'
+    eventNote = event === 'ChoCh_up'
+      ? `ChoCh naik: close menembus LH terakhir ($${h1.toFixed(1)}) — awal pembalikan ke atas`
+      : `BOS naik: close menembus HH terakhir ($${h1.toFixed(1)}) — tren naik berlanjut`
+  } else if (close < l1) {
+    event = label === 'Uptrend' ? 'ChoCh_down' : 'BOS_down'
+    eventNote = event === 'ChoCh_down'
+      ? `ChoCh turun: close menembus HL terakhir ($${l1.toFixed(1)}) — awal pembalikan ke bawah`
+      : `BOS turun: close menembus LL terakhir ($${l1.toFixed(1)}) — tren turun berlanjut`
+  }
+  return { label, seq, lastHigh: h1, lastLow: l1, event, eventNote }
+}
 
 // Donchian channel dari N bar tertutup SEBELUM bar penutup terakhir.
 // Dua bar terakhir dikecualikan: bar berjalan (belum final) DAN bar penutup
@@ -116,7 +180,7 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   const { m5, m15, price, utcHour, prev } = inp
   const c5 = m5.candles
   const now = Date.now()
-  const zeroMetrics: PhaseState['metrics'] = { er: 0, adx: 0, atrContraction: 1, bwPctile: 0.5, distEmaAtr: 0, rangeAtr: 0, rsi: 50, dchHi: 0, dchLo: 0, m15Up: true }
+  const zeroMetrics: PhaseState['metrics'] = { er: 0, adx: 0, atrContraction: 1, bwPctile: 0.5, distEmaAtr: 0, rangeAtr: 0, rsi: 50, dchHi: 0, dchLo: 0, m15Up: true, structLabel: 'Sideways', structSeq: '—', structEvent: null, structEventNote: '', structHigh: 0, structLow: 0 }
   let liveMetrics = zeroMetrics   // diisi ulang begitu metrik terhitung
   const mk = (p: Partial<PhaseState>): PhaseState => ({
     phase: 'idle', dir: null, label: 'Tidak Ada Setup', score: 0, reasons: [],
@@ -130,6 +194,7 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   const lastRange = last ? last.h - last.l : 0
   const er5 = efficiencyRatio(closes5, 14)
   const dch = donchian(c5, 20)
+  const struct = analyzeStructure(c5)
   const bwPct = bandwidthPctile(closes5)
   const contraction = atrContraction(c5)
   const histSlope = macdHistSlope(closes5)
@@ -153,6 +218,7 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
     er: er5, adx: m5.adx, atrContraction: contraction, bwPctile: bwPct,
     distEmaAtr: distMean, rangeAtr: atr5 > 0 ? lastRange / atr5 : 0, rsi: m5.rsi,
     dchHi: dch.hi, dchLo: dch.lo, m15Up: m15DirUp,
+    structLabel: struct.label, structSeq: struct.seq, structEvent: struct.event, structEventNote: struct.eventNote, structHigh: struct.lastHigh, structLow: struct.lastLow,
   }
   const matureNote = mature
     ? `Harga sudah ${f1(distMean)}×ATR dari EMA21${m5.rsi >= 72 ? ` · RSI ${Math.round(m5.rsi)} jenuh beli` : m5.rsi <= 28 ? ` · RSI ${Math.round(m5.rsi)} jenuh jual` : ''} — JANGAN dikejar. Tunggu pullback ke $${f1(pbLo)}–$${f1(pbHi)}.`
@@ -166,14 +232,20 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   const adxTh = wasConfirmed ? 20 : 23
   const dirUp = m5.plusDI >= m5.minusDI
   const emaAligned = dirUp ? (e9 > e21 && price > m5.vwap) : (e9 < e21 && price < m5.vwap)
-  if (er5 >= erTh && m5.adx >= adxTh && emaAligned && (dirUp === m15DirUp)) {
+  // Struktur WAJIB tidak berlawanan: tren bullish tak boleh dikonfirmasi saat
+  // struktur masih Downtrend (LH/LL), dan sebaliknya. Ini definisi price action
+  // sebenarnya — ADX tinggi saja tak cukup.
+  const structOk = dirUp ? struct.label !== 'Downtrend' : struct.label !== 'Uptrend'
+  if (er5 >= erTh && m5.adx >= adxTh && emaAligned && (dirUp === m15DirUp) && structOk) {
     const dir: PhaseDir = dirUp ? 'bull' : 'bear'
-    const score = Math.min(100, Math.round(40 + er5 * 60 + Math.max(0, m5.adx - 23)))
+    const structBonus = struct.label === (dirUp ? 'Uptrend' : 'Downtrend') ? 8 : 0
+    const score = Math.min(100, Math.round(38 + er5 * 60 + Math.max(0, m5.adx - 23) + structBonus))
     return mk({
       phase: 'confirmed', dir,
       label: dirUp ? 'Trending Bullish' : 'Trending Bearish',
       score,
       reasons: [
+        `Struktur ${struct.label} (${struct.seq})${struct.label === (dirUp ? 'Uptrend' : 'Downtrend') ? ' — searah, tren sehat' : ' — belum penuh terbentuk'}`,
         `ER ${er5.toFixed(2)} — gerakan efisien searah`,
         `ADX ${Math.round(m5.adx)} · ${dirUp ? '+DI' : '-DI'} dominan`,
         `EMA9 ${dirUp ? '>' : '<'} EMA21 · harga ${dirUp ? 'di atas' : 'di bawah'} VWAP sesi`,
@@ -186,38 +258,56 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   }
 
   // ═══ 2. IGNITION — "Cari Zona Open Posisi" (trigger sniper) ═══
-  // Trigger: bar tertutup menembus Donchian-20. Skor dari bukti pendukung.
+  // Pemicu Ignition ada DUA jalur:
+  //  a) Breakout Donchian-20 (klasik)
+  //  b) Break struktur: BOS (lanjutan) atau ChoCh (pembalikan dini) — sering
+  //     lebih AWAL daripada Donchian karena swing-high bisa di dalam range.
   const brokeUp = last && dch.hi > 0 && last.c > dch.hi
   const brokeDn = last && dch.lo > 0 && last.c < dch.lo
+  const structUp = struct.event === 'BOS_up' || struct.event === 'ChoCh_up'
+  const structDn = struct.event === 'BOS_down' || struct.event === 'ChoCh_down'
   // Ignition sebelumnya masih hidup? (belum 60 menit, harga belum balik ke tengah range)
   const prevIgnAlive = prev?.phase === 'ignition' && now - prev.sinceTs < 60 * 60_000 &&
     (prev.dir === 'bull' ? price > (dch.hi + dch.lo) / 2 : price < (dch.hi + dch.lo) / 2)
 
-  if (brokeUp || brokeDn || prevIgnAlive) {
-    const dir: PhaseDir = brokeUp ? 'bull' : brokeDn ? 'bear' : prev!.dir
+  if (brokeUp || brokeDn || structUp || structDn || prevIgnAlive) {
+    const dir: PhaseDir = (brokeUp || structUp) ? 'bull' : (brokeDn || structDn) ? 'bear' : prev!.dir
     const up = dir === 'bull'
-    let score = 35
-    const reasons: string[] = [up ? `Breakout: close M5 menembus high 20-bar ($${f1(dch.hi)})` : `Breakdown: close M5 menembus low 20-bar ($${f1(dch.lo)})`]
-    if (lastRange >= 1.2 * atr5) { score += 15; reasons.push(`Candle ekspansi ${f1(lastRange / atr5)}×ATR — dorongan nyata, bukan drift`) }
+    let score = 30
+    const reasons: string[] = []
+    if (up ? brokeUp : brokeDn) { score += 18; reasons.push(up ? `Breakout: close M5 menembus high 20-bar ($${f1(dch.hi)})` : `Breakdown: close M5 menembus low 20-bar ($${f1(dch.lo)})`) }
+    // Break struktur — ChoCh diberi bobot lebih besar (sinyal pembalikan paling dini)
+    if (up ? structUp : structDn) {
+      const isChoch = struct.event === 'ChoCh_up' || struct.event === 'ChoCh_down'
+      score += isChoch ? 20 : 14
+      reasons.push(struct.eventNote)
+    }
+    reasons.push(`Struktur saat ini: ${struct.label} (${struct.seq})`)
+    if (lastRange >= 1.2 * atr5) { score += 13; reasons.push(`Candle ekspansi ${f1(lastRange / atr5)}×ATR — dorongan nyata, bukan drift`) }
     if (up ? histSlope > 0 : histSlope < 0) { score += 12; reasons.push('MACD histogram akselerasi searah (mendahului ADX)') }
-    if (up ? m5.rsi >= 52 : m5.rsi <= 48) { score += 8; reasons.push(`RSI ${Math.round(m5.rsi)} ${up ? 'di atas' : 'di bawah'} 50`) }
-    if (up ? e9 > e21 : e9 < e21) { score += 8; reasons.push('EMA9/21 M5 searah') }
-    if (up ? price > m5.vwap : price < m5.vwap) { score += 7; reasons.push(`Harga ${up ? 'di atas' : 'di bawah'} VWAP sesi`) }
-    if (up === m15DirUp && (up ? e9_15 > e21_15 : e9_15 < e21_15)) { score += 12; reasons.push('M15 searah — bukan lawan arus') }
+    if (up ? m5.rsi >= 52 : m5.rsi <= 48) { score += 7; reasons.push(`RSI ${Math.round(m5.rsi)} ${up ? 'di atas' : 'di bawah'} 50`) }
+    if (up ? e9 > e21 : e9 < e21) { score += 7; reasons.push('EMA9/21 M5 searah') }
+    if (up ? price > m5.vwap : price < m5.vwap) { score += 6; reasons.push(`Harga ${up ? 'di atas' : 'di bawah'} VWAP sesi`) }
+    if (up === m15DirUp && (up ? e9_15 > e21_15 : e9_15 < e21_15)) { score += 11; reasons.push('M15 searah — bukan lawan arus') }
+    // Struktur berlawanan arah = kurangi skor (breakout lawan struktur = rawan palsu)
+    if (up ? struct.label === 'Downtrend' : struct.label === 'Uptrend') { score -= 12; reasons.push('⚠ melawan struktur besar — kualitas turun') }
     if (activeSession) { score += 8; reasons.push('Sesi London/NY — follow-through historis terbaik') }
     if (prev?.phase === 'coiling' || (prev?.phase === 'ignition' && now - prev.sinceTs < 30 * 60_000)) { score += 5; reasons.push('Didahului coiling — energi terkumpul') }
     if (m5.adx >= 15 && m5.adx < 25) { score += 5; reasons.push(`ADX ${Math.round(m5.adx)} baru menanjak dari basis rendah`) }
 
     if (score >= 55) {
-      const edge = up ? dch.hi : dch.lo
-      const zLo = up ? Math.min(edge, e9) : Math.min(edge, e9)
-      const zHi = up ? Math.max(edge, e9) : Math.max(edge, e9)
+      // Level acuan = level yang benar-benar pecah. Kalau dipicu breakout Donchian
+      // pakai edge Donchian; kalau dipicu break struktur pakai swing terakhir.
+      const brokeDon = up ? brokeUp : brokeDn
+      const edge = brokeDon ? (up ? dch.hi : dch.lo) : (up ? struct.lastHigh : struct.lastLow)
+      const zLo = Math.min(edge, e9), zHi = Math.max(edge, e9)
+      const slBase = up ? Math.min(struct.lastLow || edge, edge) - atr5 : Math.max(struct.lastHigh || edge, edge) + atr5
       return mk({
         phase: 'ignition', dir,
         label: 'Cari Zona Open Posisi',
         score: Math.min(95, score),   // ignition tak pernah 100 — dini = tak pasti, jujur soal itu
         reasons,
-        zone: { lo: zLo, hi: zHi, note: `Zona entry ${up ? 'BUY' : 'SELL'}: retest level breakout ($${f1(edge)}) s/d EMA9. SL di ${up ? 'bawah' : 'atas'} ${up ? `$${f1(dch.hi - atr5)}` : `$${f1(dch.lo + atr5)}`} (1×ATR).` },
+        zone: { lo: zLo, hi: zHi, note: `Zona entry ${up ? 'BUY' : 'SELL'}: retest level pecah ($${f1(edge)}) s/d EMA9. SL di ${up ? 'bawah swing low' : 'atas swing high'} ~$${f1(slBase)}.` },
         mature, matureNote,
         sinceTs: keepSince('ignition', dir),
       })
