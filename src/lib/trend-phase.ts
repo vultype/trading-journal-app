@@ -290,18 +290,27 @@ export function detectTrendPhase(inp: PhaseInput): PhaseState {
   }
 
   // ══ ARAH (BIAS) — jawaban untuk "sekarang cari BUY atau SELL?" ══
-  // Struktur adalah suara utama (price action), M15 & EMA sebagai penguat.
-  // Butuh minimal 2 dari 3 setuju; kalau tidak → netral (jangan paksa entry).
+  // Voting BERBOBOT, bukan syarat kaku. Struktur adalah suara terberat (price
+  // action), tapi saat struktur 'Sideways' ia hanya abstain — bukan memveto.
+  // Menuntut struktur harus Uptrend/Downtrend membuat bias selalu netral saat
+  // swing terakhir campur, padahal indikator lain bisa sudah jelas searah.
   const emaUp = e9 > e21
-  const votesUp = [struct.label === 'Uptrend', m15DirUp, emaUp].filter(Boolean).length
-  const votesDn = [struct.label === 'Downtrend', !m15DirUp, !emaUp].filter(Boolean).length
-  if (struct.label !== 'Sideways' && votesUp >= 2 && struct.label === 'Uptrend') liveBias = 'bullish'
-  else if (struct.label !== 'Sideways' && votesDn >= 2 && struct.label === 'Downtrend') liveBias = 'bearish'
-  else if (votesUp === 3) liveBias = 'bullish'
-  else if (votesDn === 3) liveBias = 'bearish'
-  liveBiasNote = liveBias === 'bullish' ? 'Cari setup BUY saja — abaikan sinyal jual.'
-    : liveBias === 'bearish' ? 'Cari setup SELL saja — abaikan sinyal beli.'
-    : 'Arah belum jelas — tunggu, jangan paksa entry.'
+  let vote = 0
+  if (struct.label === 'Uptrend') vote += 2
+  else if (struct.label === 'Downtrend') vote -= 2      // Sideways = abstain (0)
+  vote += m15DirUp ? 1 : -1                              // filter TF besar
+  vote += emaUp ? 1 : -1                                 // EMA9 vs EMA21
+  vote += price > m5.vwap ? 1 : -1                       // sisi VWAP sesi
+  vote += m5.plusDI >= m5.minusDI ? 1 : -1               // dominasi DI
+  // Rentang -6..+6. Ambang 3, bukan 2: saat struktur abstain (Sideways) hanya
+  // 4 suara tersisa, dan 3-lawan-1 bisa terjadi murni karena kebetulan di pasar
+  // acak. Ambang 3 menuntut keempatnya searah, atau struktur ikut bersuara.
+  if (vote >= 3) liveBias = 'bullish'
+  else if (vote <= -3) liveBias = 'bearish'
+  const conf = `${Math.abs(vote)}/6 indikator searah`
+  liveBiasNote = liveBias === 'bullish' ? `Cari setup BUY saja — abaikan sinyal jual. (${conf})`
+    : liveBias === 'bearish' ? `Cari setup SELL saja — abaikan sinyal beli. (${conf})`
+    : `Arah belum jelas (${conf}) — tunggu, jangan paksa entry.`
 
   const biasUp = liveBias === 'bullish'
   liveFib = liveBias === 'netral' ? null : calcFib(struct, price, biasUp)
