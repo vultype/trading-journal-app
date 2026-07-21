@@ -1334,6 +1334,68 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const metaOf = (k: string) => MACRO_META.find(x => x.key === k)?.meta
   const infForce = (k: string) => { const m = metaOf(k); return m ? buildForce(m, macro?.[k]?.value, macro?.[k]?.prior) : null }
   const infAll = MACRO_META.map(x => infForce(x.key)).filter(Boolean) as GoldForce[]
+  // ── GVZ: volatilitas emas (CBOE Gold ETF VIX) ──
+  // Ini indikator VOLATILITAS, bukan arah. Naiknya GVZ tidak berarti emas naik —
+  // hanya ayunannya melebar. Karena itu dipisah dari panel gaya makro (yang
+  // menghitung dorongan bullish/bearish) dan diberi bahasa aksi sendiri:
+  // kalibrasi jarak SL dan ekspektasi range harian.
+  const gvz = macro?.gvz ?? null
+  const gvzInfo = (() => {
+    if (!gvz) return null
+    const hist = gvz.history ?? []
+    // Persentil terhadap riwayat ~180 hari — berbasis data, bukan ambang hafalan
+    // yang bisa usang saat rezim volatilitas bergeser.
+    const pct = hist.length >= 30
+      ? Math.round((hist.filter(v => v < gvz.value).length / hist.length) * 100)
+      : null
+    const chg = gvz.value - gvz.prior
+    const level = pct == null ? 'normal' : pct >= 80 ? 'tinggi' : pct >= 55 ? 'agak tinggi' : pct >= 25 ? 'normal' : 'rendah'
+    const color = level === 'tinggi' ? '#ef4444' : level === 'agak tinggi' ? '#f59e0b' : level === 'rendah' ? '#3b82f6' : '#10b981'
+    const action = level === 'tinggi'
+      ? 'Ayunan lebar. Lebarkan SL (ATR sudah otomatis menyesuaikan), kecilkan lot agar risiko rupiah tetap sama. Target jauh jadi lebih realistis, tapi whipsaw juga lebih sering.'
+      : level === 'agak tinggi'
+        ? 'Volatilitas di atas rata-rata. Jangan pakai SL sempit gaya pasar tenang — mudah kena sapu sebelum arah benar.'
+        : level === 'rendah'
+          ? 'Pasar tenang. Range harian cenderung sempit — target besar sulit tercapai. Justru kondisi bagus untuk menunggu setup breakout dari kompresi.'
+          : 'Volatilitas wajar. Ukuran SL & target normal sesuai ATR.'
+    return { pct, chg, level, color, action }
+  })()
+  const GvzPanel = gvzInfo && gvz ? (
+    <Panel title="Volatilitas Emas (GVZ)" icon={Waves} accent={gvzInfo.color}
+      info="CBOE Gold ETF Volatility Index — 'VIX-nya emas'. Mengukur ekspektasi ayunan harga emas 30 hari ke depan. INI BUKAN INDIKATOR ARAH: GVZ naik hanya berarti gerakan melebar, tidak memberi tahu naik atau turun. Dipakai untuk mengkalibrasi jarak SL dan seberapa realistis target."
+      right={<span className="text-[9px] text-white/30">FRED · harian</span>}>
+      <div className="space-y-3">
+        <div className="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-3xl font-black tabular-nums" style={{ color: gvzInfo.color }}>{gvz.value.toFixed(1)}</p>
+            <p className="text-[11px] text-white/40 mt-0.5">
+              {gvzInfo.chg >= 0 ? '▲' : '▼'} {Math.abs(gvzInfo.chg).toFixed(2)} vs sebelumnya · {gvz.date}
+            </p>
+          </div>
+          <div className="text-right">
+            <span className="text-[11px] font-black px-2.5 py-1 rounded-lg uppercase" style={{ background: `${gvzInfo.color}22`, color: gvzInfo.color }}>
+              {gvzInfo.level}
+            </span>
+            {gvzInfo.pct != null && <p className="text-[10px] text-white/35 mt-1">persentil {gvzInfo.pct} · 180 hari</p>}
+          </div>
+        </div>
+        {gvzInfo.pct != null && (
+          <div>
+            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${gvzInfo.pct}%`, background: gvzInfo.color }} />
+            </div>
+            <div className="flex justify-between text-[9px] text-white/25 mt-1"><span>tenang</span><span>bergejolak</span></div>
+          </div>
+        )}
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Artinya untuk Entry</p>
+          <p className="text-[12px] text-white/70 leading-relaxed">{gvzInfo.action}</p>
+        </div>
+        <p className="text-[10px] text-white/25 leading-relaxed">Bukan sinyal arah — hanya lebar ayunan. Untuk arah, lihat Signal Meter &amp; struktur.</p>
+      </div>
+    </Panel>
+  ) : null
+
   const InflasiPanel = (
     <Panel title="Inflasi & Kebijakan The Fed — Dampak ke Emas" icon={Landmark} className="lg:col-span-12" info="Data makro resmi FRED dipisah menurut dampaknya ke emas: inflasi & suku bunga turun → mendukung; data tenaga kerja lemah → dovish (mendukung). Kolom hijau mendukung, merah menekan." right={<span className="text-[9px] text-white/30">FRED · resmi</span>}>
       {infAll.length ? (
@@ -2182,6 +2244,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MakroKesimpulanPanel}{RiskSentimentPanel}</div>
               {CrossPanel}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
+              {GvzPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{GvzPanel}</div>}
               {InflasiPanel}
               {CotPanel}
               {CalendarPanel}

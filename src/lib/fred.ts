@@ -5,6 +5,9 @@ const BASE = 'https://api.stlouisfed.org/fred/series/observations'
 export type FredSeries = {
   key: string; id: string; name: string; sub: string
   dec: number; unit: string; corr: number; units?: string
+  // Riwayat lebih panjang untuk seri yang butuh klasifikasi persentil (mis. GVZ).
+  // Default 6 titik cukup untuk sparkline; persentil butuh ratusan hari.
+  histLimit?: number
 }
 
 // corr = korelasi ke EMAS (dolar/yield naik = bearish emas = -1)
@@ -21,6 +24,11 @@ export const FRED_SERIES: FredSeries[] = [
   { key: 'unrate', id: 'UNRATE', name: 'Pengangguran', sub: 'Unemployment — naik = dovish Fed', dec: 1, unit: '%', corr: 1 },
   { key: 'nfp', id: 'PAYEMS', units: 'chg', name: 'NFP (perubahan bulanan)', sub: 'Nonfarm Payrolls — lemah = dovish (bullish emas)', dec: 0, unit: 'K', corr: 1 },
   { key: 'wagegrowth', id: 'CES0500000003', units: 'pc1', name: 'Pertumbuhan Upah (YoY)', sub: 'Average Hourly Earnings — naik = tekanan inflasi', dec: 1, unit: '%', corr: -1 },
+  // GVZ = CBOE Gold ETF Volatility Index ("VIX-nya emas"). Ini indikator
+  // VOLATILITAS, bukan arah — naiknya GVZ tidak berarti emas naik/turun, hanya
+  // bahwa ayunannya melebar. corr sengaja 0 supaya TIDAK ikut menghitung bias
+  // bullish/bearish; dipakai untuk kalibrasi SL & ekspektasi range.
+  { key: 'gvz', id: 'GVZCLS', name: 'GVZ (Volatilitas Emas)', sub: 'CBOE Gold ETF VIX — tinggi = ayunan lebar', dec: 1, unit: '', corr: 0, histLimit: 180 },
 ]
 
 export type MacroPoint = { key: string; value: number; prior: number; date: string; history: number[] }
@@ -32,7 +40,7 @@ function keyParam() {
 }
 
 async function fetchSeries(s: FredSeries): Promise<MacroPoint | null> {
-  const url = `${BASE}?series_id=${s.id}&api_key=${keyParam()}&file_type=json&sort_order=desc&limit=6${s.units ? `&units=${s.units}` : ''}`
+  const url = `${BASE}?series_id=${s.id}&api_key=${keyParam()}&file_type=json&sort_order=desc&limit=${s.histLimit ?? 6}${s.units ? `&units=${s.units}` : ''}`
   const res = await fetch(url, { cache: 'no-store' })
   const j = await res.json()
   const obs = (j.observations ?? []) as { date: string; value: string }[]
