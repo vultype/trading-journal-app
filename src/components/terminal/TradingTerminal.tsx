@@ -1203,7 +1203,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   // tempat harga cenderung bereaksi (Fib extension/retracement dari leg nyata),
   // bukan klaim ke mana harga pasti pergi.
   const proj = buildProjection({
-    m15: feed.tf.M15.candles, h1: feed.tf.H1.candles, price: feed.price,
+    m15: feed.tf.M15.candles, d1: feed.htf.D1?.candles ?? [], price: feed.price,
     ema21: feed.tf.M15.ema21[feed.tf.M15.ema21.length - 1] ?? feed.price,
     atr: feed.tf.M15.atr, dayHigh: feed.dayHigh, dayLow: feed.dayLow,
   })
@@ -1233,6 +1233,39 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
         <div className="space-y-3">
           <p className="text-[11px] text-white/55 leading-relaxed">{proj.dirNote}</p>
 
+          {/* POSISI HARGA SEKARANG — skala visual dari dasar ke puncak leg */}
+          {proj.legPos && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Posisi Harga Sekarang</span>
+                <span className="text-[11px] font-black" style={{ color: proj.legPos.retracePct >= 50 && proj.legPos.retracePct < 61.8 ? '#fbbf24' : projC }}>
+                  koreksi {Math.round(proj.legPos.retracePct)}%
+                </span>
+              </div>
+              {/* Rel skala: dasar leg (kiri) → puncak leg (kanan), penanda harga saat ini */}
+              <div className="relative h-8">
+                <div className="absolute inset-x-0 top-3 h-1.5 rounded-full bg-white/10" />
+                {/* pita golden zone 50–61.8% */}
+                {(() => {
+                  const lo = proj.legLo, hi = proj.legHi, w = hi - lo
+                  if (w <= 0) return null
+                  const g1 = proj.retracements.find(r => r.label === '50%')?.price
+                  const g2 = proj.retracements.find(r => r.label === '61.8%')?.price
+                  if (g1 == null || g2 == null) return null
+                  const a = Math.max(0, Math.min(100, ((Math.min(g1, g2) - lo) / w) * 100))
+                  const b = Math.max(0, Math.min(100, ((Math.max(g1, g2) - lo) / w) * 100))
+                  return <div className="absolute top-3 h-1.5 rounded-full" style={{ left: `${a}%`, width: `${Math.max(1, b - a)}%`, background: '#f59e0b55' }} />
+                })()}
+                <div className="absolute top-1.5 w-0.5 h-4 rounded-full" style={{ left: `${proj.legPos.posPct}%`, background: projC, boxShadow: `0 0 6px ${projC}` }} />
+                <span className="absolute top-0 text-[9px] tabular-nums text-white/70 -translate-x-1/2" style={{ left: `${proj.legPos.posPct}%` }}>●</span>
+                <span className="absolute bottom-0 left-0 text-[9px] text-white/30 tabular-nums">${proj.legLo.toFixed(1)}</span>
+                <span className="absolute bottom-0 right-0 text-[9px] text-white/30 tabular-nums">${proj.legHi.toFixed(1)}</span>
+              </div>
+              <p className="text-[11px] font-semibold mt-1" style={{ color: proj.legPos.retracePct >= 50 && proj.legPos.retracePct < 61.8 ? '#fbbf24' : 'rgba(255,255,255,.75)' }}>{proj.legPos.zone}</p>
+              <p className="text-[10px] text-white/45 leading-relaxed mt-0.5">{proj.legPos.note}</p>
+            </div>
+          )}
+
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Target — bila lanjut</p>
             <div className="space-y-1">{proj.targets.map((l, i) => <ProjLevelRow key={i} l={l} tone={projC} />)}</div>
@@ -1250,22 +1283,47 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
             </div>
           )}
 
-          {proj.room && (
-            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Ruang Gerak Hari Ini</span>
-                <span className="text-[11px] font-black tabular-nums" style={{ color: proj.room.usedPct >= 100 ? '#f87171' : proj.room.usedPct >= 70 ? '#fbbf24' : '#34d399' }}>
-                  {Math.round(proj.room.usedPct)}% terpakai
-                </span>
+          {proj.room && (() => {
+            const r = proj.room
+            const rc = r.level === 'ekstrem' ? '#ef4444' : r.level === 'ramai' ? '#f59e0b' : r.level === 'sepi' ? '#3b82f6' : '#10b981'
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: `${rc}44`, background: `${rc}0d` }}>
+                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Ruang Gerak Hari Ini</span>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md uppercase" style={{ background: `${rc}26`, color: rc }}>{r.level}</span>
+                </div>
+
+                {/* Angka utama: berapa kali lipat dari hari normal */}
+                <div className="flex items-end gap-2 mb-2">
+                  <span className="text-2xl font-black tabular-nums" style={{ color: rc }}>{(r.usedPct / 100).toFixed(2)}×</span>
+                  <span className="text-[11px] text-white/45 mb-1">hari normal ({Math.round(r.usedPct)}%)</span>
+                </div>
+
+                {/* Rel range hari ini + posisi harga — menunjukkan ARAH kelelahan */}
+                <div className="relative h-7 mb-1">
+                  <div className="absolute inset-x-0 top-3 h-1.5 rounded-full bg-white/10" />
+                  <div className="absolute top-3 h-1.5 rounded-full" style={{ left: 0, width: `${Math.min(100, r.posInDay)}%`, background: `${rc}66` }} />
+                  <div className="absolute top-1.5 w-0.5 h-4 rounded-full" style={{ left: `${r.posInDay}%`, background: rc, boxShadow: `0 0 6px ${rc}` }} />
+                  <span className="absolute bottom-0 left-0 text-[9px] text-white/30 tabular-nums">L ${feed.dayLow.toFixed(1)}</span>
+                  <span className="absolute bottom-0 right-0 text-[9px] text-white/30 tabular-nums">H ${feed.dayHigh.toFixed(1)}</span>
+                </div>
+                <p className="text-[11px] font-semibold" style={{ color: rc }}>Harga {r.posLabel} ({Math.round(r.posInDay)}%)</p>
+
+                <div className="grid grid-cols-2 gap-2 mt-2 mb-2">
+                  <div className="rounded-lg bg-white/[0.03] p-2">
+                    <p className="text-[9px] text-white/35 uppercase tracking-wider">Range hari ini</p>
+                    <p className="text-[13px] font-black tabular-nums">${r.todayRange.toFixed(1)}</p>
+                  </div>
+                  <div className="rounded-lg bg-white/[0.03] p-2">
+                    <p className="text-[9px] text-white/35 uppercase tracking-wider">Median {r.sample} hari</p>
+                    <p className="text-[13px] font-black tabular-nums text-white/70">${r.typical.toFixed(1)}</p>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-white/60 leading-relaxed">{r.note}</p>
               </div>
-              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, proj.room.usedPct)}%`, background: proj.room.usedPct >= 100 ? '#ef4444' : proj.room.usedPct >= 70 ? '#f59e0b' : '#10b981' }} />
-              </div>
-              <p className="text-[10px] text-white/40 mt-1.5 leading-relaxed">
-                Range hari ini ${proj.room.todayRange.toFixed(1)} vs rata-rata ${proj.room.typical.toFixed(1)} — {proj.room.note}
-              </p>
-            </div>
-          )}
+            )
+          })()}
 
           <p className="text-[10px] text-white/25 leading-relaxed">{proj.note}</p>
         </div>
