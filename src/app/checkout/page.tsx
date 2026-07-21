@@ -3,7 +3,7 @@
 // Checkout — standalone (bukan di dalam layout Jurnal Tools), gaya gelap konsisten
 // dengan /terminal, /hub, /upgrade. Mendukung gateway online (DOKU/iPaymu/Midtrans)
 // DAN transfer manual (upload bukti + kode unik), dipilih dari Admin → Pembayaran.
-import { useState, useMemo, useEffect, Suspense } from 'react'
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
@@ -46,8 +46,15 @@ function CheckoutInner() {
   const dur = DURATIONS.find(d => d.months === months) ?? DURATIONS[0]
   const base = useMemo(() => pkgPrice(planBase(plan), dur.months, dur.off), [plan, dur])
 
+  // Popup pembayaran mengembalikan user ke /checkout?status=finish di dalam JENDELA
+  // POPUP itu sendiri. Deteksi kondisi ini: kalau ada window.opener, kita berada di
+  // popup — cukup tutup diri; tab utama yang memantau status & menampilkan confetti.
+  const isPopupReturn = typeof window !== 'undefined' && !!window.opener && window.opener !== window && params.get('status') === 'finish'
+
   const [step, setStep] = useState<'review' | 'processing' | 'success'>(params.get('status') === 'finish' ? 'processing' : 'review')
   const [busy, setBusy] = useState(false)
+  const [watchInv, setWatchInv] = useState<string | null>(null)  // invoice yang sedang dipantau di tab utama
+  const popupRef = useRef<Window | null>(null)
   const [snapReady, setSnapReady] = useState(false)
   const [gw, setGw] = useState<GatewayInfo | null>(null)   // null = masih memuat
   const [manual, setManual] = useState<ManualOrder | null>(null)  // order transfer manual aktif
@@ -80,24 +87,39 @@ function CheckoutInner() {
     trackPurchaseOnce(params.get('inv') || `${plan}-${dur.months}`, base)
   }, [step, params, plan, dur.months, base])
 
-  // Setelah kembali dari pembayaran (?status=finish&inv=…): pantau status order.
-  // Begitu 'aktif' → tampilkan popup selamat + confetti. Aktivasi async via webhook.
+  // Pantau status order sampai 'aktif' (diaktifkan webhook), lalu tampilkan
+  // confetti DI TAB INI. Sumber invoice: watchInv (dari klik bayar popup) atau
+  // ?inv= di URL (alur fallback tab-sama saat popup diblokir). DB = sumber
+  // kebenaran, jadi ini tidak bergantung pada popup benar-benar redirect balik.
   useEffect(() => {
+    if (isPopupReturn) return               // di popup: jangan polling, biar tab utama saja
     if (step !== 'processing') return
-    const inv = params.get('inv')
+    const inv = watchInv || params.get('inv')
     if (!inv) return
     const sb = createClient()
     let stop = false
     const check = async () => {
       const { data } = await sb.from('payment_orders').select('status').eq('invoice_number', inv).maybeSingle()
-      if (!stop && data?.status === 'aktif') { setStep('success'); return true }
+      if (!stop && data?.status === 'aktif') {
+        setStep('success')
+        try { popupRef.current?.close() } catch { /* popup mungkin sudah ditutup user */ }
+        return true
+      }
       return false
     }
     check()
     const id = setInterval(async () => { if (await check()) clearInterval(id) }, 3500)
-    const stopAt = setTimeout(() => clearInterval(id), 120_000) // berhenti polling setelah 2 menit
+    const stopAt = setTimeout(() => clearInterval(id), 300_000) // berhenti polling setelah 5 menit
     return () => { stop = true; clearInterval(id); clearTimeout(stopAt) }
-  }, [step, params])
+  }, [step, params, watchInv, isPopupReturn])
+
+  // Kalau halaman ini adalah JENDELA POPUP yang kembali dari pembayaran: tutup diri.
+  // Tab utama sudah memantau status lewat DB, jadi popup tak perlu menampilkan apa pun.
+  useEffect(() => {
+    if (!isPopupReturn) return
+    const t = setTimeout(() => { try { window.close() } catch { /* diamkan */ } }, 1800)
+    return () => clearTimeout(t)
+  }, [isPopupReturn])
 
   // Snap.js hanya dimuat kalau Midtrans yang aktif.
   useEffect(() => {
@@ -173,6 +195,11 @@ function CheckoutInner() {
       if (popup && !popup.closed) {
         popup.location.href = j.paymentUrl
         popup.focus()
+        // Tab utama beralih ke mode "mengonfirmasi" dan memantau invoice ini
+        // sampai webhook menandai lunas → confetti muncul DI SINI, bukan di popup.
+        popupRef.current = popup
+        if (j.invoice) setWatchInv(String(j.invoice))
+        setStep('processing')
       } else {
         // Popup diblokir browser → jangan buntu, arahkan di tab ini saja.
         window.location.href = j.paymentUrl
@@ -238,6 +265,21 @@ function CheckoutInner() {
 
   if (userId === undefined) {
     return <div className="min-h-screen flex items-center justify-center bg-[#060a09]"><Loader2 className="animate-spin text-primary" /></div>
+  }
+
+  // Jendela popup yang kembali dari pembayaran — tampilkan pesan singkat lalu tutup.
+  // Confetti & konfirmasi tampil di TAB UTAMA (yang memantau status via DB).
+  if (isPopupReturn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#060a09] text-white p-6 text-center">
+        <div className="space-y-3">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500/15"><Check size={26} className="text-emerald-400" /></div>
+          <h1 className="text-lg font-black">Pembayaran diterima</h1>
+          <p className="text-sm text-white/55 max-w-xs mx-auto">Jendela ini akan tertutup otomatis. Silakan kembali ke tab Datalitiq — akses Pro-mu sedang diaktifkan.</p>
+          <button onClick={() => { try { window.close() } catch { /* diamkan */ } }} className="text-sm font-semibold text-primary hover:underline">Tutup jendela</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -368,8 +410,12 @@ function CheckoutInner() {
         {step === 'processing' && (
           <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.05] p-8 text-center space-y-3">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/15"><Loader2 size={30} className="text-emerald-400 animate-spin" /></div>
-            <h2 className="text-xl font-black">Mengonfirmasi Pembayaran…</h2>
-            <p className="text-sm text-white/55 max-w-sm mx-auto leading-relaxed">Pembayaran kamu sedang dikonfirmasi. Paket <strong className="text-white/85">{planName(plan)}</strong> akan <strong className="text-white/85">aktif otomatis</strong> begitu terkonfirmasi (biasanya beberapa detik untuk QRIS/e-wallet/kartu).</p>
+            <h2 className="text-xl font-black">Menunggu Pembayaran…</h2>
+            <p className="text-sm text-white/55 max-w-sm mx-auto leading-relaxed">Selesaikan pembayaran di <strong className="text-white/85">jendela yang terbuka</strong>. Halaman ini <strong className="text-white/85">otomatis diperbarui</strong> dan paket <strong className="text-white/85">{planName(plan)}</strong> aktif begitu pembayaran terkonfirmasi — tak perlu refresh.</p>
+            {watchInv && (
+              <button onClick={() => { const p = popupRef.current; if (p && !p.closed) p.focus() }}
+                className="text-[12px] font-semibold text-primary hover:underline">Jendela pembayaran tidak terlihat? Klik di sini</button>
+            )}
             <div className="flex gap-2.5 justify-center pt-3">
               <button onClick={() => router.push('/account')} className="text-sm font-semibold border border-white/15 text-white/80 rounded-xl px-4 py-2.5 hover:bg-white/5 transition-colors">Lihat Status Langganan</button>
               <button onClick={() => router.push(plan === 'terminal' ? '/terminal' : '/hub')} className="text-sm font-semibold bg-primary text-primary-foreground rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity">{plan === 'terminal' ? 'Ke Terminal' : 'Ke Hub'}</button>
