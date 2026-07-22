@@ -42,7 +42,9 @@ type FinTx = {
 }
 type FinGoal = { id: string; name: string; target_amount: number; deadline: string | null; color: string | null }
 type FinGoalEntry = { id: string; goal_id: string; amount: number; date: string; note: string | null }
-type FinBudget = { id: string; category_id: string; monthly_limit: number }
+type BudgetPeriod = 'weekly' | 'monthly' | 'yearly'
+type FinBudget = { id: string; name: string; monthly_limit: number; period: BudgetPeriod; color: string | null }
+type FinBudgetCat = { budget_id: string; category_id: string }
 
 const rp = (n: number) => `Rp${Math.round(n).toLocaleString('id-ID')}`
 const rpShort = (n: number) => {
@@ -107,6 +109,37 @@ const PRESETS: { id: Preset; label: string }[] = [
 const sumBy = (rows: FinTx[], type: 'income' | 'expense') =>
   rows.filter(t => t.type === type).reduce((s, t) => s + Number(t.amount), 0)
 
+const PERIODS: { id: BudgetPeriod; label: string; per: string }[] = [
+  { id: 'weekly', label: 'Mingguan', per: '/minggu' },
+  { id: 'monthly', label: 'Bulanan', per: '/bulan' },
+  { id: 'yearly', label: 'Tahunan', per: '/tahun' },
+]
+
+// Jendela waktu sebuah anggaran, di-anchor ke satu tanggal.
+//
+// Ini sengaja TIDAK memakai filter periode global. Membandingkan batas bulanan
+// dengan pengeluaran "3 bulan terakhir" atau "tahun ini" menghasilkan angka yang
+// selalu terlihat jebol — bukan karena boros, tapi karena satuannya beda. Yang
+// dibandingkan harus periode milik anggaran itu sendiri.
+function budgetWindow(period: BudgetPeriod, anchorISO: string) {
+  const d = new Date(anchorISO + 'T00:00:00')
+  if (period === 'weekly') {
+    const day = d.getDay() || 7               // Minggu(0) diperlakukan sebagai hari ke-7
+    const mon = new Date(d); mon.setDate(d.getDate() - day + 1)
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+    return { from: iso(mon), to: iso(sun), label: `${fmtTglPendek(iso(mon))} – ${fmtTglPendek(iso(sun))}` }
+  }
+  if (period === 'yearly') {
+    return { from: `${d.getFullYear()}-01-01`, to: `${d.getFullYear()}-12-31`, label: `Tahun ${d.getFullYear()}` }
+  }
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+  return {
+    from: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`,
+    to: iso(last),
+    label: `${BLN[d.getMonth()]} ${d.getFullYear()}`,
+  }
+}
+
 export default function KeuanganPage() {
   const sub = useSubscription()
   const router = useRouter()
@@ -118,9 +151,11 @@ export default function KeuanganPage() {
   const [goals, setGoals] = useState<FinGoal[]>([])
   const [goalEntries, setGoalEntries] = useState<FinGoalEntry[]>([])
   const [budgets, setBudgets] = useState<FinBudget[]>([])
+  const [budgetCats, setBudgetCats] = useState<FinBudgetCat[]>([])
   const [loading, setLoading] = useState(true)
   const [needsMigration, setNeedsMigration] = useState(false)
   const [needsV2, setNeedsV2] = useState(false)
+  const [needsV3, setNeedsV3] = useState(false)
 
   // ── filter periode global ──
   const now = new Date()
@@ -142,6 +177,8 @@ export default function KeuanganPage() {
   const [showCat, setShowCat] = useState(false)
   const [showGoal, setShowGoal] = useState(false)
   const [goalDetail, setGoalDetail] = useState<FinGoal | null>(null)
+  // null = tertutup · 'new' = buat baru · FinBudget = sedang diedit
+  const [budgetSheet, setBudgetSheet] = useState<null | 'new' | FinBudget>(null)
 
   useEffect(() => {
     if (!sub.loading && !sub.userId) router.replace('/login?next=%2Fkeuangan')
@@ -171,10 +208,11 @@ export default function KeuanganPage() {
     }
     setCats(catRows)
 
-    const [g, ge, b] = await Promise.all([
+    const [g, ge, b, bc] = await Promise.all([
       sb.from('fin_goals').select('*').order('created_at'),
       sb.from('fin_goal_entries').select('*').order('date', { ascending: false }),
-      sb.from('fin_budgets').select('*'),
+      sb.from('fin_budgets').select('*').order('created_at'),
+      sb.from('fin_budget_categories').select('budget_id,category_id'),
     ])
     if (g.error || ge.error || b.error) {
       const msg2 = g.error?.message || ge.error?.message || b.error?.message || ''
@@ -185,6 +223,10 @@ export default function KeuanganPage() {
       setBudgets((b.data ?? []) as FinBudget[])
       setNeedsV2(false)
     }
+    // v3 terpisah dari v2: tabel jembatan kategori-anggaran baru ada di v3, dan
+    // Target sudah bisa dipakai walau anggaran belum dimigrasi.
+    if (bc.error) setNeedsV3(true)
+    else { setBudgetCats((bc.data ?? []) as FinBudgetCat[]); setNeedsV3(false) }
     setLoading(false)
   }
   useEffect(() => { if (sub.isAdmin) loadAll() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sub.isAdmin])
@@ -307,6 +349,55 @@ export default function KeuanganPage() {
   const savingsRate = income > 0 ? ((income - expense) / income) * 100 : null
   const avgDaily = expense / periodDays
 
+  // ── anggaran: satu baris hitung per amplop ──
+  //
+  // Anchor = ujung periode yang sedang dilihat. Jadi kalau user menelusuri bulan
+  // Juni lewat filter, anggaran bulanan ikut menampilkan Juni — bukan diam di
+  // bulan berjalan. Anggaran mingguan/tahunan mengikuti minggu/tahun dari anchor
+  // yang sama.
+  const budgetRows = useMemo(() => {
+    const catsOf = new Map<string, string[]>()
+    for (const bc of budgetCats) catsOf.set(bc.budget_id, [...(catsOf.get(bc.budget_id) ?? []), bc.category_id])
+    const today = todayStr()
+
+    return budgets.map(b => {
+      const win = budgetWindow(b.period, range.to)
+      const cids = catsOf.get(b.id) ?? []
+      const rows = txs.filter(t =>
+        t.type === 'expense' && t.category_id && cids.includes(t.category_id)
+        && t.date >= win.from && t.date <= win.to)
+      const spent = rows.reduce((s, t) => s + Number(t.amount), 0)
+      const limit = Number(b.monthly_limit)
+      const pct = limit > 0 ? (spent / limit) * 100 : 0
+
+      // Sisa harian hanya bermakna kalau periodenya sedang berjalan — untuk
+      // periode yang sudah lewat, "boleh pakai per hari" tidak ada artinya.
+      const live = today >= win.from && today <= win.to
+      const daysLeft = live
+        ? Math.max(1, Math.round((new Date(win.to + 'T00:00:00').getTime() - new Date(today + 'T00:00:00').getTime()) / 86_400_000) + 1)
+        : null
+      const perDay = daysLeft ? Math.max(0, limit - spent) / daysLeft : null
+
+      return {
+        b, win, cids, spent, limit, pct, perDay, daysLeft, live,
+        cats: cids.map(id => cats.find(c => c.id === id)).filter(Boolean) as FinCategory[],
+      }
+    })
+  }, [budgets, budgetCats, txs, cats, range.to])
+
+  const budgetTotals = useMemo(() => {
+    // Kategori yang sama boleh masuk lebih dari satu amplop, jadi menjumlahkan
+    // "terpakai" tiap amplop akan menghitungnya dua kali. Total dihitung dari
+    // himpunan kategori unik supaya angkanya tidak menggelembung.
+    const monthly = budgetRows.filter(r => r.b.period === 'monthly')
+    const uniq = new Set(monthly.flatMap(r => r.cids))
+    const win = budgetWindow('monthly', range.to)
+    const spent = txs.filter(t =>
+      t.type === 'expense' && t.category_id && uniq.has(t.category_id)
+      && t.date >= win.from && t.date <= win.to).reduce((s, t) => s + Number(t.amount), 0)
+    return { limit: monthly.reduce((s, r) => s + r.limit, 0), spent, count: monthly.length, win }
+  }, [budgetRows, txs, range.to])
+
   const goalProgress = useMemo(() => {
     const m = new Map<string, number>()
     for (const e of goalEntries) m.set(e.goal_id, (m.get(e.goal_id) ?? 0) + Number(e.amount))
@@ -354,6 +445,13 @@ export default function KeuanganPage() {
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
       <p className="font-black text-[14px] text-amber-800 mb-1">Fitur ini butuh migrasi v2</p>
       <p className="text-[12px] text-amber-700/80 leading-relaxed">Jalankan <code className="px-1.5 py-0.5 rounded bg-amber-100 text-[11px]">supabase-personal-finance-v2.sql</code> di Supabase → SQL Editor, lalu muat ulang.</p>
+    </div>
+  ) : null
+
+  const V3Banner = needsV3 ? (
+    <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
+      <p className="font-black text-[14px] text-amber-800 mb-1">Anggaran baru butuh migrasi v3</p>
+      <p className="text-[12px] text-amber-700/80 leading-relaxed">Jalankan <code className="px-1.5 py-0.5 rounded bg-amber-100 text-[11px]">supabase-personal-finance-v3.sql</code> di Supabase → SQL Editor, lalu muat ulang. Anggaran lama otomatis ikut dipindahkan.</p>
     </div>
   ) : null
 
@@ -814,13 +912,110 @@ export default function KeuanganPage() {
             {/* ════════ ANGGARAN ════════ */}
             {tab === 'budget' && (
               <div className="space-y-4">
-                {V2Banner ?? (
+                {V2Banner ?? V3Banner ?? (
                   <>
-                    <div>
-                      <p className="text-[15px] font-black flex items-center gap-2"><SlidersHorizontal size={17} className="text-indigo-500" /> Anggaran Bulanan</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Batas per kategori — dibandingkan dengan pengeluaran di <b>{range.label}</b>.</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-black flex items-center gap-2"><SlidersHorizontal size={17} className="text-indigo-500" /> Anggaran</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Amplop bernama — satu amplop boleh mencakup beberapa kategori.</p>
+                      </div>
+                      <button onClick={() => setBudgetSheet('new')} disabled={!cats.some(c => c.type === 'expense')}
+                        className="shrink-0 flex items-center gap-1.5 px-4 h-10 rounded-full bg-indigo-500 text-white text-[13px] font-black hover:bg-indigo-600 disabled:opacity-40">
+                        <Plus size={15} /> Anggaran Baru
+                      </button>
                     </div>
-                    <BudgetList cats={cats} budgets={budgets} periodTxs={periodTxs} userId={sub.userId!} onChanged={loadAll} />
+
+                    {budgetTotals.count > 0 && (
+                      <div className="rounded-3xl bg-white p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <p className="text-[12px] font-black text-slate-500">Total amplop bulanan · {budgetTotals.win.label}</p>
+                          <p className="text-[12px] font-black tabular-nums" style={{ color: budgetTotals.spent > budgetTotals.limit ? '#ef4444' : '#6366f1' }}>
+                            {budgetTotals.limit > 0 ? Math.round((budgetTotals.spent / budgetTotals.limit) * 100) : 0}%
+                          </p>
+                        </div>
+                        <div className="h-2.5 rounded-full bg-[#F0F0F4] overflow-hidden">
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${Math.min(100, budgetTotals.limit > 0 ? (budgetTotals.spent / budgetTotals.limit) * 100 : 0)}%`, background: budgetTotals.spent > budgetTotals.limit ? '#ef4444' : '#6366f1' }} />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1.5 tabular-nums">{rp(budgetTotals.spent)} dari {rp(budgetTotals.limit)} · sisa <b className="text-slate-600">{rp(Math.max(0, budgetTotals.limit - budgetTotals.spent))}</b></p>
+                      </div>
+                    )}
+
+                    {budgetRows.length === 0 ? (
+                      <div className="rounded-3xl bg-white p-10 text-center shadow-sm">
+                        <SlidersHorizontal size={28} className="mx-auto text-indigo-300 mb-3" />
+                        <p className="font-black text-[15px] mb-1">Belum ada anggaran</p>
+                        <p className="text-[13px] text-slate-400">Buat amplop pertama — mis. &ldquo;Belanja Harian&rdquo; yang mencakup Makan &amp; Transportasi.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {budgetRows.map((r, i) => {
+                          const base = r.b.color || colorAt(i)
+                          const clr = r.pct >= 100 ? '#ef4444' : r.pct >= 80 ? '#f59e0b' : base
+                          return (
+                            <button key={r.b.id} onClick={() => setBudgetSheet(r.b)}
+                              className="text-left rounded-3xl bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="min-w-0">
+                                  <p className="text-[14px] font-black flex items-center gap-1.5 min-w-0">
+                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: base }} />
+                                    <span className="truncate">{r.b.name}</span>
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">{PERIODS.find(p => p.id === r.b.period)?.label} · {r.win.label}</p>
+                                </div>
+                                <span className="text-[11px] font-black shrink-0 tabular-nums" style={{ color: clr }}>
+                                  {Math.round(r.pct)}%{r.pct >= 100 ? ' · LEWAT!' : r.pct >= 80 ? ' · hampir' : ''}
+                                </span>
+                              </div>
+
+                              <div className="h-2.5 rounded-full bg-[#F0F0F4] overflow-hidden mb-1.5">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, r.pct)}%`, background: clr }} />
+                              </div>
+                              <p className="text-[11px] text-slate-400 tabular-nums">
+                                {rpShort(r.spent)} dari {rpShort(r.limit)}
+                                {r.spent <= r.limit
+                                  ? <> · sisa <b className="text-slate-600">{rpShort(r.limit - r.spent)}</b></>
+                                  : <> · lebih <b className="text-rose-500">{rpShort(r.spent - r.limit)}</b></>}
+                              </p>
+                              {r.perDay !== null && r.spent <= r.limit && (
+                                <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">≈ {rpShort(r.perDay)}/hari untuk {r.daysLeft} hari tersisa</p>
+                              )}
+
+                              {r.cats.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 mt-2.5">
+                                  {r.cats.slice(0, 4).map(c => (
+                                    <span key={c.id} className="px-2 py-0.5 rounded-full bg-[#F7F7FA] text-[10px] font-bold text-slate-500">{c.name}</span>
+                                  ))}
+                                  {r.cats.length > 4 && <span className="px-2 py-0.5 rounded-full bg-[#F7F7FA] text-[10px] font-bold text-slate-400">+{r.cats.length - 4}</span>}
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-amber-500 font-bold mt-2.5">Belum ada kategori — ketuk untuk memilih</p>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Kategori pengeluaran yang belum tercakup amplop mana pun —
+                        bagian pengeluaran yang tidak terpantau sama sekali. */}
+                    {(() => {
+                      const covered = new Set(budgetCats.map(bc => bc.category_id))
+                      const loose = cats.filter(c => c.type === 'expense' && !covered.has(c.id))
+                      if (!budgetRows.length || !loose.length) return null
+                      return (
+                        <div className="rounded-3xl bg-white p-4 shadow-sm">
+                          <p className="text-[12px] font-black text-slate-500 mb-2">Belum masuk anggaran mana pun</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {loose.map(c => (
+                              <span key={c.id} className="px-2.5 py-1 rounded-full bg-[#F7F7FA] text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full" style={{ background: c.color || '#cbd5e1' }} />{c.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </>
                 )}
               </div>
@@ -872,6 +1067,14 @@ export default function KeuanganPage() {
       )}
       {showAcc && <AccSheet accounts={accounts} balances={balances} userId={sub.userId!} onClose={() => setShowAcc(false)} onChanged={loadAll} />}
       {showCat && <CatSheet cats={cats} userId={sub.userId!} onClose={() => setShowCat(false)} onChanged={loadAll} />}
+      {budgetSheet && (
+        <BudgetSheet
+          edit={budgetSheet === 'new' ? null : budgetSheet}
+          initialCats={budgetSheet === 'new' ? [] : budgetCats.filter(bc => bc.budget_id === budgetSheet.id).map(bc => bc.category_id)}
+          cats={cats} userId={sub.userId!}
+          onClose={() => setBudgetSheet(null)}
+          onChanged={() => { setBudgetSheet(null); loadAll() }} />
+      )}
       {showGoal && <GoalSheet userId={sub.userId!} onClose={() => setShowGoal(false)} onChanged={() => { setShowGoal(false); loadAll() }} />}
       {goalDetail && <GoalDetailSheet goal={goalDetail} entries={goalEntries.filter(e => e.goal_id === goalDetail.id)} saved={goalProgress.get(goalDetail.id) ?? 0} userId={sub.userId!} onClose={() => setGoalDetail(null)} onChanged={loadAll} />}
     </div>
@@ -1389,71 +1592,111 @@ function GoalDetailSheet({ goal, entries, saved, userId, onClose, onChanged }: {
   )
 }
 
-// ── anggaran ──
-function BudgetList({ cats, budgets, periodTxs, userId, onChanged }: {
-  cats: FinCategory[]; budgets: FinBudget[]; periodTxs: FinTx[]; userId: string; onChanged: () => void
+// ── anggaran: buat & edit amplop ──
+function BudgetSheet({ edit, initialCats, cats, userId, onClose, onChanged }: {
+  edit: FinBudget | null; initialCats: string[]
+  cats: FinCategory[]; userId: string; onClose: () => void; onChanged: () => void
 }) {
-  const [draft, setDraft] = useState<Record<string, string>>({})
-  const expenseCats = cats.filter(c => c.type === 'expense')
-  const spentOf = (cid: string) => periodTxs.filter(t => t.type === 'expense' && t.category_id === cid).reduce((s, t) => s + Number(t.amount), 0)
+  const [name, setName] = useState(edit?.name ?? '')
+  const [limit, setLimit] = useState(edit ? Number(edit.monthly_limit).toLocaleString('id-ID') : '')
+  const [period, setPeriod] = useState<BudgetPeriod>(edit?.period ?? 'monthly')
+  const [color, setColor] = useState<string | null>(edit?.color ?? PALETTE[0])
+  const [picked, setPicked] = useState<string[]>(initialCats)
+  const [busy, setBusy] = useState(false)
 
-  async function saveBudget(cid: string) {
-    const raw = draft[cid] ?? ''
-    const num = Number(raw.replace(/[^\d]/g, ''))
+  const expenseCats = cats.filter(c => c.type === 'expense')
+  const toggle = (id: string) => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+
+  async function save() {
+    const num = Number(limit.replace(/[^\d]/g, ''))
+    if (!name.trim()) { toast.error('Isi nama anggaran'); return }
+    if (!num) { toast.error('Isi batas nominal'); return }
+    if (!picked.length) { toast.error('Pilih minimal satu kategori'); return }
+    setBusy(true)
     const sb = createClient()
-    if (!num) {
-      const ex = budgets.find(b => b.category_id === cid)
-      if (ex) { await sb.from('fin_budgets').delete().eq('id', ex.id); toast.success('Anggaran dihapus'); onChanged() }
-      return
-    }
-    const { error } = await sb.from('fin_budgets').upsert({ user_id: userId, category_id: cid, monthly_limit: num }, { onConflict: 'user_id,category_id' })
+    const payload = { user_id: userId, name: name.trim(), monthly_limit: num, period, color }
+
+    const { data, error } = edit
+      ? await sb.from('fin_budgets').update(payload).eq('id', edit.id).select('id').single()
+      : await sb.from('fin_budgets').insert(payload).select('id').single()
+    if (error || !data) { setBusy(false); toast.error(error?.message ?? 'Gagal menyimpan'); return }
+
+    // Ganti seluruh himpunan kategori, bukan menambal selisihnya: jauh lebih
+    // sedikit yang bisa salah, dan jumlah barisnya selalu kecil.
+    if (edit) await sb.from('fin_budget_categories').delete().eq('budget_id', data.id)
+    const { error: e2 } = await sb.from('fin_budget_categories')
+      .insert(picked.map(cid => ({ budget_id: data.id, category_id: cid, user_id: userId })))
+    setBusy(false)
+    if (e2) { toast.error(e2.message); return }
+    toast.success(edit ? 'Anggaran diperbarui' : 'Anggaran dibuat'); onChanged()
+  }
+
+  async function del() {
+    if (!edit) return
+    if (!window.confirm(`Hapus anggaran "${edit.name}"? Transaksinya tidak ikut terhapus.`)) return
+    const { error } = await createClient().from('fin_budgets').delete().eq('id', edit.id)
     if (error) { toast.error(error.message); return }
-    toast.success('Anggaran disimpan'); onChanged()
+    toast.success('Anggaran dihapus'); onChanged()
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {expenseCats.map((c, i) => {
-        const b = budgets.find(x => x.category_id === c.id)
-        const spent = spentOf(c.id)
-        const limit = b ? Number(b.monthly_limit) : 0
-        const pct = limit > 0 ? (spent / limit) * 100 : 0
-        const clr = pct >= 100 ? '#ef4444' : pct >= 80 ? '#f59e0b' : (c.color || colorAt(i))
-        return (
-          <div key={c.id} className="rounded-3xl bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-[13px] font-black flex items-center gap-1.5 min-w-0">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color || colorAt(i) }} />
-                <span className="truncate">{c.name}</span>
-                {c.is_business && <Briefcase size={11} className="text-indigo-400 shrink-0" />}
-              </p>
-              {limit > 0 && (
-                <span className="text-[11px] font-black shrink-0" style={{ color: clr }}>
-                  {Math.round(pct)}%{pct >= 100 ? ' · LEWAT!' : pct >= 80 ? ' · hampir' : ''}
-                </span>
-              )}
-            </div>
-            {limit > 0 ? (
-              <>
-                <div className="h-2.5 rounded-full bg-[#F0F0F4] overflow-hidden mb-1.5">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, pct)}%`, background: clr }} />
-                </div>
-                <p className="text-[11px] text-slate-400 tabular-nums">{rpShort(spent)} dari {rpShort(limit)}</p>
-              </>
-            ) : (
-              <p className="text-[11px] text-slate-300 mb-1.5">Belum ada batas — terpakai {rpShort(spent)}</p>
-            )}
-            <div className="flex gap-2 mt-2.5">
-              <input
-                value={draft[c.id] ?? (b ? Number(b.monthly_limit).toLocaleString('id-ID') : '')}
-                onChange={e => setDraft(p => ({ ...p, [c.id]: e.target.value.replace(/[^\d]/g, '') ? Number(e.target.value.replace(/[^\d]/g, '')).toLocaleString('id-ID') : '' }))}
-                inputMode="numeric" placeholder="Batas / bulan (Rp)"
-                className="flex-1 h-10 px-3.5 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200" />
-              <button onClick={() => saveBudget(c.id)} className="px-3.5 h-10 rounded-xl bg-indigo-500 text-white text-[12px] font-black hover:bg-indigo-600">Simpan</button>
-            </div>
+    <Sheet title={edit ? 'Edit Anggaran' : 'Anggaran Baru'} onClose={onClose}>
+      <div className="space-y-3">
+        <input value={name} onChange={e => setName(e.target.value)} autoFocus
+          placeholder="Nama — mis. Belanja Harian, Operasional" className={inputCls} />
+
+        <div>
+          <label className="text-[11px] font-bold text-slate-400 block mb-1.5">Batas nominal (Rp)</label>
+          <input value={limit} inputMode="numeric" placeholder="mis. 3.000.000" className={inputCls}
+            onChange={e => setLimit(e.target.value.replace(/[^\d]/g, '') ? Number(e.target.value.replace(/[^\d]/g, '')).toLocaleString('id-ID') : '')} />
+        </div>
+
+        <div>
+          <label className="text-[11px] font-bold text-slate-400 block mb-1.5">Berlaku per</label>
+          <div className="grid grid-cols-3 gap-2">
+            {PERIODS.map(p => (
+              <button key={p.id} type="button" onClick={() => setPeriod(p.id)}
+                className={`h-11 rounded-2xl text-[12px] font-black transition-colors ${period === p.id ? 'bg-indigo-500 text-white' : 'bg-[#F7F7FA] text-slate-500 hover:bg-slate-100'}`}>
+                {p.label}
+              </button>
+            ))}
           </div>
-        )
-      })}
-    </div>
+        </div>
+
+        <div>
+          <label className="text-[11px] font-bold text-slate-400 block mb-1.5">
+            Kategori yang dihitung {picked.length > 0 && <span className="text-indigo-500">· {picked.length} dipilih</span>}
+          </label>
+          {expenseCats.length === 0 ? (
+            <p className="text-[12px] text-slate-400">Belum ada kategori pengeluaran.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {expenseCats.map(c => {
+                const on = picked.includes(c.id)
+                return (
+                  <button key={c.id} type="button" onClick={() => toggle(c.id)}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-bold flex items-center gap-1.5 transition-colors ${on ? 'bg-indigo-500 text-white' : 'bg-[#F7F7FA] text-slate-500 hover:bg-slate-100'}`}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: on ? '#fff' : (c.color || '#cbd5e1') }} />
+                    {c.name}
+                    {c.is_business && <Briefcase size={10} className={on ? 'text-white/70' : 'text-indigo-400'} />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <ColorPicker value={color} onChange={setColor} />
+
+        <button onClick={save} disabled={busy} className={btnPrimary}>
+          {busy ? <Loader2 size={16} className="animate-spin inline" /> : edit ? 'Simpan Perubahan' : 'Buat Anggaran'}
+        </button>
+        {edit && (
+          <button onClick={del} className="w-full h-11 rounded-2xl border border-rose-200 text-rose-500 text-[13px] font-black hover:bg-rose-50 transition-colors flex items-center justify-center gap-1.5">
+            <Trash2 size={15} /> Hapus Anggaran
+          </button>
+        )}
+      </div>
+    </Sheet>
   )
 }
