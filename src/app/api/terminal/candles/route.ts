@@ -7,7 +7,13 @@ const VALID: TF[] = ['M5', 'M15', 'H1', 'H4', 'D1']
 // UUP/IEF = proxy candle DXY & yield 10Y untuk pilar Makro per-timeframe.
 // VIXY/SPY/QQQ/BTC/USD/XAG/USD = halaman detail market (/terminal/data/market/*),
 // simbol yang sama persis sudah dipakai live-quote di /api/terminal/crossasset.
-const ALLOWED_SYMBOLS = new Set(['XAU/USD', 'UUP', 'IEF', 'VIXY', 'SPY', 'QQQ', 'BTC/USD', 'XAG/USD'])
+// Pasangan forex mayor = bahan indeks dolar sintetis (src/lib/dollar-fx.ts).
+// Dipakai karena UUP adalah ETF yang BEKU di luar jam bursa AS — forex trading
+// ~24 jam sehingga pilar Makro tetap hidup di sesi Asia/Eropa.
+const ALLOWED_SYMBOLS = new Set([
+  'XAU/USD', 'UUP', 'IEF', 'VIXY', 'SPY', 'QQQ', 'BTC/USD', 'XAG/USD',
+  'EUR/USD', 'USD/JPY', 'GBP/USD', 'USD/CHF',
+])
 const cache = new Map<string, { data: Awaited<ReturnType<typeof fetchCandles>>; at: number }>()
 // TF besar (H4/D1) berubah lambat → cache lebih lama biar hemat kredit.
 const ttl = (tf: TF) => (tf === 'D1' ? 30 * 60_000 : tf === 'H4' ? 10 * 60_000 : 45_000)

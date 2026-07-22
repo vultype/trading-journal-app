@@ -21,6 +21,7 @@ import { toast } from '@/lib/toast'
 import { playChime, type ChimeDir } from '@/lib/chime'
 import { detectTrendPhase, type PhaseState } from '@/lib/trend-phase'
 import { buildProjection, type ProjLevel } from '@/lib/projection'
+import { buildDollarIndex, ageMinutes, FX_PAIRS, STALE_MIN, type FxPair } from '@/lib/dollar-fx'
 import { TradingViewChart } from './TradingViewChart'
 import { aiFetch } from '@/lib/ai-fetch'
 import { useCredits } from '@/hooks/useCredits'
@@ -135,31 +136,79 @@ function useCrossAsset() {
 // berbanding terbalik dgn yield). Dipakai supaya pilar Makro bisa dihitung per
 // M5/M15/H1 seperti Teknikal (bukan cuma arah harian FRED), dan untuk deteksi
 // "DXY vs Yield bertentangan → berpotensi ranging".
-type MacroTechFeed = { uup: Record<TF, TFData> | null; ief: Record<TF, TFData> | null }
+// dollar = indeks sintetis dari forex (LIVE 24 jam, menggantikan UUP saat tersedia).
+// ief tetap ETF — tidak ada proxy yield 24 jam, jadi kesegarannya dilaporkan
+// lewat `yieldStaleMin` agar tidak dipakai seolah-olah masih hidup.
+type MacroTechFeed = {
+  uup: Record<TF, TFData> | null
+  ief: Record<TF, TFData> | null
+  dollarLive: boolean          // true = dolar dari forex 24 jam
+  yieldStaleMin: number | null // umur candle yield (menit)
+}
 function useMacroCandleFeed(): MacroTechFeed {
   const [uup, setUup] = useState<Record<TF, TFData> | null>(null)
   const [ief, setIef] = useState<Record<TF, TFData> | null>(null)
+  const [dollarLive, setDollarLive] = useState(false)
+  const [yieldStaleMin, setYieldStaleMin] = useState<number | null>(null)
   useEffect(() => {
     let stopped = false
-    const refs: Record<'UUP' | 'IEF', Partial<Record<TF, Candle[]>>> = { UUP: {}, IEF: {} }
-    async function pollOne(symbol: 'UUP' | 'IEF', tf: TF) {
+    const iefRef: Partial<Record<TF, Candle[]>> = {}
+    const fxRef: Record<TF, Partial<Record<FxPair, Candle[]>>> = { M5: {}, M15: {}, H1: {} }
+    const uupRef: Partial<Record<TF, Candle[]>> = {}
+    const norm = (arr: unknown[]) => (arr as { o: number; h: number; l: number; c: number; t: number }[]).map(c => ({ ...c, v: 1 }))
+
+    async function pollIef(tf: TF) {
       try {
-        const arr = await (await fetch(`/api/terminal/candles?tf=${tf}&symbol=${symbol}`)).json()
+        const arr = await (await fetch(`/api/terminal/candles?tf=${tf}&symbol=IEF`)).json()
         if (stopped || !Array.isArray(arr) || !arr.length) return
-        refs[symbol][tf] = arr.map((c: { o: number; h: number; l: number; c: number; t: number }) => ({ ...c, v: 1 }))
-        const r = refs[symbol]
-        if (r.M5 && r.M15 && r.H1) {
-          const built = { M5: computeTF(r.M5), M15: computeTF(r.M15), H1: computeTF(r.H1) }
-          if (symbol === 'UUP') setUup(built); else setIef(built)
+        iefRef[tf] = norm(arr)
+        if (iefRef.M5 && iefRef.M15 && iefRef.H1) {
+          setIef({ M5: computeTF(iefRef.M5), M15: computeTF(iefRef.M15), H1: computeTF(iefRef.H1) })
+          setYieldStaleMin(ageMinutes(iefRef.M5))
         }
       } catch { }
     }
-    const pollAll = () => { for (const sym of ['UUP', 'IEF'] as const) for (const tf of TFS) pollOne(sym, tf) }
+    // Cadangan: UUP dipakai hanya bila indeks forex gagal tersusun.
+    async function pollUup(tf: TF) {
+      try {
+        const arr = await (await fetch(`/api/terminal/candles?tf=${tf}&symbol=UUP`)).json()
+        if (stopped || !Array.isArray(arr) || !arr.length) return
+        uupRef[tf] = norm(arr)
+      } catch { }
+    }
+    async function pollFx(tf: TF, pair: FxPair) {
+      try {
+        const arr = await (await fetch(`/api/terminal/candles?tf=${tf}&symbol=${encodeURIComponent(pair)}`)).json()
+        if (stopped || !Array.isArray(arr) || !arr.length) return
+        fxRef[tf][pair] = norm(arr)
+      } catch { }
+    }
+    function rebuildDollar() {
+      const built: Partial<Record<TF, TFData>> = {}
+      let live = true
+      for (const tf of TFS) {
+        const idx = buildDollarIndex(fxRef[tf])
+        if (idx.length >= 30) built[tf] = computeTF(idx)
+        else if (uupRef[tf]) { built[tf] = computeTF(uupRef[tf]!); live = false }
+      }
+      if (built.M5 && built.M15 && built.H1) {
+        setUup({ M5: built.M5, M15: built.M15, H1: built.H1 })
+        setDollarLive(live)
+      }
+    }
+    const pollAll = async () => {
+      await Promise.all([
+        ...TFS.map(tf => pollIef(tf)),
+        ...TFS.map(tf => pollUup(tf)),
+        ...TFS.flatMap(tf => FX_PAIRS.map(p => pollFx(tf, p))),
+      ])
+      if (!stopped) rebuildDollar()
+    }
     pollAll()
     const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) pollAll() }, 60_000)
     return () => { stopped = true; clearInterval(id) }
   }, [])
-  return { uup, ief }
+  return { uup, ief, dollarLive, yieldStaleMin }
 }
 function useMacro() {
   const [map, setMap] = useState<Record<string, MacroPoint> | null>(null)
@@ -868,8 +917,16 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const riskOn = riskOnScore(cross, usOpen)
   // Makro per-candle (UUP=dolar, IEF=yield 10Y terbalik) — M5/M15/H1, sebanding dgn Teknikal.
   const macroTechReady = macroTech.uup && macroTech.ief
-  const fastMacro = macroTechReady ? macroCandleBlend(macroTech.uup!, macroTech.ief!) : null
-  const macroM15 = macroTechReady ? macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15) : null
+  // Yield BEKU = bursa AS tutup (IEF adalah ETF, hanya trading 09:30-16:00 ET).
+  // Di sesi Asia/Eropa datanya berjam-jam lalu. Memakainya seolah-olah hidup
+  // membuat terminal menampilkan dampak -100 penuh keyakinan dari data basi,
+  // padahal emas sedang bergerak live. Karena itu kontribusinya DINOLKAN, bukan
+  // sekadar diberi label — skor yang salah lebih berbahaya daripada skor kosong.
+  const yieldStale = macroTech.yieldStaleMin != null && macroTech.yieldStaleMin > STALE_MIN
+  const fastMacroRaw = macroTechReady ? macroCandleBlend(macroTech.uup!, macroTech.ief!) : null
+  const fastMacro = fastMacroRaw ? { ...fastMacroRaw, yieldImpact: yieldStale ? 0 : fastMacroRaw.yieldImpact } : null
+  const macroM15Raw = macroTechReady ? macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15) : null
+  const macroM15 = macroM15Raw ? { ...macroM15Raw, yieldImpact: yieldStale ? 0 : macroM15Raw.yieldImpact } : null
   // Ringkasan makro per-candle (M5/M15/H1) untuk diumpankan ke Analisa AI.
   const macroCandleSnap = macroTechReady ? {
     M5: macroCandleImpact(macroTech.uup!.M5, macroTech.ief!.M5),
@@ -1853,8 +1910,11 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     const out: { l: string; arah: 'bullish' | 'bearish' | 'netral'; d: string }[] = []
     // Per-candle (M15, proxy UUP/IEF) — sebanding horizon waktunya dengan pilar Teknikal.
     if (macroM15) {
-      out.push({ l: 'Dolar (candle M15, proxy UUP)', arah: macroM15.dollarImpact > 20 ? 'bullish' : macroM15.dollarImpact < -20 ? 'bearish' : 'netral', d: `dampak ${macroM15.dollarImpact >= 0 ? '+' : ''}${Math.round(macroM15.dollarImpact)}` })
-      out.push({ l: 'Yield (candle M15, proxy IEF)', arah: macroM15.yieldImpact > 20 ? 'bullish' : macroM15.yieldImpact < -20 ? 'bearish' : 'netral', d: `dampak ${macroM15.yieldImpact >= 0 ? '+' : ''}${Math.round(macroM15.yieldImpact)}` })
+      // Sumber dolar disebut apa adanya: forex 24 jam vs ETF. Yield diberi
+      // penanda umur bila datanya beku (bursa AS tutup) — menampilkan dampak
+      // -100 dari data 6 jam lalu tanpa keterangan itu menyesatkan.
+      out.push({ l: `Dolar (M15, ${macroTech.dollarLive ? 'forex 24 jam' : 'proxy UUP'})`, arah: macroM15.dollarImpact > 20 ? 'bullish' : macroM15.dollarImpact < -20 ? 'bearish' : 'netral', d: `dampak ${macroM15.dollarImpact >= 0 ? '+' : ''}${Math.round(macroM15.dollarImpact)}` })
+      out.push({ l: `Yield (M15, proxy IEF)${yieldStale ? ' — BEKU' : ''}`, arah: yieldStale ? 'netral' : macroM15.yieldImpact > 20 ? 'bullish' : macroM15.yieldImpact < -20 ? 'bearish' : 'netral', d: yieldStale ? `data ${Math.round(macroTech.yieldStaleMin!)} mnt lalu — bursa AS tutup` : `dampak ${macroM15.yieldImpact >= 0 ? '+' : ''}${Math.round(macroM15.yieldImpact)}` })
     }
     const dLive = cross.uup?.changePct
     if (dLive != null) out.push({ l: 'Dolar (live, harian)', arah: dLive > 0.05 ? 'bearish' : dLive < -0.05 ? 'bullish' : 'netral', d: `UUP ${dLive >= 0 ? '+' : ''}${dLive.toFixed(2)}% hari ini` })
@@ -1878,6 +1938,20 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
           <p className="text-[11px] text-white/45 mt-1.5">Skor pilar makro {sc.macro >= 0 ? '+' : ''}{Math.round(sc.macro)} dari −100…+100</p>
         </div>
       </div>
+      {/* Transparansi kesegaran data — user berhak tahu skor ini dihitung dari
+          data hidup atau data beku, terutama saat trading di sesi Asia. */}
+      {yieldStale && (
+        <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/[0.09] border border-amber-500/30 p-3 mb-3">
+          <Clock size={15} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-[11px] text-amber-100/85 leading-relaxed">
+            <b>Yield beku — bursa AS tutup.</b> Data yield (ETF IEF) terakhir {Math.round(macroTech.yieldStaleMin!)} menit lalu, jadi kontribusinya dinolkan agar tidak memberi sinyal palsu.
+            {macroTech.dollarLive
+              ? ' Dolar tetap live dari forex 24 jam.'
+              : ' Dolar juga memakai proxy ETF — kehati-hatian ekstra.'}
+            {' '}Untuk sesi Asia, andalkan Teknikal &amp; struktur harga.
+          </div>
+        </div>
+      )}
       <div className="space-y-1.5">
         {makroDrivers.map(d => (
           <div key={d.l} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2">
