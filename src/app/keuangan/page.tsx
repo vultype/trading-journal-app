@@ -30,6 +30,7 @@ import {
   Camera, Briefcase, Settings2, LayoutDashboard,
   ChartPie, PiggyBank, SlidersHorizontal, CalendarClock, Sparkles, Pencil,
   ArrowUpRight, ArrowDownRight, ReceiptText, ListFilter, User, HeartPulse,
+  TriangleAlert, Info, CircleCheck, Lightbulb,
 } from 'lucide-react'
 
 // ── tipe ──
@@ -49,6 +50,14 @@ type Health = {
   mInc: number; mExp: number
 }
 
+type Insight = { key: string; tone: 'good' | 'warn' | 'bad' | 'info'; title: string; text: string }
+const TONE: Record<Insight['tone'], { bg: string; fg: string; icon: React.ElementType }> = {
+  bad:  { bg: '#fef2f2', fg: '#ef4444', icon: TriangleAlert },
+  warn: { bg: '#fffbeb', fg: '#f59e0b', icon: Info },
+  good: { bg: '#ecfdf5', fg: '#10b981', icon: CircleCheck },
+  info: { bg: '#F7F7FA', fg: '#6366f1', icon: Lightbulb },
+}
+
 type BudgetPeriod = 'weekly' | 'monthly' | 'yearly'
 type FinBudget = { id: string; name: string; monthly_limit: number; period: BudgetPeriod; color: string | null }
 type FinBudgetCat = { budget_id: string; category_id: string }
@@ -59,6 +68,7 @@ type FinBudgetCat = { budget_id: string; category_id: string }
 const rp = (n: number) => `Rp${Math.round(n).toLocaleString('id-ID')}`
 // Sumbu chart: format sama, tanpa prefiks "Rp" supaya label tidak memakan
 // lebar plot. Satuannya sudah jelas dari judul kartunya.
+const TOOLTIP_STYLE = { borderRadius: 14, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, background: '#fff' }
 const rpAxis = (n: number) => Math.round(n).toLocaleString('id-ID')
 const BLN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const BLN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
@@ -187,6 +197,7 @@ export default function KeuanganPage() {
   const [goalDetail, setGoalDetail] = useState<FinGoal | null>(null)
   // null = tertutup · 'new' = buat baru · FinBudget = sedang diedit
   const [budgetSheet, setBudgetSheet] = useState<null | 'new' | FinBudget>(null)
+  const [catInsight, setCatInsight] = useState<{ cid: string; kind: 'income' | 'expense' } | null>(null)
 
   useEffect(() => {
     if (!sub.loading && !sub.userId) router.replace('/login?next=%2Fkeuangan')
@@ -514,6 +525,183 @@ export default function KeuanganPage() {
   }, [goalEntries])
   const totalSaved = useMemo(() => [...goalProgress.values()].reduce((a, b) => a + b, 0), [goalProgress])
 
+  // ── insight otomatis ──
+  //
+  // Aturan yang saya pegang di sini: satu temuan hanya muncul kalau angkanya
+  // cukup besar untuk pantas ditindaklanjuti. Ambang nominal (bukan cuma persen)
+  // dipasang di hampir semua aturan karena "naik 300%" dari Rp5.000 ke Rp20.000
+  // secara teknis benar tapi tidak berguna — dan daftar yang penuh temuan remeh
+  // membuat yang penting ikut diabaikan.
+  const insights = useMemo(() => {
+    const out: Insight[] = []
+    const nm = (id?: string | null) => cats.find(c => c.id === id)?.name ?? 'Tanpa kategori'
+
+    // — lonjakan & penurunan kategori vs periode sebelumnya —
+    const prevByCat = new Map<string, number>()
+    for (const t of prevPeriodTxs) if (t.type === 'expense') prevByCat.set(t.category_id ?? '-', (prevByCat.get(t.category_id ?? '-') ?? 0) + Number(t.amount))
+    const moves = expBreakdown.map(b => ({ b, p: prevByCat.get(b.cid) ?? 0 }))
+      .filter(x => x.p > 0)
+      .map(x => ({ ...x, d: x.b.v - x.p, r: (x.b.v - x.p) / x.p }))
+    const up = moves.filter(x => x.r >= 0.3 && x.d >= 100_000).sort((a, b) => b.d - a.d)[0]
+    if (up) out.push({
+      key: 'up', tone: 'warn', title: `${nm(up.b.cid)} naik ${Math.round(up.r * 100)}%`,
+      text: `${rp(up.p)} → ${rp(up.b.v)} dibanding periode sebelumnya, selisih ${rp(up.d)}.`,
+    })
+    const down = moves.filter(x => x.r <= -0.3 && -x.d >= 100_000).sort((a, b) => a.d - b.d)[0]
+    if (down) out.push({
+      key: 'down', tone: 'good', title: `${nm(down.b.cid)} turun ${Math.abs(Math.round(down.r * 100))}%`,
+      text: `Hemat ${rp(-down.d)} dibanding periode sebelumnya.`,
+    })
+
+    // — konsentrasi pengeluaran —
+    if (expense > 0 && expBreakdown[0] && expBreakdown[0].v / expense >= 0.4 && expBreakdown.length > 1) {
+      out.push({
+        key: 'conc', tone: 'warn', title: `${nm(expBreakdown[0].cid)} menyerap ${Math.round((expBreakdown[0].v / expense) * 100)}% pengeluaran`,
+        text: 'Satu kategori mendominasi. Kalau ada yang perlu dipangkas, di sinilah dampaknya paling terasa.',
+      })
+    }
+
+    // — ketergantungan sumber pemasukan —
+    if (income > 0 && incBreakdown[0] && incBreakdown[0].v / income >= 0.85) {
+      out.push({
+        key: 'inc1', tone: incBreakdown.length === 1 ? 'warn' : 'info',
+        title: `${Math.round((incBreakdown[0].v / income) * 100)}% pemasukan dari ${nm(incBreakdown[0].cid)}`,
+        text: 'Nyaris seluruh pemasukan bergantung pada satu sumber — risikonya menumpuk di satu titik.',
+      })
+    }
+
+    // — hari paling boros —
+    const byDay = new Map<string, number>()
+    for (const t of periodTxs) if (t.type === 'expense') byDay.set(t.date, (byDay.get(t.date) ?? 0) + Number(t.amount))
+    const worst = [...byDay.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (worst && periodDays > 1 && worst[1] >= avgDaily * 2 && worst[1] >= 200_000) {
+      out.push({
+        key: 'worstday', tone: 'info', title: `Hari terboros: ${fmtTgl(worst[0])}`,
+        text: `${rp(worst[1])} dalam sehari — ${(worst[1] / Math.max(1, avgDaily)).toFixed(1)}× rata-rata harian Anda.`,
+      })
+    }
+
+    // — hari tanpa pengeluaran —
+    if (periodDays >= 7) {
+      const zero = periodDays - byDay.size
+      if (zero > 0) out.push({
+        key: 'nospend', tone: zero >= periodDays * 0.3 ? 'good' : 'info',
+        title: `${zero} hari tanpa pengeluaran`,
+        text: `Dari ${periodDays} hari di periode ini. Hari tanpa belanja adalah pengungkit paling murah untuk menaikkan rasio tabungan.`,
+      })
+    }
+
+    // — akhir pekan vs hari kerja —
+    if (periodDays >= 14) {
+      let we = 0, wd = 0, weD = 0, wdD = 0
+      for (let i = 0; i < periodDays; i++) {
+        const d = new Date(range.from + 'T00:00:00'); d.setDate(d.getDate() + i)
+        const isWe = d.getDay() === 0 || d.getDay() === 6
+        const v = byDay.get(iso(d)) ?? 0
+        if (isWe) { we += v; weD++ } else { wd += v; wdD++ }
+      }
+      const a = weD ? we / weD : 0, b = wdD ? wd / wdD : 0
+      if (b > 0 && a >= b * 1.5 && a - b >= 50_000) out.push({
+        key: 'weekend', tone: 'info', title: `Akhir pekan ${(a / b).toFixed(1)}× lebih boros`,
+        text: `Rata-rata ${rp(a)}/hari saat akhir pekan vs ${rp(b)}/hari di hari kerja.`,
+      })
+    }
+
+    // — langganan / pengeluaran berulang —
+    // Nominal yang persis sama, kategori sama, muncul di 3 bulan berbeda. Pola
+    // ini hampir selalu langganan otomatis — jenis pengeluaran yang paling
+    // sering lolos dari perhatian justru karena tidak pernah terasa.
+    const sig = new Map<string, Set<string>>()
+    for (const t of txs) {
+      if (t.type !== 'expense' || !t.category_id) continue
+      const k = `${t.category_id}|${Math.round(Number(t.amount))}`
+      if (!sig.has(k)) sig.set(k, new Set())
+      sig.get(k)!.add(t.date.slice(0, 7))
+    }
+    const recur = [...sig.entries()].filter(([, m]) => m.size >= 3)
+      .map(([k, m]) => ({ cid: k.split('|')[0], amt: Number(k.split('|')[1]), months: m.size }))
+      .filter(r => r.amt >= 50_000)     // nominal receh yang kebetulan sama bukan langganan
+      .sort((a, b) => b.amt - a.amt)
+    if (recur.length) {
+      const totalRec = recur.reduce((s, r) => s + r.amt, 0)
+      out.push({
+        key: 'recur', tone: 'info', title: `${recur.length} pengeluaran berulang terdeteksi`,
+        text: `Sekitar ${rp(totalRec)} per siklus — terbesar ${nm(recur[0].cid)} ${rp(recur[0].amt)}, muncul di ${recur[0].months} bulan berbeda. Nominal yang persis sama berulang biasanya berarti langganan.`,
+      })
+    }
+
+    // — anggaran jebol / hampir —
+    const blown = budgetRows.filter(r => r.limit > 0 && r.pct >= 100).sort((a, b) => b.spent - b.limit - (a.spent - a.limit))
+    if (blown.length) out.push({
+      key: 'bud-over', tone: 'bad', title: `${blown.length} anggaran terlewati`,
+      text: `Terparah: ${blown[0].b.name}, ${rp(blown[0].spent)} dari batas ${rp(blown[0].limit)} (lebih ${rp(blown[0].spent - blown[0].limit)}).`,
+    })
+    const near = budgetRows.filter(r => r.limit > 0 && r.pct >= 80 && r.pct < 100).sort((a, b) => b.pct - a.pct)
+    if (near.length) out.push({
+      key: 'bud-near', tone: 'warn', title: `${near[0].b.name} sudah ${Math.round(near[0].pct)}% terpakai`,
+      text: near[0].daysLeft ? `Sisa ${rp(near[0].limit - near[0].spent)} untuk ${near[0].daysLeft} hari ke depan.` : `Sisa ${rp(near[0].limit - near[0].spent)}.`,
+    })
+
+    // — saldo rekening menipis —
+    if (avgDaily > 0) {
+      for (const a of accounts) {
+        const bal = balances.get(a.id) ?? 0
+        if (bal > 0 && bal < avgDaily * 7) {
+          out.push({
+            key: `low-${a.id}`, tone: 'warn', title: `Saldo ${a.name} menipis`,
+            text: `${rp(bal)} — sekitar ${Math.floor(bal / avgDaily)} hari dengan laju pengeluaran Anda sekarang.`,
+          })
+          break   // satu peringatan cukup; sisanya jadi kebisingan
+        }
+      }
+    }
+
+    // — target: butuh setor berapa per bulan —
+    for (const g of goals) {
+      if (!g.deadline) continue
+      const saved = goalProgress.get(g.id) ?? 0
+      const left = Number(g.target_amount) - saved
+      if (left <= 0) continue
+      const months = Math.max(0, (new Date(g.deadline).getTime() - Date.now()) / (30 * 86_400_000))
+      if (months < 0.2) {
+        out.push({ key: `goal-${g.id}`, tone: 'bad', title: `Tenggat ${g.name} hampir habis`, text: `Kurang ${rp(left)} dan tenggatnya ${fmtTgl(g.deadline)}.` })
+      } else {
+        out.push({ key: `goal-${g.id}`, tone: 'info', title: `${g.name}: sisihkan ${rp(left / months)}/bulan`, text: `Agar ${rp(Number(g.target_amount))} tercapai sebelum ${fmtTgl(g.deadline)}.` })
+      }
+      break
+    }
+
+    // — laju pengeluaran vs periode lalu —
+    if (prevExpense > 0 && expense > 0) {
+      const r = (expense - prevExpense) / prevExpense
+      if (Math.abs(r) >= 0.15 && Math.abs(expense - prevExpense) >= 200_000) out.push({
+        key: 'pace', tone: r > 0 ? 'warn' : 'good',
+        title: `Total pengeluaran ${r > 0 ? 'naik' : 'turun'} ${Math.abs(Math.round(r * 100))}%`,
+        text: `${rp(prevExpense)} → ${rp(expense)} dibanding periode sebelumnya yang sama panjang.`,
+      })
+    }
+
+    // — pengeluaran melebihi pemasukan —
+    if (income > 0 && expense > income) out.push({
+      key: 'deficit', tone: 'bad', title: 'Pengeluaran melebihi pemasukan',
+      text: `Defisit ${rp(expense - income)} di ${range.label}. Selisihnya diambil dari saldo yang sudah ada.`,
+    })
+
+    // — pengeluaran bisnis vs pribadi —
+    if (bizSplit.biz > 0 && bizSplit.pri > 0) {
+      const share = bizSplit.biz / (bizSplit.biz + bizSplit.pri)
+      out.push({
+        key: 'biz', tone: 'info', title: `${Math.round(share * 100)}% pengeluaran untuk bisnis`,
+        text: `Bisnis ${rp(bizSplit.biz)} · pribadi ${rp(bizSplit.pri)}. Berguna saat memisahkan pembukuan.`,
+      })
+    }
+
+    const ORDER: Record<Insight['tone'], number> = { bad: 0, warn: 1, good: 2, info: 3 }
+    return out.sort((a, b) => ORDER[a.tone] - ORDER[b.tone])
+  }, [txs, periodTxs, prevPeriodTxs, cats, accounts, balances, goals, goalProgress, budgetRows,
+      expBreakdown, incBreakdown, expense, income, prevExpense, avgDaily, periodDays, range, bizSplit])
+
+
   // ── daftar transaksi terfilter ──
   const listTxs = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -548,7 +736,6 @@ export default function KeuanganPage() {
     return <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-indigo-500" /></div>
   }
 
-  const tooltipStyle = { borderRadius: 14, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, background: '#fff' }
 
   const V2Banner = needsV2 ? (
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
@@ -609,9 +796,15 @@ export default function KeuanganPage() {
     </div>
   )
 
-  const Donut = ({ rows, total, title }: { rows: { cid: string; cat?: FinCategory; v: number }[]; total: number; title: string }) => (
+  const Donut = ({ rows, total, title, kind }: {
+    rows: { cid: string; cat?: FinCategory; v: number }[]; total: number; title: string
+    kind: 'income' | 'expense'
+  }) => (
     <div className="rounded-3xl bg-white p-5 shadow-sm">
-      <p className="text-[13px] font-black mb-2">{title}</p>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-[13px] font-black">{title}</p>
+        {rows.length > 0 && <span className="text-[10px] font-bold text-slate-300">ketuk untuk rincian</span>}
+      </div>
       {rows.length === 0 ? (
         <p className="text-center text-[13px] text-slate-300 py-14">Belum ada data di periode ini.</p>
       ) : (
@@ -620,10 +813,12 @@ export default function KeuanganPage() {
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
                 <Pie data={rows.map(b => ({ name: b.cat?.name ?? 'Lainnya', value: b.v }))}
-                  dataKey="value" innerRadius={44} outerRadius={66} paddingAngle={2} strokeWidth={0} isAnimationActive={false}>
+                  dataKey="value" innerRadius={44} outerRadius={66} paddingAngle={2} strokeWidth={0} isAnimationActive={false}
+                  className="cursor-pointer"
+                  onClick={(_, i) => setCatInsight({ cid: rows[i].cid, kind })}>
                   {rows.map((b, i) => <Cell key={b.cid} fill={catColor(b.cat, i)} />)}
                 </Pie>
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => rp(Number(v ?? 0))} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown) => rp(Number(v ?? 0))} />
               </RePieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -633,12 +828,13 @@ export default function KeuanganPage() {
           </div>
           <div className="flex-1 space-y-1.5 min-w-0">
             {rows.slice(0, 6).map((b, i) => (
-              <div key={b.cid} className="flex items-center gap-2">
+              <button key={b.cid} onClick={() => setCatInsight({ cid: b.cid, kind })}
+                className="w-full flex items-center gap-2 rounded-lg px-1 py-0.5 -mx-1 hover:bg-slate-50 transition-colors">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: catColor(b.cat, i) }} />
-                <span className="text-[12px] font-semibold truncate flex-1">{b.cat?.name ?? 'Tanpa kategori'}</span>
+                <span className="text-[12px] font-semibold truncate flex-1 text-left">{b.cat?.name ?? 'Tanpa kategori'}</span>
                 <span className="text-[11px] text-slate-400 tabular-nums">{rp(b.v)}</span>
                 <span className="text-[12px] font-black tabular-nums w-9 text-right">{total > 0 ? Math.round((b.v / total) * 100) : 0}%</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -786,13 +982,15 @@ export default function KeuanganPage() {
                           <CartesianGrid stroke="#F1F5F9" vertical={false} />
                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
                           <YAxis tickFormatter={(v: number) => rpAxis(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={74} />
-                          <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
+                          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
                           <Area type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2} fill="url(#dIn)" />
                           <Area type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2} fill="url(#dOut)" />
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
+
+                  <InsightList items={insights} limit={3} title="Insight" />
 
                   <div className="rounded-3xl bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-2">
@@ -931,7 +1129,7 @@ export default function KeuanganPage() {
                         <CartesianGrid stroke="#F1F5F9" vertical={false} />
                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94A3B8', fontWeight: 700 }} axisLine={false} tickLine={false} />
                         <YAxis tickFormatter={(v: number) => rpAxis(v)} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={78} />
-                        <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
+                        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
                         <Area type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2.5} fill="url(#gIn)" />
                         <Area type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2.5} fill="url(#gOut)" />
                       </AreaChart>
@@ -939,9 +1137,11 @@ export default function KeuanganPage() {
                   </div>
                 </div>
 
+                <InsightList items={insights} title="Insight Otomatis" />
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Donut rows={expBreakdown} total={expense} title={`Pengeluaran per Kategori · ${range.label}`} />
-                  <Donut rows={incBreakdown} total={income} title={`Pemasukan per Kategori · ${range.label}`} />
+                  <Donut rows={expBreakdown} total={expense} title={`Pengeluaran per Kategori · ${range.label}`} kind="expense" />
+                  <Donut rows={incBreakdown} total={income} title={`Pemasukan per Kategori · ${range.label}`} kind="income" />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -953,7 +1153,7 @@ export default function KeuanganPage() {
                           <CartesianGrid stroke="#F1F5F9" vertical={false} />
                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={20} />
                           <YAxis tickFormatter={(v: number) => rpAxis(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={74} />
-                          <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => [rp(Number(v ?? 0)), 'Pengeluaran']} />
+                          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown) => [rp(Number(v ?? 0)), 'Pengeluaran']} />
                           <Bar dataKey="keluar" fill="#818cf8" radius={[6, 6, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -1189,6 +1389,16 @@ export default function KeuanganPage() {
           onClose={() => setBudgetSheet(null)}
           onChanged={() => { setBudgetSheet(null); loadAll() }} />
       )}
+      {catInsight && (
+        <CatInsightSheet
+          cid={catInsight.cid} kind={catInsight.kind}
+          cat={cats.find(c => c.id === catInsight.cid)}
+          txs={txs} periodTxs={periodTxs} prevPeriodTxs={prevPeriodTxs}
+          accounts={accounts} range={range} periodDays={periodDays}
+          totalOfKind={catInsight.kind === 'expense' ? expense : income}
+          onClose={() => setCatInsight(null)}
+          onPickTx={t => { setCatInsight(null); setDetailTx(t) }} />
+      )}
       {showGoal && <GoalSheet userId={sub.userId!} onClose={() => setShowGoal(false)} onChanged={() => { setShowGoal(false); loadAll() }} />}
       {goalDetail && <GoalDetailSheet goal={goalDetail} entries={goalEntries.filter(e => e.goal_id === goalDetail.id)} saved={goalProgress.get(goalDetail.id) ?? 0} userId={sub.userId!} onClose={() => setGoalDetail(null)} onChanged={loadAll} />}
     </div>
@@ -1222,6 +1432,168 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
           style={{ background: c }} />
       ))}
     </div>
+  )
+}
+
+// ── daftar insight ──
+function InsightList({ items, limit, title }: { items: Insight[]; limit?: number; title: string }) {
+  const [all, setAll] = useState(false)
+  const shown = limit && !all ? items.slice(0, limit) : items
+  return (
+    <div className="rounded-3xl bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <p className="text-[13px] font-black flex items-center gap-1.5"><Lightbulb size={16} className="text-indigo-500" /> {title}</p>
+        <span className="text-[10px] font-bold text-slate-300">{items.length} temuan</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-[12px] text-slate-300 py-6 text-center">Belum ada yang menonjol di periode ini.</p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {shown.map(it => {
+              const t = TONE[it.tone]
+              return (
+                <div key={it.key} className="flex gap-3 rounded-2xl px-4 py-3" style={{ background: t.bg }}>
+                  <t.icon size={16} className="shrink-0 mt-0.5" style={{ color: t.fg }} />
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-black leading-snug" style={{ color: t.fg }}>{it.title}</p>
+                    <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5">{it.text}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {limit && items.length > limit && (
+            <button onClick={() => setAll(v => !v)} className="w-full mt-3 h-9 rounded-xl bg-[#F7F7FA] text-[12px] font-black text-slate-500 hover:bg-slate-100 transition-colors">
+              {all ? 'Ringkas' : `Lihat ${items.length - limit} lainnya`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── rincian satu kategori (dibuka dari donut) ──
+function CatInsightSheet({ cid, kind, cat, txs, periodTxs, prevPeriodTxs, accounts, range, periodDays, totalOfKind, onClose, onPickTx }: {
+  cid: string; kind: 'income' | 'expense'; cat?: FinCategory
+  txs: FinTx[]; periodTxs: FinTx[]; prevPeriodTxs: FinTx[]; accounts: FinAccount[]
+  range: { from: string; to: string; label: string }; periodDays: number; totalOfKind: number
+  onClose: () => void; onPickTx: (t: FinTx) => void
+}) {
+  const clr = cat?.color || (kind === 'expense' ? '#ef4444' : '#10b981')
+  const mine = (rows: FinTx[]) => rows.filter(t => t.type === kind && (t.category_id ?? '-') === cid)
+
+  const rows = mine(periodTxs).sort((a, b) => b.date.localeCompare(a.date) || Number(b.amount) - Number(a.amount))
+  const total = rows.reduce((s, t) => s + Number(t.amount), 0)
+  const prev = mine(prevPeriodTxs).reduce((s, t) => s + Number(t.amount), 0)
+  const delta = prev > 0 ? ((total - prev) / prev) * 100 : null
+  const share = totalOfKind > 0 ? (total / totalOfKind) * 100 : 0
+  const avg = rows.length ? total / rows.length : 0
+  const biggest = rows.reduce<FinTx | null>((m, t) => !m || Number(t.amount) > Number(m.amount) ? t : m, null)
+  const activeDays = new Set(rows.map(t => t.date)).size
+
+  // Tren 6 bulan penuh — mengambil dari SELURUH transaksi, bukan periode aktif,
+  // supaya arah jangka panjangnya tetap terlihat walau filter sedang sempit.
+  const trend = (() => {
+    const base = new Date(range.to + 'T00:00:00')
+    const out: { label: string; v: number }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
+      const pre = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      out.push({ label: BLN3[d.getMonth()], v: mine(txs.filter(t => t.date.startsWith(pre))).reduce((s, t) => s + Number(t.amount), 0) })
+    }
+    return out
+  })()
+
+  const byAcc = (() => {
+    const m = new Map<string, number>()
+    for (const t of rows) m.set(t.account_id, (m.get(t.account_id) ?? 0) + Number(t.amount))
+    return [...m.entries()].map(([id, v]) => ({ id, acc: accounts.find(a => a.id === id), v })).sort((a, b) => b.v - a.v)
+  })()
+
+  const Stat = ({ k, v, sub }: { k: string; v: string; sub?: string }) => (
+    <div className="rounded-2xl bg-[#F7F7FA] px-3.5 py-3">
+      <p className="text-[10px] font-semibold text-slate-400">{k}</p>
+      <p className="text-[14px] font-black tabular-nums mt-0.5 truncate">{v}</p>
+      {sub && <p className="text-[10px] text-slate-300 truncate">{sub}</p>}
+    </div>
+  )
+
+  return (
+    <Sheet title={cat?.name ?? 'Tanpa kategori'} onClose={onClose}>
+      <div className="rounded-3xl p-5 mb-4" style={{ background: `${clr}12`, border: `1px solid ${clr}33` }}>
+        <p className="text-[11px] font-black uppercase tracking-wider" style={{ color: clr }}>
+          {kind === 'expense' ? 'Pengeluaran' : 'Pemasukan'} · {range.label}
+        </p>
+        <p className="text-3xl font-black tabular-nums mt-1" style={{ color: clr }}>{rp(total)}</p>
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <span className="text-[12px] text-slate-500">{Math.round(share)}% dari total {kind === 'expense' ? 'pengeluaran' : 'pemasukan'}</span>
+          {delta != null && (
+            // Naiknya pengeluaran itu kabar buruk, naiknya pemasukan kabar baik —
+            // warnanya tidak boleh ditentukan oleh arah panah saja.
+            <span className={`inline-flex items-center gap-0.5 text-[11px] font-black ${(kind === 'expense' ? delta <= 0 : delta >= 0) ? 'text-emerald-600' : 'text-rose-500'}`}>
+              {delta >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+              {Math.abs(Math.round(delta))}% vs periode lalu
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        <Stat k="Jumlah transaksi" v={String(rows.length)} sub={`${activeDays} hari aktif dari ${periodDays}`} />
+        <Stat k="Rata-rata / transaksi" v={rp(avg)} />
+        <Stat k="Rata-rata / hari" v={rp(total / Math.max(1, periodDays))} sub={`${periodDays} hari`} />
+        <Stat k="Terbesar" v={biggest ? rp(Number(biggest.amount)) : '—'} sub={biggest ? fmtTglPendek(biggest.date) : undefined} />
+      </div>
+
+      <div className="mb-4">
+        <p className="text-[11px] font-bold text-slate-400 mb-1.5">Tren 6 bulan</p>
+        <div className="h-28">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={trend} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown) => rp(Number(v ?? 0))} />
+              <Bar dataKey="v" fill={clr} radius={[6, 6, 0, 0]} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {byAcc.length > 1 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-bold text-slate-400 mb-1.5">Dari rekening</p>
+          <div className="space-y-1.5">
+            {byAcc.map(({ id, acc, v }) => (
+              <div key={id} className="flex items-center justify-between rounded-xl bg-[#F7F7FA] px-3.5 py-2">
+                <span className="text-[12px] font-semibold truncate">{acc?.name ?? 'Rekening dihapus'}</span>
+                <span className="text-[12px] font-black tabular-nums">{rp(v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-[11px] font-bold text-slate-400 mb-1.5">Transaksi ({rows.length})</p>
+        {rows.length === 0 ? (
+          <p className="text-[12px] text-slate-300 py-4 text-center">Tidak ada transaksi di periode ini.</p>
+        ) : (
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {rows.map(t => (
+              <button key={t.id} onClick={() => onPickTx(t)}
+                className="w-full flex items-center justify-between gap-3 rounded-xl bg-[#F7F7FA] px-3.5 py-2.5 hover:bg-slate-100 transition-colors text-left">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-bold truncate">{t.note || (cat?.name ?? 'Tanpa catatan')}</p>
+                  <p className="text-[10px] text-slate-400">{fmtTgl(t.date)}</p>
+                </div>
+                <span className="text-[13px] font-black tabular-nums shrink-0" style={{ color: clr }}>{rp(Number(t.amount))}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Sheet>
   )
 }
 
