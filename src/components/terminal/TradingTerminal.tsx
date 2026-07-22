@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { playChime, type ChimeDir } from '@/lib/chime'
-import { detectTrendPhase, type PhaseState } from '@/lib/trend-phase'
 import { buildProjection, type ProjLevel } from '@/lib/projection'
 import { buildDollarIndex, ageMinutes, FX_PAIRS, STALE_MIN, type FxPair } from '@/lib/dollar-fx'
 import { TradingViewChart } from './TradingViewChart'
@@ -722,14 +721,13 @@ function RiskMeter({ riskOn }: { riskOn: number }) {
 }
 
 // ─────────────────────────── TAB ───────────────────────────
-type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'makro-lintas' | 'makro-inflasi' | 'makro-cot' | 'sentimen' | 'berita' | 'rnd' | 'status' | 'panduan'
+type Tab = 'ringkasan' | 'teknikal' | 'makro' | 'makro-lintas' | 'makro-inflasi' | 'makro-cot' | 'sentimen' | 'berita' | 'status' | 'panduan'
 const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string; pro?: boolean }[] = [
   { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard, group: 'Analisa' },
   { id: 'teknikal', label: 'Teknikal', icon: Activity, group: 'Analisa', pro: true },
   { id: 'makro', label: 'Makro', icon: Landmark, group: 'Analisa', pro: true },
   { id: 'sentimen', label: 'Sentimen', icon: Users, group: 'Analisa', pro: true },
   { id: 'berita', label: 'Analisa News', icon: Newspaper, group: 'Analisa', pro: true },
-  { id: 'rnd', label: 'R&D Sniper', icon: Crosshair, group: 'Sistem' },
   { id: 'status', label: 'Status Server', icon: Server, group: 'Sistem' },
   { id: 'panduan', label: 'Panduan', icon: BookOpen, group: 'Sistem' },
 ]
@@ -881,11 +879,8 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const notifiedMom = useRef<string | null>(null)
   const pendingMom = useRef<{ label: string; since: number } | null>(null)
   const notifiedSig = useRef<string | null>(null)
+  const notifiedOpp = useRef<string | null>(null)   // peluang: regime+momentum+signal sejalan
   const pendingSig = useRef<{ label: string; since: number } | null>(null)
-  // R&D Sniper (khusus admin): state fase sebelumnya + kunci notifikasi terakhir
-  const phasePrevRef = useRef<PhaseState | null>(null)
-  const notifiedPhase = useRef<string | null>(null)
-  const notifiedEntry = useRef<string | null>(null)   // satu alert per kunjungan zona entry
 
   const clock = useMemo(() => new Date(now).toLocaleTimeString('id-ID'), [now])
   const hh = new Date(now).getUTCHours()
@@ -1006,15 +1001,37 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   regimePhaseRef.current = regime.phase
   // Notifikasi saat REGIME berubah (Ranging ⇄ Trending). Side-effect ditunda via setTimeout
   // agar tak setState saat render; ref di-update sinkron supaya hanya sekali per perubahan.
+  // Kirim alert email ke admin. Gagal-diam: notifikasi tak boleh mengganggu
+  // terminal. Digate isAdmin di klien supaya user biasa tidak mengirim request
+  // yang pasti ditolak 403 oleh route.
+  const sendAlert = (kind: 'regime' | 'momentum' | 'signal' | 'opportunity', label: string, detail: string[]) => {
+    if (!isAdmin) return
+    const priceNow = feed.price
+    createClient().auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      fetch('/api/admin/signal-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ kind, label, price: priceNow, detail }),
+      }).catch(() => { })
+    }).catch(() => { })
+  }
+
   {
     const prev = notifiedRegime.current
     if (prev === null) notifiedRegime.current = { phase: regime.phase, label: regime.label }
     else if (prev.phase !== regime.phase) {
       notifiedRegime.current = { phase: regime.phase, label: regime.label }
       const label = regime.label, toTrending = regime.phase === 'trending', beep = soundOn
+      const det = [
+        `Dari: ${prev.label} → ${label}`,
+        `Kekuatan tren: ADX ${Math.round(adx)} (${adxL})`,
+        toTrending ? 'Tren mulai berjalan — cari entry searah arah dominan.' : 'Pasar menyamping — hindari breakout palsu, tunggu kompresi selesai.',
+      ]
       setTimeout(() => {
         toast[toTrending ? 'success' : 'info'](`Regime berubah → ${label}${toTrending ? ' · tren mulai jalan' : ' · pasar menyamping'}`)
         if (beep) playChime('regime', toTrending ? 'up' : 'flat')
+        sendAlert('regime', label, det)
       }, 0)
     }
   }
@@ -1045,69 +1062,54 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     notifyStable(momLabel, notifiedMom, pendingMom, l => {
       toast[l === 'Netral' ? 'info' : l === 'Bullish' ? 'success' : 'error'](`Momentum → ${l} · skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)}`)
       if (beep) playChime('momentum', dirOf(l))
+      sendAlert('momentum', l, [
+        `Skor momentum: ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)} (RSI/MACD/Stoch, rata-rata M5+M15+H1)`,
+        `Regime saat ini: ${regime.label}`,
+      ])
     })
 
     notifyStable(sc.label, notifiedSig, pendingSig, l => {
       toast[l === 'NETRAL' ? 'info' : l === 'BULLISH' ? 'success' : 'error'](`Signal Meter → ${l} · skor ${sc.overall >= 0 ? '+' : ''}${sc.overall.toFixed(0)}`)
       if (beep) playChime('signal', dirOf(l))
+      sendAlert('signal', l, [
+        `Skor keseluruhan: ${sc.overall >= 0 ? '+' : ''}${sc.overall.toFixed(0)} · keyakinan ${sc.confidence}%`,
+        `Pilar — Makro ${sc.macro >= 0 ? '+' : ''}${Math.round(sc.macro)} · Teknikal ${sc.tech >= 0 ? '+' : ''}${Math.round(sc.tech)} · Sentimen ${sc.senti >= 0 ? '+' : ''}${Math.round(sc.senti)}`,
+        `Konfluensi TF: ${conf.bulls} bullish / ${conf.bears} bearish dari 3`,
+      ])
     })
-  }
 
-  // ── R&D SNIPER (khusus admin): deteksi fase Coiling → Ignition → Confirmed ──
-  // Mesin murni di lib/trend-phase.ts; di sini hanya jalankan + notifikasi transisi.
-  const phase = isAdmin ? detectTrendPhase({ m5: feed.tf.M5, m15: feed.tf.M15, price: feed.price, utcHour: hh, prev: phasePrevRef.current }) : null
-  if (phase) {
-    phasePrevRef.current = phase
-    const key = `${phase.phase}:${phase.dir ?? '-'}`
-    if (notifiedPhase.current === null) notifiedPhase.current = key   // render pertama: rekam saja
-    else if (notifiedPhase.current !== key) {
-      notifiedPhase.current = key
-      if (phase.phase !== 'idle') {
-        const p = phase, beep = soundOn, priceNow = feed.price
+    // ── PELUANG: Regime + Momentum + Signal Meter SEJALAN ──
+    // Bukan indikator baru, melainkan gerbang konfluensi dari tiga yang sudah
+    // ada. Syaratnya ketat supaya alert tetap berarti: pasar harus benar-benar
+    // trending (bukan ranging), dan momentum + signal meter menunjuk arah yang
+    // SAMA. Saat ranging, momentum & signal mudah berbalik-balik — di situlah
+    // sinyal paling sering menipu, jadi sengaja tidak dihitung sebagai peluang.
+    const momDir = avgMomentum > 15 ? 'BULLISH' : avgMomentum < -15 ? 'BEARISH' : null
+    const sigDir = sc.label === 'BULLISH' || sc.label === 'BEARISH' ? sc.label : null
+    const peluang = regime.phase === 'trending' && momDir && sigDir && momDir === sigDir ? momDir : null
+    // Kunci menyertakan arah: peluang bullish lalu bearish = dua alert berbeda,
+    // tapi peluang bullish yang bertahan lama hanya sekali.
+    const oppKey = peluang ?? 'none'
+    if (notifiedOpp.current === null) notifiedOpp.current = oppKey
+    else if (notifiedOpp.current !== oppKey) {
+      notifiedOpp.current = oppKey
+      if (peluang) {
+        const arah = peluang === 'BULLISH' ? 'BELI' : 'JUAL'
         setTimeout(() => {
-          toast[p.phase === 'ignition' ? 'success' : 'info'](`🎯 R&D: ${p.label}${p.dir ? ` (${p.dir === 'bull' ? 'Bullish' : 'Bearish'})` : ''} · skor ${p.score}`)
-          if (beep) playChime(p.phase === 'coiling' ? 'coiling' : p.phase === 'ignition' ? 'ignition' : 'regime', p.dir === 'bear' ? 'down' : p.dir === 'bull' ? 'up' : 'flat')
-          // Email admin — token diambil dari sesi; route memverifikasi admin + rate-limit
-          createClient().auth.getSession().then(({ data: { session } }) => {
-            if (!session) return
-            fetch('/api/admin/phase-alert', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-              body: JSON.stringify({ phase: p.phase, dir: p.dir, label: p.label, score: p.score, price: priceNow, reasons: p.reasons, zoneNote: p.zone?.note ?? '' }),
-            }).catch(() => {})
-          })
-        }, 0)
-      }
-    }
-
-    // Notifikasi SETUP ENTRY (konfluensi zona + Fib). Terpisah dari notif fase:
-    // ini yang benar-benar "boleh dieksekusi", jadi dibedakan bunyinya.
-    // Kunci = sisi + zona dibulatkan → satu alert per kunjungan zona, bukan tiap tick.
-    const eKey = phase.entry ? `${phase.entry.side}:${Math.round(phase.entry.zoneLo)}` : null
-    if (notifiedEntry.current !== eKey) {
-      notifiedEntry.current = eKey
-      if (phase.entry) {
-        const en = phase.entry, beep = soundOn, priceNow = feed.price
-        setTimeout(() => {
-          toast.success(`🎯 SETUP ${en.side} · skor ${en.score} · zona $${en.zoneLo.toFixed(1)}–$${en.zoneHi.toFixed(1)} · R:R 1:${en.rr.toFixed(1)}`)
-          if (beep) playChime('ignition', en.side === 'BUY' ? 'up' : 'down')
-          createClient().auth.getSession().then(({ data: { session } }) => {
-            if (!session) return
-            fetch('/api/admin/phase-alert', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-              body: JSON.stringify({
-                phase: 'ignition', dir: en.side === 'BUY' ? 'bull' : 'bear',
-                label: `SETUP ${en.side}`, score: en.score, price: priceNow,
-                reasons: en.factors,
-                zoneNote: `Entry $${en.zoneLo.toFixed(1)}–$${en.zoneHi.toFixed(1)} · SL $${en.sl.toFixed(1)} · TP1 $${en.tp1.toFixed(1)} · R:R 1:${en.rr.toFixed(1)}`,
-              }),
-            }).catch(() => {})
-          })
+          toast.success(`🎯 PELUANG ${arah} — regime, momentum & signal meter sejalan`)
+          if (beep) playChime('signal', peluang === 'BULLISH' ? 'up' : 'down')
+          sendAlert('opportunity', `${peluang} (cari ${arah})`, [
+            `Regime: ${regime.label} — pasar sedang trending, bukan menyamping`,
+            `Momentum: ${peluang} (skor ${avgMomentum >= 0 ? '+' : ''}${avgMomentum.toFixed(0)})`,
+            `Signal Meter: ${sc.label} (skor ${sc.overall >= 0 ? '+' : ''}${sc.overall.toFixed(0)}, keyakinan ${sc.confidence}%)`,
+            `Konfluensi TF: ${conf.bulls} bullish / ${conf.bears} bearish dari 3`,
+            `Catatan: ini konfluensi indikator, bukan jaminan. Tetap tentukan SL sebelum entry.`,
+          ])
         }, 0)
       }
     }
   }
+
   const goldSilver = cross.xag && cross.xag.price > 0 ? feed.price / cross.xag.price : null
   const gsRelative = cross.xag ? feed.changePct - cross.xag.changePct : null
   const curve2s10 = macro?.us10y && macro?.us02y ? macro.us10y.value - macro.us02y.value : null
@@ -2370,7 +2372,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   )
 
   // Status Server hanya untuk admin — sembunyikan tab-nya dari user biasa.
-  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== 'status' && t.id !== 'rnd')
+  const visibleTabs = isAdmin ? TABS : TABS.filter(t => t.id !== 'status')
   const navGroups = Array.from(new Set(visibleTabs.map(t => t.group ?? 'Menu')))
   const activeTab = TABS.find(t => t.id === tab)
 
@@ -2660,230 +2662,6 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
 
             {tab === 'berita' && (!isPro ? <LockedTab icon={Newspaper} {...LOCKED_TAB_META.berita} /> : <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4"><TerminalNewsAnalysis snapshot={snapshot} /></div>)}
 
-            {tab === 'rnd' && isAdmin && phase && (() => {
-              const pc = phase.phase === 'ignition' ? '#22c55e' : phase.phase === 'confirmed' ? (phase.dir === 'bull' ? '#10b981' : '#ef4444') : phase.phase === 'coiling' ? '#f59e0b' : '#64748b'
-              // Tahap 1 punya dua wajah: kompresi tanpa arah (Coiling) vs kompresi
-              // searah tren (Koreksi). Label ikut menyesuaikan supaya tidak menyesatkan.
-              const isKoreksi = phase.phase === 'coiling' && phase.dir !== null
-              const STEPS = [
-                isKoreksi
-                  ? { id: 'coiling', t: 'Koreksi', d: 'Tunggu zona lanjutan' }
-                  : { id: 'coiling', t: 'Coiling', d: 'Energi terkumpul' },
-                { id: 'ignition', t: 'Cari Zona Open Posisi', d: 'Trigger sniper' },
-                { id: 'confirmed', t: 'Trending', d: 'Kelola posisi' },
-              ] as const
-              const activeIdx = STEPS.findIndex(st => st.id === phase.phase)
-              const durMin = Math.max(0, Math.round((Date.now() - phase.sinceTs) / 60_000))
-              return (
-                <div className="max-w-6xl mx-auto space-y-4">
-                  <Panel title="R&D Sniper — Fase Tren M5" icon={Crosshair} accent={pc}
-                    info="Tool riset (khusus admin). Coiling = siaga; Ignition = momen cari entry; Trending = kelola posisi, bukan entry. Skor = keyakinan — catat semua sinyal ke Jurnal Backtest sebelum dipercaya untuk uang sungguhan."
-                    right={<span className="text-[10px] font-bold" style={{ color: pc }}>skor {phase.score}/100</span>}>
-                    <div className="space-y-4">
-                      {/* ARAH SEKARANG — pertanyaan pertama trader: BUY atau SELL? */}
-                      {(() => {
-                        const b = phase.bias
-                        const bc = b === 'bullish' ? '#10b981' : b === 'bearish' ? '#ef4444' : '#64748b'
-                        return (
-                          <div className="rounded-2xl border p-4" style={{ background: `${bc}14`, borderColor: `${bc}55` }}>
-                            <div className="flex items-center justify-between gap-3 flex-wrap">
-                              <div>
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Arah Sekarang</p>
-                                <p className="text-2xl font-black tracking-tight" style={{ color: bc }}>
-                                  {b === 'bullish' ? '▲ BULLISH' : b === 'bearish' ? '▼ BEARISH' : '↔ NETRAL'}
-                                </p>
-                              </div>
-                              <div className="px-4 py-2 rounded-xl font-black text-sm" style={{ background: b === 'netral' ? '#64748b22' : `${bc}26`, color: bc }}>
-                                {b === 'bullish' ? 'CARI BUY' : b === 'bearish' ? 'CARI SELL' : 'TUNGGU'}
-                              </div>
-                            </div>
-                            <p className="text-[12px] text-white/60 mt-2">{phase.biasNote}</p>
-                            {phase.srNote && <p className="text-[11px] text-white/45 mt-1">{phase.srNote}</p>}
-                          </div>
-                        )
-                      })()}
-
-                      {/* SETUP SIAP EKSEKUSI — muncul hanya saat konfluensi cukup */}
-                      {phase.entry && (() => {
-                        const en = phase.entry
-                        const ec = en.side === 'BUY' ? '#10b981' : '#ef4444'
-                        return (
-                          <div className="rounded-2xl border-2 p-4" style={{ borderColor: ec, background: `${ec}12` }}>
-                            <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-                              <span className="text-lg font-black" style={{ color: ec }}>🎯 SETUP {en.side} — skor {en.score}/100</span>
-                              <span className="text-[12px] font-bold px-2.5 py-1 rounded-lg" style={{ background: `${ec}22`, color: ec }}>R:R 1:{en.rr.toFixed(1)}</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 mb-3">
-                              <div className="rounded-lg bg-white/[0.04] p-2.5">
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-white/40">Zona Entry</p>
-                                <p className="text-sm font-black tabular-nums">${en.zoneLo.toFixed(1)}–${en.zoneHi.toFixed(1)}</p>
-                              </div>
-                              <div className="rounded-lg bg-red-500/10 p-2.5">
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-red-300/60">Stop Loss</p>
-                                <p className="text-sm font-black tabular-nums text-red-300">${en.sl.toFixed(1)}</p>
-                              </div>
-                              <div className="rounded-lg bg-emerald-500/10 p-2.5">
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-300/60">Target 1</p>
-                                <p className="text-sm font-black tabular-nums text-emerald-300">${en.tp1.toFixed(1)}</p>
-                              </div>
-                            </div>
-                            <ul className="space-y-1">
-                              {en.factors.map((f, i) => (
-                                <li key={i} className="flex items-start gap-2 text-[12px] text-white/75 leading-relaxed">
-                                  <span className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ background: ec }} />{f}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Fibonacci golden zone */}
-                      {phase.fib && (() => {
-                        const fb = phase.fib
-                        return (
-                          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Fibonacci · leg {fb.up ? 'naik' : 'turun'} ${fb.legLo.toFixed(1)}–${fb.legHi.toFixed(1)}</p>
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md" style={{ background: fb.inGolden ? '#f59e0b26' : '#ffffff0d', color: fb.inGolden ? '#fbbf24' : 'rgba(255,255,255,.45)' }}>
-                                {fb.inGolden ? 'DI GOLDEN ZONE' : `retrace ${Math.round(fb.pct * 100)}%`}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-4 gap-2 text-center">
-                              {([['38.2%', fb.f382, false], ['50%', fb.f500, true], ['61.8%', fb.f618, true], ['78.6%', fb.f786, false]] as const).map(([l, v, gold]) => (
-                                <div key={l} className="rounded-lg p-2" style={{ background: gold ? '#f59e0b14' : '#ffffff08', border: gold ? '1px solid #f59e0b33' : '1px solid transparent' }}>
-                                  <p className="text-[9px] font-bold" style={{ color: gold ? '#fbbf24' : 'rgba(255,255,255,.4)' }}>{l}</p>
-                                  <p className="text-[12px] font-black tabular-nums text-white/80">${v.toFixed(1)}</p>
-                                </div>
-                              ))}
-                            </div>
-                            <p className="text-[10px] text-white/30 mt-2">Golden zone 50–61.8% = area pullback klasik untuk entry sniper searah tren.</p>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Timeline fase */}
-                      <div className="grid grid-cols-3 gap-2">
-                        {STEPS.map((st, i) => {
-                          const on = i === activeIdx
-                          const passed = activeIdx > i
-                          return (
-                            <div key={st.id} className={`rounded-xl border p-3 text-center transition-colors ${on ? 'border-transparent' : 'border-white/10'}`}
-                              style={on ? { background: `${pc}1a`, boxShadow: `inset 0 0 0 1px ${pc}66` } : undefined}>
-                              <p className={`text-[11px] font-black ${on ? '' : passed ? 'text-white/60' : 'text-white/30'}`} style={on ? { color: pc } : undefined}>{st.t}</p>
-                              <p className="text-[10px] text-white/35 mt-0.5">{st.d}</p>
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Status utama */}
-                      <div className="rounded-2xl border border-white/10 p-5 text-center" style={{ background: `${pc}0d` }}>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{phase.phase === 'idle' ? 'Status' : `Fase aktif · ${durMin}m`}</p>
-                        <p className="text-2xl font-black tracking-tight" style={{ color: pc }}>
-                          {phase.label}{phase.dir ? <span className="ml-2">{phase.dir === 'bull' ? '▲' : '▼'}</span> : null}
-                        </p>
-                        <div className="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden max-w-sm mx-auto">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${phase.score}%`, background: pc }} />
-                        </div>
-                        <p className="text-[10px] text-white/35 mt-1.5">keyakinan {phase.score}/100 — ignition sengaja tak pernah 100: dini = tidak pasti</p>
-                      </div>
-
-                      {/* Readout live — SELALU tampil (bukti tool hidup & menghitung tiap tick) */}
-                      {(() => {
-                        const m = phase.metrics
-                        const cell = (label: string, val: string, hint: string, good: boolean | null) => (
-                          <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                            <p className="text-[9px] font-bold uppercase tracking-wider text-white/35">{label}</p>
-                            <p className={`text-sm font-black tabular-nums ${good === true ? 'text-emerald-400' : good === false ? 'text-white/50' : 'text-white/80'}`}>{val}</p>
-                            <p className="text-[9px] text-white/30 leading-tight mt-0.5">{hint}</p>
-                          </div>
-                        )
-                        return (
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2 flex items-center gap-1.5"><Radio size={10} className="text-emerald-400 animate-pulse" /> Metrik Live · M5 (update tiap tick)</p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                              {cell('Efficiency', m.er.toFixed(2), m.er >= 0.4 ? 'terarah' : m.er < 0.25 ? 'acak/coiling' : 'campur', m.er >= 0.4 ? true : m.er < 0.25 ? false : null)}
-                              {cell('ADX', Math.round(m.adx).toString(), m.adx >= 23 ? 'tren kuat' : m.adx < 20 ? 'lemah/diam' : 'menanjak', m.adx >= 23 ? true : m.adx < 20 ? false : null)}
-                              {cell('Kontraksi ATR', m.atrContraction.toFixed(2), m.atrContraction < 0.8 ? 'menyempit' : 'normal', m.atrContraction < 0.8 ? true : null)}
-                              {cell('BB Squeeze', `p${Math.round(m.bwPctile * 100)}`, m.bwPctile <= 0.25 ? 'squeeze!' : 'longgar', m.bwPctile <= 0.25 ? true : false)}
-                              {cell('Jarak EMA21', `${m.distEmaAtr.toFixed(1)}×ATR`, m.distEmaAtr > 2.2 ? 'ekstrem' : 'wajar', m.distEmaAtr > 2.2 ? false : null)}
-                              {cell('Candle', `${m.rangeAtr.toFixed(1)}×ATR`, m.rangeAtr >= 1.2 ? 'ekspansi' : 'kecil', m.rangeAtr >= 1.2 ? true : null)}
-                              {cell('RSI', Math.round(m.rsi).toString(), m.rsi >= 72 ? 'jenuh beli' : m.rsi <= 28 ? 'jenuh jual' : m.rsi >= 52 ? 'bias naik' : m.rsi <= 48 ? 'bias turun' : 'netral', null)}
-                              {cell('M15 Filter', m.m15Up ? '▲ Bull' : '▼ Bear', 'arah TF besar', null)}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                              {cell('Level Breakout ↑', `$${m.dchHi.toFixed(1)}`, 'close M5 di atas = ignition bull', null)}
-                              {cell('Level Breakout ↓', `$${m.dchLo.toFixed(1)}`, 'close M5 di bawah = ignition bear', null)}
-                            </div>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Struktur pasar (price action HH/HL) + event BOS/ChoCh */}
-                      {(() => {
-                        const m = phase.metrics
-                        const sc = m.structLabel === 'Uptrend' ? '#10b981' : m.structLabel === 'Downtrend' ? '#ef4444' : '#64748b'
-                        const isChoch = m.structEvent === 'ChoCh_up' || m.structEvent === 'ChoCh_down'
-                        return (
-                          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Struktur Pasar (Price Action)</p>
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <span className="text-lg font-black" style={{ color: sc }}>
-                                {m.structLabel === 'Uptrend' ? '▲ Uptrend' : m.structLabel === 'Downtrend' ? '▼ Downtrend' : '↔ Sideways'}
-                              </span>
-                              <span className="text-[12px] font-bold px-2 py-0.5 rounded-md" style={{ background: `${sc}1a`, color: sc }}>{m.structSeq}</span>
-                              <span className="text-[11px] text-white/45 tabular-nums">Swing H <b className="text-white/70">${m.structHigh.toFixed(1)}</b> · L <b className="text-white/70">${m.structLow.toFixed(1)}</b></span>
-                            </div>
-                            {m.structEvent && (
-                              <div className="flex items-start gap-2 mt-3 rounded-lg p-2.5" style={{ background: isChoch ? '#a855f71a' : `${sc}14`, border: `1px solid ${isChoch ? '#a855f755' : sc + '44'}` }}>
-                                <span className="text-[11px] font-black shrink-0 mt-0.5" style={{ color: isChoch ? '#c084fc' : sc }}>{isChoch ? 'ChoCh' : 'BOS'}</span>
-                                <span className="text-[12px] text-white/75 leading-relaxed">{m.structEventNote}</span>
-                              </div>
-                            )}
-                            <p className="text-[10px] text-white/30 mt-2 leading-relaxed">HH·HL = higher high &amp; higher low (uptrend sehat). BOS = tren lanjut. <b style={{ color: '#c084fc' }}>ChoCh</b> = pembalikan dini — sinyal paling awal.</p>
-                          </div>
-                        )
-                      })()}
-
-                      {/* Peringatan kematangan — obat FOMO */}
-                      {phase.mature && phase.matureNote && (
-                        <div className="flex items-start gap-2.5 rounded-xl bg-red-500/10 border border-red-500/30 p-4">
-                          <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
-                          <p className="text-[12px] text-red-200/90 leading-relaxed"><b>Tren sudah matang.</b> {phase.matureNote}</p>
-                        </div>
-                      )}
-
-                      {/* Zona aksi */}
-                      {phase.zone && (
-                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Zona Aksi</p>
-                          <p className="text-lg font-black tabular-nums">${phase.zone.lo.toFixed(1)} — ${phase.zone.hi.toFixed(1)}</p>
-                          <p className="text-[11px] text-white/55 mt-1 leading-relaxed">{phase.zone.note}</p>
-                        </div>
-                      )}
-
-                      {/* Bukti price action — bahan jurnal backtest */}
-                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Bukti Price Action</p>
-                        <ul className="space-y-1.5">
-                          {phase.reasons.map((r, i) => (
-                            <li key={i} className="flex items-start gap-2 text-[12px] text-white/70 leading-relaxed">
-                              <span className="shrink-0 mt-1 w-1.5 h-1.5 rounded-full" style={{ background: pc }} />{r}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <p className="text-[10px] text-white/30 leading-relaxed">
-                        🔔 Notifikasi transisi fase aktif: toast + bunyi (coiling = 2 nada rendah, ignition = 4 nada cepat, trending = chime regime) + email ke admin.
-                        ⚠️ Tool R&D — deteksi dini pasti punya false signal. Catat tiap sinyal di Jurnal Backtest (fase, skor, hasil) sebelum dipakai untuk uang sungguhan.
-                      </p>
-                    </div>
-                  </Panel>
-                </div>
-              )
-            })()}
             {tab === 'status' && isAdmin && <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4">{ServerStatusContent}</div>}
 
             {tab === 'panduan' && <div className="max-w-6xl mx-auto"><PanduanContent /></div>}
