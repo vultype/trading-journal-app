@@ -3,15 +3,16 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // KEUANGAN PRIBADI (khusus admin) — SaaS personal finance, tema TERANG.
 //
-// 4 tab: Ringkasan · Analitik (chart arus kas 6 bulan, donut kategori,
-// pengeluaran harian) · Target (tabungan dengan ledger kontribusi) ·
-// Anggaran (limit bulanan per kategori).
+// 5 tab: Ringkasan · Transaksi · Analitik · Target · Anggaran
+// Filter periode GLOBAL (hari ini / minggu / bulan / 3 bulan / tahun / kustom)
+// berlaku di seluruh tab, jadi angka di semua tempat selalu konsisten.
 //
 // Prinsip data (konsisten di semua fitur):
 //  - Nilai turunan TIDAK PERNAH disimpan: saldo = initial + transaksi;
 //    progres target = jumlah entri kontribusi. Mustahil tidak sinkron.
-//  - Transfer antar-rekening bukan pengeluaran.
-//  - Warna kategori/rekening bisa dikustom — dipakai konsisten di chart.
+//  - Transfer antar-rekening bukan pemasukan/pengeluaran — dikecualikan dari
+//    seluruh statistik arus kas.
+//  - Warna kategori/rekening bisa dikustom, dipakai konsisten di chart.
 // ═══════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -26,8 +27,9 @@ import {
 import {
   ArrowLeft, Plus, Minus, ArrowLeftRight, Wallet, Landmark, Smartphone, Coins,
   Loader2, Trash2, X as XIcon, ChevronLeft, ChevronRight, Search,
-  TrendingUp, TrendingDown, Camera, Briefcase, Settings2, LayoutDashboard,
+  Camera, Briefcase, Settings2, LayoutDashboard,
   ChartPie, PiggyBank, SlidersHorizontal, CalendarClock, Sparkles, Pencil,
+  ArrowUpRight, ArrowDownRight, ReceiptText, ListFilter, User,
 } from 'lucide-react'
 
 // ── tipe ──
@@ -52,9 +54,11 @@ const rpShort = (n: number) => {
 }
 const BLN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const BLN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
-const todayStr = () => new Date().toISOString().slice(0, 10)
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const todayStr = () => iso(new Date())
+const fmtTgl = (s: string) => new Date(s + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+const fmtTglPendek = (s: string) => new Date(s + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
 
-// Palet kustomisasi — dipakai kartu, chip, dan chart secara konsisten.
 const PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
 const colorAt = (i: number) => PALETTE[i % PALETTE.length]
 
@@ -81,13 +85,27 @@ const SEED_CATS: { name: string; type: 'income' | 'expense'; is_business?: boole
   { name: 'Lainnya (Keluar)', type: 'expense' },
 ]
 
-type TabId = 'home' | 'analytics' | 'goals' | 'budget'
+type TabId = 'home' | 'tx' | 'analytics' | 'goals' | 'budget'
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'home', label: 'Ringkasan', icon: LayoutDashboard },
+  { id: 'tx', label: 'Transaksi', icon: ReceiptText },
   { id: 'analytics', label: 'Analitik', icon: ChartPie },
   { id: 'goals', label: 'Target', icon: PiggyBank },
   { id: 'budget', label: 'Anggaran', icon: SlidersHorizontal },
 ]
+
+type Preset = 'today' | 'week' | 'month' | '3m' | 'year' | 'custom'
+const PRESETS: { id: Preset; label: string }[] = [
+  { id: 'today', label: 'Hari ini' },
+  { id: 'week', label: 'Minggu ini' },
+  { id: 'month', label: 'Bulanan' },
+  { id: '3m', label: '3 Bulan' },
+  { id: 'year', label: 'Tahun ini' },
+  { id: 'custom', label: 'Kustom' },
+]
+
+const sumBy = (rows: FinTx[], type: 'income' | 'expense') =>
+  rows.filter(t => t.type === type).reduce((s, t) => s + Number(t.amount), 0)
 
 export default function KeuanganPage() {
   const sub = useSubscription()
@@ -104,15 +122,26 @@ export default function KeuanganPage() {
   const [needsMigration, setNeedsMigration] = useState(false)
   const [needsV2, setNeedsV2] = useState(false)
 
+  // ── filter periode global ──
   const now = new Date()
+  const [preset, setPreset] = useState<Preset>('month')
   const [ym, setYm] = useState<{ y: number; m: number }>({ y: now.getFullYear(), m: now.getMonth() })
+  const [cFrom, setCFrom] = useState(todayStr())
+  const [cTo, setCTo] = useState(todayStr())
+
+  // ── filter tab transaksi ──
+  const [fType, setFType] = useState<'all' | 'income' | 'expense' | 'transfer'>('all')
+  const [fCat, setFCat] = useState('')
+  const [fAcc, setFAcc] = useState('')
+  const [q, setQ] = useState('')
 
   const [showTx, setShowTx] = useState<null | 'income' | 'expense' | 'transfer'>(null)
+  const [editTx, setEditTx] = useState<FinTx | null>(null)
+  const [detailTx, setDetailTx] = useState<FinTx | null>(null)
   const [showAcc, setShowAcc] = useState(false)
   const [showCat, setShowCat] = useState(false)
   const [showGoal, setShowGoal] = useState(false)
   const [goalDetail, setGoalDetail] = useState<FinGoal | null>(null)
-  const [q, setQ] = useState('')
 
   useEffect(() => {
     if (!sub.loading && !sub.userId) router.replace('/login?next=%2Fkeuangan')
@@ -124,7 +153,7 @@ export default function KeuanganPage() {
     const [a, c, t] = await Promise.all([
       sb.from('fin_accounts').select('*').order('created_at'),
       sb.from('fin_categories').select('*').order('created_at'),
-      sb.from('fin_transactions').select('*').order('date', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
+      sb.from('fin_transactions').select('*').order('date', { ascending: false }).order('created_at', { ascending: false }).limit(5000),
     ])
     if (a.error || c.error || t.error) {
       const msg = a.error?.message || c.error?.message || t.error?.message || ''
@@ -142,7 +171,6 @@ export default function KeuanganPage() {
     }
     setCats(catRows)
 
-    // v2 (target/anggaran) — tabel bisa belum ada; tahap-1 tetap jalan.
     const [g, ge, b] = await Promise.all([
       sb.from('fin_goals').select('*').order('created_at'),
       sb.from('fin_goal_entries').select('*').order('date', { ascending: false }),
@@ -161,7 +189,7 @@ export default function KeuanganPage() {
   }
   useEffect(() => { if (sub.isAdmin) loadAll() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sub.isAdmin])
 
-  // ── derived: saldo ──
+  // ── saldo: dari SELURUH transaksi, bukan periode terfilter ──
   const balances = useMemo(() => {
     const map = new Map<string, number>()
     for (const a of accounts) map.set(a.id, Number(a.initial_balance))
@@ -178,56 +206,107 @@ export default function KeuanganPage() {
   }, [accounts, txs])
   const totalBalance = useMemo(() => [...balances.values()].reduce((a, b) => a + b, 0), [balances])
 
-  // ── derived: bulan terpilih ──
-  const monthTxs = useMemo(() => {
-    const pre = `${ym.y}-${String(ym.m + 1).padStart(2, '0')}`
-    return txs.filter(t => t.date.startsWith(pre))
-  }, [txs, ym])
-  const monthIncome = monthTxs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-  const monthExpense = monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+  // ── rentang tanggal aktif ──
+  const range = useMemo(() => {
+    const d = new Date()
+    if (preset === 'today') return { from: todayStr(), to: todayStr(), label: 'Hari ini' }
+    if (preset === 'week') {
+      const day = d.getDay() || 7            // Minggu(0) diperlakukan sebagai hari ke-7
+      const mon = new Date(d); mon.setDate(d.getDate() - day + 1)
+      return { from: iso(mon), to: todayStr(), label: 'Minggu ini' }
+    }
+    if (preset === 'month') {
+      const last = new Date(ym.y, ym.m + 1, 0)
+      return { from: `${ym.y}-${String(ym.m + 1).padStart(2, '0')}-01`, to: iso(last), label: `${BLN[ym.m]} ${ym.y}` }
+    }
+    if (preset === '3m') {
+      const s = new Date(d.getFullYear(), d.getMonth() - 2, 1)
+      return { from: iso(s), to: todayStr(), label: '3 bulan terakhir' }
+    }
+    if (preset === 'year') return { from: `${d.getFullYear()}-01-01`, to: todayStr(), label: `Tahun ${d.getFullYear()}` }
+    // kustom: jaga agar from <= to walau user membalik urutannya
+    const from = cFrom <= cTo ? cFrom : cTo, to = cFrom <= cTo ? cTo : cFrom
+    return { from, to, label: `${fmtTglPendek(from)} – ${fmtTglPendek(to)}` }
+  }, [preset, ym, cFrom, cTo])
+
+  const periodTxs = useMemo(
+    () => txs.filter(t => t.date >= range.from && t.date <= range.to),
+    [txs, range])
+
+  // Periode SEBELUMNYA, panjang sama — pembanding naik/turun.
+  const prevPeriodTxs = useMemo(() => {
+    const from = new Date(range.from + 'T00:00:00'), to = new Date(range.to + 'T00:00:00')
+    const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1)
+    const pTo = new Date(from); pTo.setDate(from.getDate() - 1)
+    const pFrom = new Date(pTo); pFrom.setDate(pTo.getDate() - days + 1)
+    const a = iso(pFrom), b = iso(pTo)
+    return txs.filter(t => t.date >= a && t.date <= b)
+  }, [txs, range])
+
+  const income = sumBy(periodTxs, 'income')
+  const expense = sumBy(periodTxs, 'expense')
+  const prevIncome = sumBy(prevPeriodTxs, 'income')
+  const prevExpense = sumBy(prevPeriodTxs, 'expense')
+  const pctChange = (cur: number, prev: number) => prev > 0 ? ((cur - prev) / prev) * 100 : null
 
   const catColor = (c: FinCategory | undefined, i: number) => c?.color || colorAt(i)
 
-  const catBreakdown = useMemo(() => {
+  const expBreakdown = useMemo(() => {
     const m = new Map<string, number>()
-    for (const t of monthTxs) if (t.type === 'expense') m.set(t.category_id ?? '-', (m.get(t.category_id ?? '-') ?? 0) + Number(t.amount))
-    return [...m.entries()]
-      .map(([cid, v]) => ({ cid, cat: cats.find(c => c.id === cid), v }))
-      .sort((a, b) => b.v - a.v)
-  }, [monthTxs, cats])
+    for (const t of periodTxs) if (t.type === 'expense') m.set(t.category_id ?? '-', (m.get(t.category_id ?? '-') ?? 0) + Number(t.amount))
+    return [...m.entries()].map(([cid, v]) => ({ cid, cat: cats.find(c => c.id === cid), v })).sort((a, b) => b.v - a.v)
+  }, [periodTxs, cats])
+  const incBreakdown = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of periodTxs) if (t.type === 'income') m.set(t.category_id ?? '-', (m.get(t.category_id ?? '-') ?? 0) + Number(t.amount))
+    return [...m.entries()].map(([cid, v]) => ({ cid, cat: cats.find(c => c.id === cid), v })).sort((a, b) => b.v - a.v)
+  }, [periodTxs, cats])
 
-  // ── derived: analitik ──
-  // Tren 6 bulan terakhir (sampai bulan berjalan nyata, bukan bulan terpilih)
+  const bizSplit = useMemo(() => {
+    let biz = 0, pri = 0
+    for (const t of periodTxs) {
+      if (t.type !== 'expense') continue
+      const c = cats.find(x => x.id === t.category_id)
+      if (c?.is_business) biz += Number(t.amount); else pri += Number(t.amount)
+    }
+    return { biz, pri }
+  }, [periodTxs, cats])
+
+  const topTxs = useMemo(() =>
+    [...periodTxs].filter(t => t.type !== 'transfer').sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 5),
+    [periodTxs])
+
+  // Tren 6 bulan — sengaja TIDAK ikut filter, sebagai konteks jangka panjang.
   const cashflow6m = useMemo(() => {
-    const out: { label: string; masuk: number; keluar: number; selisih: number }[] = []
+    const out: { label: string; masuk: number; keluar: number }[] = []
     const base = new Date()
     for (let i = 5; i >= 0; i--) {
       const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
       const pre = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       const rows = txs.filter(t => t.date.startsWith(pre))
-      const masuk = rows.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-      const keluar = rows.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-      out.push({ label: BLN3[d.getMonth()], masuk, keluar, selisih: masuk - keluar })
+      out.push({ label: BLN3[d.getMonth()], masuk: sumBy(rows, 'income'), keluar: sumBy(rows, 'expense') })
     }
     return out
   }, [txs])
 
-  // Pengeluaran per hari (bulan terpilih)
-  const dailyExpense = useMemo(() => {
-    const days = new Date(ym.y, ym.m + 1, 0).getDate()
-    const arr = Array.from({ length: days }, (_, i) => ({ d: i + 1, v: 0 }))
-    for (const t of monthTxs) if (t.type === 'expense') {
-      const day = Number(t.date.slice(8, 10))
-      if (arr[day - 1]) arr[day - 1].v += Number(t.amount)
+  // Deret harian dalam periode aktif (dibatasi 120 titik agar chart tetap terbaca)
+  const dailySeries = useMemo(() => {
+    const from = new Date(range.from + 'T00:00:00'), to = new Date(range.to + 'T00:00:00')
+    const days = Math.min(120, Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1)
+    const arr: { label: string; keluar: number; masuk: number }[] = []
+    for (let i = 0; i < days; i++) {
+      const d = new Date(from); d.setDate(from.getDate() + i)
+      const key = iso(d)
+      const rows = periodTxs.filter(t => t.date === key)
+      arr.push({ label: `${d.getDate()}/${d.getMonth() + 1}`, keluar: sumBy(rows, 'expense'), masuk: sumBy(rows, 'income') })
     }
     return arr
-  }, [monthTxs, ym])
+  }, [periodTxs, range])
 
-  const savingsRate = monthIncome > 0 ? ((monthIncome - monthExpense) / monthIncome) * 100 : null
-  const daysPassed = ym.y === now.getFullYear() && ym.m === now.getMonth() ? now.getDate() : new Date(ym.y, ym.m + 1, 0).getDate()
-  const avgDaily = daysPassed > 0 ? monthExpense / daysPassed : 0
+  const periodDays = Math.max(1, Math.round((new Date(range.to + 'T00:00:00').getTime() - new Date(range.from + 'T00:00:00').getTime()) / 86_400_000) + 1)
+  const savingsRate = income > 0 ? ((income - expense) / income) * 100 : null
+  const avgDaily = expense / periodDays
 
-  // ── derived: target ──
   const goalProgress = useMemo(() => {
     const m = new Map<string, number>()
     for (const e of goalEntries) m.set(e.goal_id, (m.get(e.goal_id) ?? 0) + Number(e.amount))
@@ -235,20 +314,33 @@ export default function KeuanganPage() {
   }, [goalEntries])
   const totalSaved = useMemo(() => [...goalProgress.values()].reduce((a, b) => a + b, 0), [goalProgress])
 
-  const shownTxs = useMemo(() => {
+  // ── daftar transaksi terfilter ──
+  const listTxs = useMemo(() => {
     const s = q.trim().toLowerCase()
-    if (!s) return monthTxs
-    return monthTxs.filter(t =>
-      (t.note ?? '').toLowerCase().includes(s) ||
-      (cats.find(c => c.id === t.category_id)?.name ?? '').toLowerCase().includes(s) ||
-      (accounts.find(a => a.id === t.account_id)?.name ?? '').toLowerCase().includes(s))
-  }, [monthTxs, q, cats, accounts])
+    return periodTxs.filter(t => {
+      if (fType !== 'all' && t.type !== fType) return false
+      if (fCat && t.category_id !== fCat) return false
+      if (fAcc && t.account_id !== fAcc && t.to_account_id !== fAcc) return false
+      if (!s) return true
+      return (t.note ?? '').toLowerCase().includes(s)
+        || (cats.find(c => c.id === t.category_id)?.name ?? '').toLowerCase().includes(s)
+        || (accounts.find(a => a.id === t.account_id)?.name ?? '').toLowerCase().includes(s)
+        || String(t.amount).includes(s)
+    })
+  }, [periodTxs, fType, fCat, fAcc, q, cats, accounts])
+
+  const grouped = useMemo(() => {
+    const m = new Map<string, FinTx[]>()
+    for (const t of listTxs) { const a = m.get(t.date) ?? []; a.push(t); m.set(t.date, a) }
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+  }, [listTxs])
 
   async function delTx(id: string) {
     if (!window.confirm('Hapus transaksi ini?')) return
     const { error } = await createClient().from('fin_transactions').delete().eq('id', id)
     if (error) { toast.error(error.message); return }
     setTxs(p => p.filter(t => t.id !== id))
+    setDetailTx(null)
     toast.success('Transaksi dihapus')
   }
 
@@ -256,13 +348,7 @@ export default function KeuanganPage() {
     return <div className="min-h-screen flex items-center justify-center bg-[#F2F2F7]"><Loader2 className="animate-spin text-indigo-500" /></div>
   }
 
-  const MonthNav = (
-    <div className="flex items-center gap-2">
-      <button onClick={() => setYm(p => p.m === 0 ? { y: p.y - 1, m: 11 } : { y: p.y, m: p.m - 1 })} className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center hover:shadow"><ChevronLeft size={15} /></button>
-      <span className="text-[12px] font-black min-w-[90px] text-center">{BLN3[ym.m]} {ym.y}</span>
-      <button onClick={() => setYm(p => p.m === 11 ? { y: p.y + 1, m: 0 } : { y: p.y, m: p.m + 1 })} className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center hover:shadow"><ChevronRight size={15} /></button>
-    </div>
-  )
+  const tooltipStyle = { borderRadius: 14, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, background: '#fff' }
 
   const V2Banner = needsV2 ? (
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
@@ -271,13 +357,116 @@ export default function KeuanganPage() {
     </div>
   ) : null
 
-  const tooltipStyle = { borderRadius: 14, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, background: '#fff' }
+  const PeriodBar = (
+    <div className="rounded-3xl bg-white p-3 shadow-sm mb-4">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+        {PRESETS.map(p => (
+          <button key={p.id} onClick={() => setPreset(p.id)}
+            className={`shrink-0 px-3.5 h-9 rounded-xl text-[12px] font-black transition-colors ${preset === p.id ? 'bg-indigo-500 text-white' : 'bg-[#F7F7FA] text-slate-500 hover:bg-slate-100'}`}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {preset === 'month' && (
+        <div className="flex items-center justify-center gap-3 mt-3">
+          <button onClick={() => setYm(p => p.m === 0 ? { y: p.y - 1, m: 11 } : { y: p.y, m: p.m - 1 })} className="w-8 h-8 rounded-full bg-[#F7F7FA] flex items-center justify-center hover:bg-slate-100"><ChevronLeft size={15} /></button>
+          <span className="text-[13px] font-black min-w-[120px] text-center">{BLN[ym.m]} {ym.y}</span>
+          <button onClick={() => setYm(p => p.m === 11 ? { y: p.y + 1, m: 0 } : { y: p.y, m: p.m + 1 })} className="w-8 h-8 rounded-full bg-[#F7F7FA] flex items-center justify-center hover:bg-slate-100"><ChevronRight size={15} /></button>
+        </div>
+      )}
+      {preset === 'custom' && (
+        <div className="flex items-center gap-2 mt-3">
+          <input type="date" value={cFrom} onChange={e => setCFrom(e.target.value)} className="flex-1 h-10 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200" />
+          <span className="text-slate-300 text-[12px] font-bold">s/d</span>
+          <input type="date" value={cTo} onChange={e => setCTo(e.target.value)} className="flex-1 h-10 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200" />
+        </div>
+      )}
+      <p className="text-[10px] text-slate-400 mt-2 text-center">{range.label} · {periodDays} hari · {periodTxs.length} transaksi</p>
+    </div>
+  )
+
+  const StatTile = ({ label, value, sub: s, color, delta }: { label: string; value: string; sub?: string; color?: string; delta?: number | null }) => (
+    <div className="rounded-3xl bg-white p-4 shadow-sm">
+      <p className="text-[11px] font-semibold text-slate-400">{label}</p>
+      <p className={`text-xl font-black tabular-nums mt-1 truncate ${color ?? ''}`}>{value}</p>
+      <div className="flex items-center gap-1.5 mt-0.5">
+        {delta != null && (
+          <span className={`inline-flex items-center gap-0.5 text-[10px] font-black ${delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+            {delta >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}{Math.abs(Math.round(delta))}%
+          </span>
+        )}
+        {s && <p className="text-[10px] text-slate-300 truncate">{s}</p>}
+      </div>
+    </div>
+  )
+
+  const Donut = ({ rows, total, title }: { rows: { cid: string; cat?: FinCategory; v: number }[]; total: number; title: string }) => (
+    <div className="rounded-3xl bg-white p-5 shadow-sm">
+      <p className="text-[13px] font-black mb-2">{title}</p>
+      {rows.length === 0 ? (
+        <p className="text-center text-[13px] text-slate-300 py-14">Belum ada data di periode ini.</p>
+      ) : (
+        <div className="flex items-center gap-4">
+          <div className="w-36 h-36 shrink-0 relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <RePieChart>
+                <Pie data={rows.map(b => ({ name: b.cat?.name ?? 'Lainnya', value: b.v }))}
+                  dataKey="value" innerRadius={44} outerRadius={66} paddingAngle={2} strokeWidth={0} isAnimationActive={false}>
+                  {rows.map((b, i) => <Cell key={b.cid} fill={catColor(b.cat, i)} />)}
+                </Pie>
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => rp(Number(v ?? 0))} />
+              </RePieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-[10px] text-slate-400 font-semibold">Total</p>
+              <p className="text-[13px] font-black tabular-nums">{rpShort(total)}</p>
+            </div>
+          </div>
+          <div className="flex-1 space-y-1.5 min-w-0">
+            {rows.slice(0, 6).map((b, i) => (
+              <div key={b.cid} className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: catColor(b.cat, i) }} />
+                <span className="text-[12px] font-semibold truncate flex-1">{b.cat?.name ?? 'Tanpa kategori'}</span>
+                <span className="text-[11px] text-slate-400 tabular-nums">{rpShort(b.v)}</span>
+                <span className="text-[12px] font-black tabular-nums w-9 text-right">{total > 0 ? Math.round((b.v / total) * 100) : 0}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const TxRow = ({ t, onClick }: { t: FinTx; onClick: () => void }) => {
+    const cat = cats.find(c => c.id === t.category_id)
+    const acc = accounts.find(a => a.id === t.account_id)
+    const to = t.to_account_id ? accounts.find(a => a.id === t.to_account_id) : null
+    const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''
+    const color = t.type === 'income' ? 'text-emerald-600' : t.type === 'expense' ? 'text-rose-600' : 'text-indigo-500'
+    const bg = t.type === 'income' ? 'bg-emerald-100 text-emerald-600' : t.type === 'expense' ? 'bg-rose-100 text-rose-500' : 'bg-indigo-100 text-indigo-500'
+    const Icon = t.type === 'income' ? Plus : t.type === 'expense' ? Minus : ArrowLeftRight
+    return (
+      <button onClick={onClick} className="w-full text-left flex items-center gap-3 rounded-2xl px-3 py-2.5 hover:bg-[#F7F7FA] transition-colors">
+        <span className={`flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${bg}`}><Icon size={15} /></span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-bold truncate">
+            {t.type === 'transfer' ? `${acc?.name ?? '?'} → ${to?.name ?? '?'}` : (cat?.name ?? 'Tanpa kategori')}
+            {cat?.is_business && t.type !== 'transfer' && <Briefcase size={11} className="inline ml-1.5 -mt-0.5 text-indigo-400" />}
+          </p>
+          <p className="text-[11px] text-slate-400 truncate">
+            {fmtTglPendek(t.date)}{t.type !== 'transfer' && acc ? ` · ${acc.name}` : ''}{t.note ? ` · ${t.note}` : ''}
+          </p>
+        </div>
+        {t.receipt_url && <span className="shrink-0 w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400"><Camera size={12} /></span>}
+        <p className={`text-[13px] font-black tabular-nums shrink-0 ${color}`}>{sign}{rpShort(Number(t.amount))}</p>
+      </button>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#F2F2F7] text-slate-900" style={{ fontFeatureSettings: '"tnum"' }}>
       <div className="max-w-5xl mx-auto px-4 pb-32 md:pb-12">
 
-        {/* header */}
         <header className="flex items-center justify-between py-5">
           <div className="flex items-center gap-3">
             <Link href="/hub" className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm hover:shadow transition-shadow"><ArrowLeft size={18} /></Link>
@@ -292,8 +481,7 @@ export default function KeuanganPage() {
           </div>
         </header>
 
-        {/* tab pills (desktop) */}
-        <nav className="hidden md:flex gap-1.5 p-1 rounded-2xl bg-white shadow-sm w-fit mb-5">
+        <nav className="hidden md:flex gap-1.5 p-1 rounded-2xl bg-white shadow-sm w-fit mb-4">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-4 h-10 rounded-xl text-[13px] font-black transition-colors ${tab === t.id ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
@@ -311,14 +499,16 @@ export default function KeuanganPage() {
           <div className="flex items-center justify-center py-24"><Loader2 className="animate-spin text-indigo-500" /></div>
         ) : (
           <>
-            {/* ════════ TAB: RINGKASAN ════════ */}
+            {tab !== 'goals' && PeriodBar}
+
+            {/* ════════ RINGKASAN ════════ */}
             {tab === 'home' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-4">
-                  <div className="rounded-3xl p-6 shadow-sm relative overflow-hidden" style={{ background: '#E3F84E' }}>
+                  <div className="rounded-3xl p-6 shadow-sm" style={{ background: '#E3F84E' }}>
                     <p className="text-[12px] font-semibold text-lime-900/60 mb-1">Total Saldo</p>
                     <p className="text-4xl font-black tracking-tight text-slate-900 tabular-nums">{rp(totalBalance)}</p>
-                    <p className="text-[12px] text-lime-900/60 mt-1">{accounts.length} rekening{goals.length ? ` · ${goals.length} target aktif` : ''}</p>
+                    <p className="text-[12px] text-lime-900/60 mt-1">{accounts.length} rekening{goals.length ? ` · ${goals.length} target` : ''}</p>
                     <div className="grid grid-cols-3 gap-2 mt-5">
                       <button onClick={() => accounts.length ? setShowTx('income') : toast.error('Buat rekening dulu')} className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/70 backdrop-blur px-2 py-3 hover:bg-white transition-colors">
                         <span className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white"><Plus size={16} /></span>
@@ -333,6 +523,11 @@ export default function KeuanganPage() {
                         <span className="text-[11px] font-bold">Transfer</span>
                       </button>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <StatTile label="Masuk" value={rpShort(income)} color="text-emerald-600" delta={pctChange(income, prevIncome)} sub="vs periode lalu" />
+                    <StatTile label="Keluar" value={rpShort(expense)} color="text-rose-600" delta={pctChange(expense, prevExpense)} sub="vs periode lalu" />
                   </div>
 
                   <div className="rounded-3xl bg-white p-5 shadow-sm">
@@ -361,109 +556,150 @@ export default function KeuanganPage() {
                       </div>
                     )}
                   </div>
-
-                  <div className="rounded-3xl bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <button onClick={() => setYm(p => p.m === 0 ? { y: p.y - 1, m: 11 } : { y: p.y, m: p.m - 1 })} className="w-8 h-8 rounded-full bg-[#F7F7FA] flex items-center justify-center hover:bg-slate-100"><ChevronLeft size={16} /></button>
-                      <p className="text-[13px] font-black">{BLN[ym.m]} {ym.y}</p>
-                      <button onClick={() => setYm(p => p.m === 11 ? { y: p.y + 1, m: 0 } : { y: p.y, m: p.m + 1 })} className="w-8 h-8 rounded-full bg-[#F7F7FA] flex items-center justify-center hover:bg-slate-100"><ChevronRight size={16} /></button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <div className="rounded-2xl bg-emerald-50 p-3.5">
-                        <p className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1"><TrendingUp size={12} /> Masuk</p>
-                        <p className="text-[16px] font-black text-emerald-700 tabular-nums mt-0.5">{rpShort(monthIncome)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-rose-50 p-3.5">
-                        <p className="text-[11px] font-semibold text-rose-500 flex items-center gap-1"><TrendingDown size={12} /> Keluar</p>
-                        <p className="text-[16px] font-black text-rose-600 tabular-nums mt-0.5">{rpShort(monthExpense)}</p>
-                      </div>
-                    </div>
-                    <div className="rounded-2xl bg-[#F7F7FA] p-3.5 flex items-center justify-between">
-                      <p className="text-[12px] font-semibold text-slate-500">Selisih bulan ini</p>
-                      <p className={`text-[15px] font-black tabular-nums ${monthIncome - monthExpense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{monthIncome - monthExpense >= 0 ? '+' : ''}{rpShort(monthIncome - monthExpense)}</p>
-                    </div>
-                  </div>
                 </div>
 
-                {/* riwayat */}
-                <div className="rounded-3xl bg-white p-5 shadow-sm h-fit">
-                  <p className="text-[13px] font-black mb-3">Riwayat · {BLN[ym.m]}</p>
-                  <div className="relative mb-3">
-                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
-                    <input value={q} onChange={e => setQ(e.target.value)} placeholder="Cari catatan, kategori, rekening…"
-                      className="w-full h-11 pl-10 pr-4 rounded-2xl bg-[#F7F7FA] text-[13px] outline-none focus:ring-2 focus:ring-indigo-200 placeholder:text-slate-300" />
-                  </div>
-                  {shownTxs.length === 0 ? (
-                    <p className="text-center text-[13px] text-slate-300 py-10">Belum ada transaksi bulan ini.</p>
-                  ) : (
-                    <div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
-                      {shownTxs.map(t => {
-                        const cat = cats.find(c => c.id === t.category_id)
-                        const acc = accounts.find(a => a.id === t.account_id)
-                        const to = t.to_account_id ? accounts.find(a => a.id === t.to_account_id) : null
-                        const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''
-                        const color = t.type === 'income' ? 'text-emerald-600' : t.type === 'expense' ? 'text-rose-600' : 'text-indigo-500'
-                        const bg = t.type === 'income' ? 'bg-emerald-100 text-emerald-600' : t.type === 'expense' ? 'bg-rose-100 text-rose-500' : 'bg-indigo-100 text-indigo-500'
-                        const Icon = t.type === 'income' ? Plus : t.type === 'expense' ? Minus : ArrowLeftRight
-                        return (
-                          <div key={t.id} className="group flex items-center gap-3 rounded-2xl px-3 py-2.5 hover:bg-[#F7F7FA] transition-colors">
-                            <span className={`flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${bg}`}><Icon size={15} /></span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[13px] font-bold truncate">
-                                {t.type === 'transfer' ? `${acc?.name ?? '?'} → ${to?.name ?? '?'}` : (cat?.name ?? 'Tanpa kategori')}
-                                {cat?.is_business && t.type !== 'transfer' && <Briefcase size={11} className="inline ml-1.5 -mt-0.5 text-indigo-400" />}
-                              </p>
-                              <p className="text-[11px] text-slate-400 truncate">
-                                {new Date(t.date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                                {t.type !== 'transfer' && acc ? ` · ${acc.name}` : ''}{t.note ? ` · ${t.note}` : ''}
-                              </p>
-                            </div>
-                            {t.receipt_url && (
-                              <a href={t.receipt_url} target="_blank" rel="noopener noreferrer" title="Lihat struk"
-                                className="shrink-0 w-9 h-9 rounded-xl overflow-hidden border border-slate-100 hover:ring-2 hover:ring-indigo-200">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={t.receipt_url} alt="struk" className="w-full h-full object-cover" />
-                              </a>
-                            )}
-                            <p className={`text-[13px] font-black tabular-nums shrink-0 ${color}`}>{sign}{rpShort(Number(t.amount))}</p>
-                            <button onClick={() => delTx(t.id)} className="shrink-0 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-rose-500 transition-opacity"><Trash2 size={14} /></button>
-                          </div>
-                        )
-                      })}
+                <div className="space-y-4">
+                  <div className="rounded-3xl bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-[13px] font-black">Arus Kas · {range.label}</p>
+                      <span className={`text-[13px] font-black tabular-nums ${income - expense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{income - expense >= 0 ? '+' : ''}{rpShort(income - expense)}</span>
                     </div>
-                  )}
+                    <div className="h-44 mt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={dailySeries} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="dIn" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#34d399" stopOpacity={0.3} /><stop offset="100%" stopColor="#34d399" stopOpacity={0.02} /></linearGradient>
+                            <linearGradient id="dOut" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fb7185" stopOpacity={0.3} /><stop offset="100%" stopColor="#fb7185" stopOpacity={0.02} /></linearGradient>
+                          </defs>
+                          <CartesianGrid stroke="#F1F5F9" vertical={false} />
+                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+                          <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={52} />
+                          <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
+                          <Area type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2} fill="url(#dIn)" />
+                          <Area type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2} fill="url(#dOut)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[13px] font-black">Transaksi Terbaru</p>
+                      <button onClick={() => setTab('tx')} className="text-[12px] font-bold text-indigo-500 hover:text-indigo-600">Lihat semua</button>
+                    </div>
+                    {periodTxs.length === 0 ? (
+                      <p className="text-center text-[13px] text-slate-300 py-8">Belum ada transaksi di periode ini.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {periodTxs.slice(0, 8).map(t => <TxRow key={t.id} t={t} onClick={() => setDetailTx(t)} />)}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* ════════ TAB: ANALITIK ════════ */}
-            {tab === 'analytics' && (
+            {/* ════════ TRANSAKSI ════════ */}
+            {tab === 'tx' && (
               <div className="space-y-4">
-                {/* stat tiles */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="rounded-3xl bg-white p-4 shadow-sm">
-                    <p className="text-[11px] font-semibold text-slate-400">Rasio Tabungan</p>
-                    <p className={`text-xl font-black tabular-nums mt-1 ${savingsRate != null && savingsRate >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{savingsRate == null ? '—' : `${Math.round(savingsRate)}%`}</p>
-                    <p className="text-[10px] text-slate-300 mt-0.5">dari pemasukan {BLN3[ym.m]}</p>
+                <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+                  <div className="relative">
+                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
+                    <input value={q} onChange={e => setQ(e.target.value)} placeholder="Cari catatan, kategori, rekening, nominal…"
+                      className="w-full h-11 pl-10 pr-4 rounded-2xl bg-[#F7F7FA] text-[13px] outline-none focus:ring-2 focus:ring-indigo-200 placeholder:text-slate-300" />
                   </div>
-                  <div className="rounded-3xl bg-white p-4 shadow-sm">
-                    <p className="text-[11px] font-semibold text-slate-400">Rata-rata Harian</p>
-                    <p className="text-xl font-black tabular-nums mt-1">{rpShort(avgDaily)}</p>
-                    <p className="text-[10px] text-slate-300 mt-0.5">pengeluaran / hari</p>
+                  <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                    {([['all', 'Semua'], ['income', 'Masuk'], ['expense', 'Keluar'], ['transfer', 'Transfer']] as const).map(([id, label]) => (
+                      <button key={id} onClick={() => setFType(id)}
+                        className={`shrink-0 px-3.5 h-9 rounded-xl text-[12px] font-black transition-colors ${fType === id ? 'bg-indigo-500 text-white' : 'bg-[#F7F7FA] text-slate-500 hover:bg-slate-100'}`}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="rounded-3xl bg-white p-4 shadow-sm">
-                    <p className="text-[11px] font-semibold text-slate-400">Kategori Terbesar</p>
-                    <p className="text-[15px] font-black mt-1 truncate">{catBreakdown[0]?.cat?.name ?? '—'}</p>
-                    <p className="text-[10px] text-slate-300 mt-0.5">{catBreakdown[0] ? rpShort(catBreakdown[0].v) : 'belum ada data'}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={fCat} onChange={e => setFCat(e.target.value)} className="h-10 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
+                      <option value="">Semua kategori</option>
+                      {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    <select value={fAcc} onChange={e => setFAcc(e.target.value)} className="h-10 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
+                      <option value="">Semua rekening</option>
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
                   </div>
-                  <div className="rounded-3xl bg-white p-4 shadow-sm">
-                    <p className="text-[11px] font-semibold text-slate-400">Total Ditabung</p>
-                    <p className="text-xl font-black tabular-nums mt-1 text-indigo-600">{rpShort(totalSaved)}</p>
-                    <p className="text-[10px] text-slate-300 mt-0.5">di semua target</p>
-                  </div>
+                  {(fType !== 'all' || fCat || fAcc || q) && (
+                    <button onClick={() => { setFType('all'); setFCat(''); setFAcc(''); setQ('') }}
+                      className="flex items-center gap-1.5 text-[12px] font-bold text-slate-400 hover:text-rose-500"><XIcon size={13} /> Hapus semua filter</button>
+                  )}
                 </div>
 
-                {/* arus kas 6 bulan */}
+                <div className="grid grid-cols-3 gap-3">
+                  <StatTile label="Masuk" value={rpShort(sumBy(listTxs, 'income'))} color="text-emerald-600" sub={`${listTxs.filter(t => t.type === 'income').length} transaksi`} />
+                  <StatTile label="Keluar" value={rpShort(sumBy(listTxs, 'expense'))} color="text-rose-600" sub={`${listTxs.filter(t => t.type === 'expense').length} transaksi`} />
+                  <StatTile label="Selisih" value={rpShort(sumBy(listTxs, 'income') - sumBy(listTxs, 'expense'))} color={sumBy(listTxs, 'income') - sumBy(listTxs, 'expense') >= 0 ? 'text-emerald-600' : 'text-rose-600'} sub={`${listTxs.length} total`} />
+                </div>
+
+                {grouped.length === 0 ? (
+                  <div className="rounded-3xl bg-white p-10 text-center shadow-sm">
+                    <ListFilter size={26} className="mx-auto text-slate-200 mb-3" />
+                    <p className="text-[14px] font-black mb-1">Tidak ada transaksi</p>
+                    <p className="text-[12px] text-slate-400">Coba ubah periode atau hapus filter.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {grouped.map(([date, rows]) => {
+                      const inD = sumBy(rows, 'income'), outD = sumBy(rows, 'expense')
+                      return (
+                        <div key={date} className="rounded-3xl bg-white p-4 shadow-sm">
+                          <div className="flex items-center justify-between mb-2 px-1">
+                            <p className="text-[12px] font-black text-slate-500">{fmtTgl(date)}</p>
+                            <p className="text-[11px] font-bold tabular-nums">
+                              {inD > 0 && <span className="text-emerald-600">+{rpShort(inD)}</span>}
+                              {inD > 0 && outD > 0 && <span className="text-slate-300"> · </span>}
+                              {outD > 0 && <span className="text-rose-500">−{rpShort(outD)}</span>}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            {rows.map(t => <TxRow key={t.id} t={t} onClick={() => setDetailTx(t)} />)}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════════ ANALITIK ════════ */}
+            {tab === 'analytics' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <StatTile label="Rasio Tabungan" value={savingsRate == null ? '—' : `${Math.round(savingsRate)}%`}
+                    color={savingsRate != null && savingsRate >= 0 ? 'text-emerald-600' : 'text-rose-600'} sub="dari pemasukan" />
+                  <StatTile label="Rata-rata Harian" value={rpShort(avgDaily)} sub={`${periodDays} hari`} />
+                  <StatTile label="Kategori Terbesar" value={expBreakdown[0]?.cat?.name ?? '—'} sub={expBreakdown[0] ? rpShort(expBreakdown[0].v) : 'belum ada'} />
+                  <StatTile label="Total Ditabung" value={rpShort(totalSaved)} color="text-indigo-600" sub="semua target" />
+                </div>
+
+                {(bizSplit.biz > 0 || bizSplit.pri > 0) && (
+                  <div className="rounded-3xl bg-white p-5 shadow-sm">
+                    <p className="text-[13px] font-black mb-3">Pengeluaran: Pribadi vs Bisnis</p>
+                    <div className="flex h-3 rounded-full overflow-hidden mb-3">
+                      <div style={{ width: `${(bizSplit.pri / (bizSplit.pri + bizSplit.biz)) * 100}%`, background: '#6366f1' }} />
+                      <div style={{ width: `${(bizSplit.biz / (bizSplit.pri + bizSplit.biz)) * 100}%`, background: '#f59e0b' }} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center"><User size={15} /></span>
+                        <div><p className="text-[11px] text-slate-400 font-semibold">Pribadi</p><p className="text-[14px] font-black tabular-nums">{rpShort(bizSplit.pri)}</p></div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center"><Briefcase size={15} /></span>
+                        <div><p className="text-[11px] text-slate-400 font-semibold">Bisnis</p><p className="text-[14px] font-black tabular-nums">{rpShort(bizSplit.biz)}</p></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-3xl bg-white p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-[13px] font-black">Arus Kas · 6 Bulan Terakhir</p>
@@ -472,6 +708,7 @@ export default function KeuanganPage() {
                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-400" /> Keluar</span>
                     </span>
                   </div>
+                  <p className="text-[10px] text-slate-300 mb-2">Konteks jangka panjang — tidak terpengaruh filter periode.</p>
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={cashflow6m} margin={{ top: 12, right: 4, left: 4, bottom: 0 }}>
@@ -482,7 +719,7 @@ export default function KeuanganPage() {
                         <CartesianGrid stroke="#F1F5F9" vertical={false} />
                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94A3B8', fontWeight: 700 }} axisLine={false} tickLine={false} />
                         <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={58} />
-                        <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, name: unknown) => [rp(Number(v ?? 0)), name === 'masuk' ? 'Masuk' : 'Keluar']} />
+                        <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
                         <Area type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2.5} fill="url(#gIn)" />
                         <Area type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2.5} fill="url(#gOut)" />
                       </AreaChart>
@@ -491,65 +728,39 @@ export default function KeuanganPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* donut kategori */}
-                  <div className="rounded-3xl bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[13px] font-black">Pengeluaran per Kategori</p>
-                      {MonthNav}
-                    </div>
-                    {catBreakdown.length === 0 ? (
-                      <p className="text-center text-[13px] text-slate-300 py-14">Belum ada pengeluaran bulan ini.</p>
-                    ) : (
-                      <div className="flex items-center gap-4">
-                        <div className="w-40 h-40 shrink-0 relative">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <RePieChart>
-                              <Pie data={catBreakdown.map(b => ({ name: b.cat?.name ?? 'Lainnya', value: b.v }))}
-                                dataKey="value" innerRadius={48} outerRadius={72} paddingAngle={2} strokeWidth={0} isAnimationActive={false}>
-                                {catBreakdown.map((b, i) => <Cell key={b.cid} fill={catColor(b.cat, i)} />)}
-                              </Pie>
-                              <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => rp(Number(v ?? 0))} />
-                            </RePieChart>
-                          </ResponsiveContainer>
-                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <p className="text-[10px] text-slate-400 font-semibold">Total</p>
-                            <p className="text-[13px] font-black tabular-nums">{rpShort(monthExpense)}</p>
-                          </div>
-                        </div>
-                        <div className="flex-1 space-y-2 min-w-0">
-                          {catBreakdown.slice(0, 6).map((b, i) => (
-                            <div key={i} className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: catColor(b.cat, i) }} />
-                              <span className="text-[12px] font-semibold truncate flex-1">{b.cat?.name ?? 'Tanpa kategori'}</span>
-                              <span className="text-[12px] font-black tabular-nums">{monthExpense > 0 ? Math.round((b.v / monthExpense) * 100) : 0}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <Donut rows={expBreakdown} total={expense} title={`Pengeluaran per Kategori · ${range.label}`} />
+                  <Donut rows={incBreakdown} total={income} title={`Pemasukan per Kategori · ${range.label}`} />
+                </div>
 
-                  {/* harian */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="rounded-3xl bg-white p-5 shadow-sm">
-                    <p className="text-[13px] font-black mb-2">Pengeluaran Harian · {BLN[ym.m]}</p>
+                    <p className="text-[13px] font-black mb-2">Pengeluaran Harian · {range.label}</p>
                     <div className="h-48">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={dailyExpense} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+                        <BarChart data={dailySeries} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
                           <CartesianGrid stroke="#F1F5F9" vertical={false} />
-                          <XAxis dataKey="d" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval={4} />
-                          <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={54} />
-                          <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => [rp(Number(v ?? 0)), 'Pengeluaran']} labelFormatter={(d: unknown) => `Tanggal ${d}`} />
-                          <Bar dataKey="v" fill="#818cf8" radius={[6, 6, 0, 0]} />
+                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={20} />
+                          <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={52} />
+                          <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => [rp(Number(v ?? 0)), 'Pengeluaran']} />
+                          <Bar dataKey="keluar" fill="#818cf8" radius={[6, 6, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
-                    <p className="text-[10px] text-slate-300 mt-1">Batang tinggi menonjol = hari boros — klik tab Ringkasan untuk melihat rinciannya.</p>
+                  </div>
+
+                  <div className="rounded-3xl bg-white p-5 shadow-sm">
+                    <p className="text-[13px] font-black mb-3">5 Transaksi Terbesar</p>
+                    {topTxs.length === 0 ? (
+                      <p className="text-center text-[13px] text-slate-300 py-10">Belum ada data.</p>
+                    ) : (
+                      <div className="space-y-1">{topTxs.map(t => <TxRow key={t.id} t={t} onClick={() => setDetailTx(t)} />)}</div>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ════════ TAB: TARGET ════════ */}
+            {/* ════════ TARGET ════════ */}
             {tab === 'goals' && (
               <div className="space-y-4">
                 {V2Banner ?? (
@@ -600,19 +811,16 @@ export default function KeuanganPage() {
               </div>
             )}
 
-            {/* ════════ TAB: ANGGARAN ════════ */}
+            {/* ════════ ANGGARAN ════════ */}
             {tab === 'budget' && (
               <div className="space-y-4">
                 {V2Banner ?? (
                   <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[15px] font-black flex items-center gap-2"><SlidersHorizontal size={17} className="text-indigo-500" /> Anggaran Bulanan</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">Batas pengeluaran per kategori — berlaku setiap bulan.</p>
-                      </div>
-                      {MonthNav}
+                    <div>
+                      <p className="text-[15px] font-black flex items-center gap-2"><SlidersHorizontal size={17} className="text-indigo-500" /> Anggaran Bulanan</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Batas per kategori — dibandingkan dengan pengeluaran di <b>{range.label}</b>.</p>
                     </div>
-                    <BudgetList cats={cats} budgets={budgets} monthTxs={monthTxs} userId={sub.userId!} onChanged={loadAll} />
+                    <BudgetList cats={cats} budgets={budgets} periodTxs={periodTxs} userId={sub.userId!} onChanged={loadAll} />
                   </>
                 )}
               </div>
@@ -624,10 +832,10 @@ export default function KeuanganPage() {
       {/* bottom nav (mobile) */}
       {!needsMigration && (
         <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-100 pb-[max(env(safe-area-inset-bottom),8px)]">
-          <div className="grid grid-cols-5 items-center px-2 pt-2">
+          <div className="grid grid-cols-5 items-center px-1 pt-2">
             {TABS.slice(0, 2).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex flex-col items-center gap-0.5 py-1 ${tab === t.id ? 'text-indigo-500' : 'text-slate-400'}`}>
-                <t.icon size={20} /><span className="text-[9px] font-bold">{t.label}</span>
+                <t.icon size={19} /><span className="text-[9px] font-bold">{t.label}</span>
               </button>
             ))}
             <div className="flex justify-center -mt-6">
@@ -636,16 +844,32 @@ export default function KeuanganPage() {
                 <Plus size={24} />
               </button>
             </div>
-            {TABS.slice(2).map(t => (
+            {TABS.slice(2, 4).map(t => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex flex-col items-center gap-0.5 py-1 ${tab === t.id ? 'text-indigo-500' : 'text-slate-400'}`}>
-                <t.icon size={20} /><span className="text-[9px] font-bold">{t.label}</span>
+                <t.icon size={19} /><span className="text-[9px] font-bold">{t.label}</span>
               </button>
             ))}
           </div>
         </nav>
       )}
 
-      {showTx && <TxSheet kind={showTx} accounts={accounts} cats={cats} userId={sub.userId!} onClose={() => setShowTx(null)} onSaved={tx => { setTxs(p => [tx, ...p]); setShowTx(null) }} />}
+      {(showTx || editTx) && (
+        <TxSheet
+          kind={showTx ?? editTx!.type}
+          edit={editTx}
+          accounts={accounts} cats={cats} userId={sub.userId!}
+          onClose={() => { setShowTx(null); setEditTx(null) }}
+          onSaved={tx => {
+            setTxs(p => editTx ? p.map(x => x.id === tx.id ? tx : x) : [tx, ...p])
+            setShowTx(null); setEditTx(null); setDetailTx(null)
+          }} />
+      )}
+      {detailTx && (
+        <TxDetailSheet t={detailTx} cats={cats} accounts={accounts}
+          onClose={() => setDetailTx(null)}
+          onEdit={() => { setEditTx(detailTx); setDetailTx(null) }}
+          onDelete={() => delTx(detailTx.id)} />
+      )}
       {showAcc && <AccSheet accounts={accounts} balances={balances} userId={sub.userId!} onClose={() => setShowAcc(false)} onChanged={loadAll} />}
       {showCat && <CatSheet cats={cats} userId={sub.userId!} onClose={() => setShowCat(false)} onChanged={loadAll} />}
       {showGoal && <GoalSheet userId={sub.userId!} onClose={() => setShowGoal(false)} onChanged={() => { setShowGoal(false); loadAll() }} />}
@@ -684,26 +908,95 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
   )
 }
 
-// ── form transaksi ──
-function TxSheet({ kind, accounts, cats, userId, onClose, onSaved }: {
+// ── detail transaksi ──
+function TxDetailSheet({ t, cats, accounts, onClose, onEdit, onDelete }: {
+  t: FinTx; cats: FinCategory[]; accounts: FinAccount[]
+  onClose: () => void; onEdit: () => void; onDelete: () => void
+}) {
+  const cat = cats.find(c => c.id === t.category_id)
+  const acc = accounts.find(a => a.id === t.account_id)
+  const to = t.to_account_id ? accounts.find(a => a.id === t.to_account_id) : null
+  const clr = t.type === 'income' ? '#10b981' : t.type === 'expense' ? '#ef4444' : '#6366f1'
+  const label = t.type === 'income' ? 'Pemasukan' : t.type === 'expense' ? 'Pengeluaran' : 'Transfer'
+  const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '−' : ''
+
+  const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
+    <div className="flex items-start justify-between gap-3 py-2.5 border-b border-slate-100 last:border-0">
+      <span className="text-[12px] font-semibold text-slate-400 shrink-0">{k}</span>
+      <span className="text-[13px] font-bold text-right">{v}</span>
+    </div>
+  )
+
+  return (
+    <Sheet title="Detail Transaksi" onClose={onClose}>
+      <div className="rounded-3xl p-5 text-center mb-4" style={{ background: `${clr}12`, border: `1px solid ${clr}33` }}>
+        <p className="text-[11px] font-black uppercase tracking-wider" style={{ color: clr }}>{label}</p>
+        <p className="text-3xl font-black tabular-nums mt-1" style={{ color: clr }}>{sign}{rp(Number(t.amount))}</p>
+      </div>
+
+      <div className="rounded-2xl bg-[#F7F7FA] px-4 py-1 mb-4">
+        <Row k="Tanggal" v={fmtTgl(t.date)} />
+        {t.type === 'transfer' ? (
+          <Row k="Rekening" v={<span>{acc?.name ?? '?'} <span className="text-slate-300">→</span> {to?.name ?? '?'}</span>} />
+        ) : (
+          <>
+            <Row k="Kategori" v={<span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: cat?.color || '#cbd5e1' }} />
+              {cat?.name ?? 'Tanpa kategori'}
+              {cat?.is_business && <Briefcase size={11} className="text-indigo-400" />}
+            </span>} />
+            <Row k="Rekening" v={acc?.name ?? '—'} />
+          </>
+        )}
+        {t.note && <Row k="Catatan" v={t.note} />}
+      </div>
+
+      {t.receipt_url && (
+        <div className="mb-4">
+          <p className="text-[11px] font-bold text-slate-400 mb-1.5 flex items-center gap-1.5"><Camera size={12} /> Struk / Bukti</p>
+          <a href={t.receipt_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden border border-slate-100 hover:ring-2 hover:ring-indigo-200">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={t.receipt_url} alt="struk" className="w-full max-h-72 object-contain bg-slate-50" />
+          </a>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <button onClick={onEdit} className="flex-1 h-12 rounded-2xl bg-indigo-500 text-white text-[13px] font-black hover:bg-indigo-600 flex items-center justify-center gap-1.5"><Pencil size={15} /> Edit</button>
+        <button onClick={onDelete} className="px-5 h-12 rounded-2xl border border-rose-200 text-rose-500 text-[13px] font-black hover:bg-rose-50 flex items-center justify-center gap-1.5"><Trash2 size={15} /> Hapus</button>
+      </div>
+    </Sheet>
+  )
+}
+
+// ── form transaksi (tambah + edit) ──
+function TxSheet({ kind, edit, accounts, cats, userId, onClose, onSaved }: {
   kind: 'income' | 'expense' | 'transfer'
+  edit?: FinTx | null
   accounts: FinAccount[]; cats: FinCategory[]; userId: string
   onClose: () => void; onSaved: (t: FinTx) => void
 }) {
-  const [type, setType] = useState(kind)
-  const [amount, setAmount] = useState('')
-  const [accId, setAccId] = useState(accounts[0]?.id ?? '')
-  const [toId, setToId] = useState(accounts[1]?.id ?? '')
+  const [type, setType] = useState(edit?.type ?? kind)
+  const [amount, setAmount] = useState(edit ? Number(edit.amount).toLocaleString('id-ID') : '')
+  const [accId, setAccId] = useState(edit?.account_id ?? accounts[0]?.id ?? '')
+  const [toId, setToId] = useState(edit?.to_account_id ?? accounts[1]?.id ?? '')
   const relevantCats = cats.filter(c => c.type === (type === 'income' ? 'income' : 'expense'))
-  const [catId, setCatId] = useState('')
-  const [date, setDate] = useState(todayStr())
-  const [note, setNote] = useState('')
+  const [catId, setCatId] = useState(edit?.category_id ?? '')
+  const [date, setDate] = useState(edit?.date ?? todayStr())
+  const [note, setNote] = useState(edit?.note ?? '')
   const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(edit?.receipt_url ?? null)
+  // Bedakan "struk lama dipertahankan" dari "struk dihapus" — tanpa ini, edit
+  // tanpa menyentuh gambar akan menghapus struk yang sudah ada.
+  const [keepReceipt, setKeepReceipt] = useState(!!edit?.receipt_url)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { setCatId(relevantCats[0]?.id ?? '') /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [type])
-  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
+  useEffect(() => {
+    if (edit && type === edit.type) return
+    setCatId(relevantCats[0]?.id ?? '')
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [type])
+  useEffect(() => () => { if (preview && file) URL.revokeObjectURL(preview) }, [preview, file])
 
   const num = Number(amount.replace(/[^\d]/g, ''))
   const setAmountFmt = (v: string) => {
@@ -718,7 +1011,7 @@ function TxSheet({ kind, accounts, cats, userId, onClose, onSaved }: {
     setBusy(true)
     try {
       const sb = createClient()
-      let receipt_url: string | null = null
+      let receipt_url: string | null = keepReceipt ? (edit?.receipt_url ?? null) : null
       if (file) {
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
         const rand = crypto.randomUUID().slice(0, 8)
@@ -727,15 +1020,18 @@ function TxSheet({ kind, accounts, cats, userId, onClose, onSaved }: {
         if (up.error) { toast.error('Upload struk gagal: ' + up.error.message); setBusy(false); return }
         receipt_url = sb.storage.from('trade-screenshots').getPublicUrl(path).data.publicUrl
       }
-      const { data, error } = await sb.from('fin_transactions').insert({
+      const payload = {
         user_id: userId, account_id: accId,
         to_account_id: type === 'transfer' ? toId : null,
         category_id: type === 'transfer' ? null : (catId || null),
         type, amount: num, note: note.trim() || null, date, receipt_url,
-      }).select('*').single()
-      if (error) { toast.error(error.message); setBusy(false); return }
-      toast.success('Transaksi tersimpan')
-      onSaved(data as FinTx)
+      }
+      const res = edit
+        ? await sb.from('fin_transactions').update(payload).eq('id', edit.id).select('*').single()
+        : await sb.from('fin_transactions').insert(payload).select('*').single()
+      if (res.error) { toast.error(res.error.message); setBusy(false); return }
+      toast.success(edit ? 'Transaksi diperbarui' : 'Transaksi tersimpan')
+      onSaved(res.data as FinTx)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan')
       setBusy(false)
@@ -749,7 +1045,7 @@ function TxSheet({ kind, accounts, cats, userId, onClose, onSaved }: {
   ]
 
   return (
-    <Sheet title="Tambah Transaksi" onClose={onClose}>
+    <Sheet title={edit ? 'Edit Transaksi' : 'Tambah Transaksi'} onClose={onClose}>
       <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#F7F7FA] mb-5">
         {TYPES.map(t => (
           <button key={t.id} data-on={type === t.id} onClick={() => setType(t.id)}
@@ -815,7 +1111,7 @@ function TxSheet({ kind, accounts, cats, userId, onClose, onSaved }: {
             <div className="relative rounded-2xl overflow-hidden border border-slate-100">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={preview} alt="pratinjau struk" className="w-full max-h-44 object-cover" />
-              <button onClick={() => { setFile(null); setPreview(null) }}
+              <button onClick={() => { setFile(null); setPreview(null); setKeepReceipt(false) }}
                 className="absolute top-2 right-2 w-8 h-8 rounded-full bg-slate-900/60 text-white flex items-center justify-center"><XIcon size={14} /></button>
             </div>
           ) : (
@@ -825,21 +1121,21 @@ function TxSheet({ kind, accounts, cats, userId, onClose, onSaved }: {
                 onChange={e => {
                   const f = e.target.files?.[0]; if (!f) return
                   if (f.size > 5_000_000) { toast.error('Maksimal 5 MB'); return }
-                  setFile(f); setPreview(URL.createObjectURL(f))
+                  setFile(f); setPreview(URL.createObjectURL(f)); setKeepReceipt(false)
                 }} />
             </label>
           )}
         </div>
 
         <button onClick={save} disabled={busy} className={btnPrimary}>
-          {busy ? <Loader2 size={16} className="animate-spin inline" /> : 'Simpan Transaksi'}
+          {busy ? <Loader2 size={16} className="animate-spin inline" /> : edit ? 'Simpan Perubahan' : 'Simpan Transaksi'}
         </button>
       </div>
     </Sheet>
   )
 }
 
-// ── kelola rekening (dengan warna) ──
+// ── kelola rekening ──
 function AccSheet({ accounts, balances, userId, onClose, onChanged }: {
   accounts: FinAccount[]; balances: Map<string, number>; userId: string
   onClose: () => void; onChanged: () => void
@@ -912,7 +1208,7 @@ function AccSheet({ accounts, balances, userId, onClose, onChanged }: {
   )
 }
 
-// ── kelola kategori (dengan warna) ──
+// ── kelola kategori ──
 function CatSheet({ cats, userId, onClose, onChanged }: {
   cats: FinCategory[]; userId: string; onClose: () => void; onChanged: () => void
 }) {
@@ -992,7 +1288,7 @@ function CatSheet({ cats, userId, onClose, onChanged }: {
   )
 }
 
-// ── target: buat baru ──
+// ── target ──
 function GoalSheet({ userId, onClose, onChanged }: { userId: string; onClose: () => void; onChanged: () => void }) {
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
@@ -1032,7 +1328,6 @@ function GoalSheet({ userId, onClose, onChanged }: { userId: string; onClose: ()
   )
 }
 
-// ── target: detail + setor/tarik dana ──
 function GoalDetailSheet({ goal, entries, saved, userId, onClose, onChanged }: {
   goal: FinGoal; entries: FinGoalEntry[]; saved: number; userId: string
   onClose: () => void; onChanged: () => void
@@ -1082,7 +1377,7 @@ function GoalDetailSheet({ goal, entries, saved, userId, onClose, onChanged }: {
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Riwayat</p>
           {entries.map(e => (
             <div key={e.id} className="flex items-center justify-between rounded-xl bg-[#F7F7FA] px-3.5 py-2.5">
-              <span className="text-[12px] text-slate-500">{new Date(e.date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+              <span className="text-[12px] text-slate-500">{fmtTgl(e.date)}</span>
               <span className={`text-[13px] font-black tabular-nums ${Number(e.amount) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{Number(e.amount) >= 0 ? '+' : ''}{rpShort(Number(e.amount))}</span>
             </div>
           ))}
@@ -1095,20 +1390,18 @@ function GoalDetailSheet({ goal, entries, saved, userId, onClose, onChanged }: {
 }
 
 // ── anggaran ──
-function BudgetList({ cats, budgets, monthTxs, userId, onChanged }: {
-  cats: FinCategory[]; budgets: FinBudget[]; monthTxs: FinTx[]; userId: string; onChanged: () => void
+function BudgetList({ cats, budgets, periodTxs, userId, onChanged }: {
+  cats: FinCategory[]; budgets: FinBudget[]; periodTxs: FinTx[]; userId: string; onChanged: () => void
 }) {
   const [draft, setDraft] = useState<Record<string, string>>({})
   const expenseCats = cats.filter(c => c.type === 'expense')
-
-  const spentOf = (cid: string) => monthTxs.filter(t => t.type === 'expense' && t.category_id === cid).reduce((s, t) => s + Number(t.amount), 0)
+  const spentOf = (cid: string) => periodTxs.filter(t => t.type === 'expense' && t.category_id === cid).reduce((s, t) => s + Number(t.amount), 0)
 
   async function saveBudget(cid: string) {
     const raw = draft[cid] ?? ''
     const num = Number(raw.replace(/[^\d]/g, ''))
     const sb = createClient()
     if (!num) {
-      // kosong = hapus anggaran
       const ex = budgets.find(b => b.category_id === cid)
       if (ex) { await sb.from('fin_budgets').delete().eq('id', ex.id); toast.success('Anggaran dihapus'); onChanged() }
       return
@@ -1148,7 +1441,7 @@ function BudgetList({ cats, budgets, monthTxs, userId, onChanged }: {
                 <p className="text-[11px] text-slate-400 tabular-nums">{rpShort(spent)} dari {rpShort(limit)}</p>
               </>
             ) : (
-              <p className="text-[11px] text-slate-300 mb-1.5">Belum ada batas — pengeluaran {rpShort(spent)}</p>
+              <p className="text-[11px] text-slate-300 mb-1.5">Belum ada batas — terpakai {rpShort(spent)}</p>
             )}
             <div className="flex gap-2 mt-2.5">
               <input
