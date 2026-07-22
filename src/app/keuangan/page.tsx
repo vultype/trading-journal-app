@@ -29,7 +29,7 @@ import {
   Loader2, Trash2, X as XIcon, ChevronLeft, ChevronRight, Search,
   Camera, Briefcase, Settings2, LayoutDashboard,
   ChartPie, PiggyBank, SlidersHorizontal, CalendarClock, Sparkles, Pencil,
-  ArrowUpRight, ArrowDownRight, ReceiptText, ListFilter, User,
+  ArrowUpRight, ArrowDownRight, ReceiptText, ListFilter, User, HeartPulse,
 } from 'lucide-react'
 
 // ── tipe ──
@@ -42,18 +42,24 @@ type FinTx = {
 }
 type FinGoal = { id: string; name: string; target_amount: number; deadline: string | null; color: string | null }
 type FinGoalEntry = { id: string; goal_id: string; amount: number; date: string; note: string | null }
+type HealthPillar = { key: string; label: string; weight: number; score: number; detail: string; hint: string }
+type Health = {
+  score: number; band: { label: string; color: string }
+  pillars: HealthPillar[]; weakest: HealthPillar | undefined
+  mInc: number; mExp: number
+}
+
 type BudgetPeriod = 'weekly' | 'monthly' | 'yearly'
 type FinBudget = { id: string; name: string; monthly_limit: number; period: BudgetPeriod; color: string | null }
 type FinBudgetCat = { budget_id: string; category_id: string }
 
+// Nominal SELALU ditulis penuh: Rp1.300.000, bukan "Rp1,3 jt". Angka yang
+// dibulatkan menyembunyikan selisih ratusan ribu — persis ukuran yang bikin
+// saldo tidak cocok saat dicek ke m-banking.
 const rp = (n: number) => `Rp${Math.round(n).toLocaleString('id-ID')}`
-const rpShort = (n: number) => {
-  const a = Math.abs(n)
-  if (a >= 1e9) return `Rp${(n / 1e9).toFixed(1)} M`
-  if (a >= 1e6) return `Rp${(n / 1e6).toFixed(1)} jt`
-  if (a >= 1e3) return `Rp${Math.round(n / 1e3)} rb`
-  return rp(n)
-}
+// Sumbu chart: format sama, tanpa prefiks "Rp" supaya label tidak memakan
+// lebar plot. Satuannya sudah jelas dari judul kartunya.
+const rpAxis = (n: number) => Math.round(n).toLocaleString('id-ID')
 const BLN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const BLN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -400,6 +406,107 @@ export default function KeuanganPage() {
     return { limit: monthly.reduce((s, r) => s + r.limit, 0), spent, count: monthly.length, win }
   }, [budgetRows, txs, range.to])
 
+  // ── skor kesehatan keuangan ──
+  //
+  // Basisnya SENGAJA tetap 90 hari terakhir, bukan filter periode. "Dana darurat
+  // 6 bulan" atau "rasio tabungan" tidak punya arti kalau dihitung atas rentang
+  // "Hari ini" — dan skor yang melompat-lompat begitu filter digeser tidak bisa
+  // dipercaya sebagai ukuran.
+  //
+  // Pilar yang datanya belum ada (belum punya anggaran, belum ada pemasukan)
+  // DILEWATI, bukan diberi nilai nol. Menghukum orang karena fitur yang belum
+  // dipakai membuat skornya bicara soal kelengkapan setup, bukan kesehatan uang.
+  // Bobotnya dibagi ulang ke pilar yang tersisa.
+  const health = useMemo(() => {
+    const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+    const today = new Date()
+    const start = new Date(today); start.setDate(today.getDate() - 89)
+    const win = txs.filter(t => t.date >= iso(start) && t.date <= iso(today))
+    const inc = sumBy(win, 'income'), exp = sumBy(win, 'expense')
+    const mInc = inc / 3, mExp = exp / 3
+
+    const pillars: HealthPillar[] = []
+
+    if (inc > 0) {
+      const sr = (inc - exp) / inc
+      pillars.push({
+        key: 'save', label: 'Rasio Tabungan', weight: 35, score: clamp01(sr / 0.2),
+        detail: `${Math.round(sr * 100)}% dari pemasukan disisihkan`,
+        hint: 'Sisihkan minimal 20% dari pemasukan untuk skor penuh.',
+      })
+    }
+    if (mExp > 0) {
+      const months = totalBalance / mExp
+      pillars.push({
+        key: 'buffer', label: 'Dana Darurat', weight: 30, score: clamp01(months / 6),
+        detail: `saldo menutup ${months.toFixed(1)} bulan pengeluaran`,
+        hint: 'Idealnya saldo setara 6 bulan pengeluaran.',
+      })
+    }
+
+    // Kepatuhan anggaran: bulan BERJALAN, bukan bulan yang sedang ditelusuri.
+    const catsOf = new Map<string, string[]>()
+    for (const bc of budgetCats) catsOf.set(bc.budget_id, [...(catsOf.get(bc.budget_id) ?? []), bc.category_id])
+    const nowWin = budgetWindow('monthly', todayStr())
+    const mb = budgets.filter(b => b.period === 'monthly' && Number(b.monthly_limit) > 0).map(b => {
+      const cids = catsOf.get(b.id) ?? []
+      const spent = txs.filter(t => t.type === 'expense' && t.category_id && cids.includes(t.category_id)
+        && t.date >= nowWin.from && t.date <= nowWin.to).reduce((s, t) => s + Number(t.amount), 0)
+      return { limit: Number(b.monthly_limit), spent }
+    })
+    if (mb.length) {
+      // Dinilai terhadap PACE, bukan batas penuh. Tanggal 5 sudah memakai 80%
+      // jatah bulanan itu tidak sehat — padahal terhadap batas penuh ia masih
+      // "aman" dan akan dapat nilai sempurna sampai benar-benar jebol.
+      const elapsed = Math.round((new Date(todayStr() + 'T00:00:00').getTime() - new Date(nowWin.from + 'T00:00:00').getTime()) / 86_400_000) + 1
+      const total = Math.round((new Date(nowWin.to + 'T00:00:00').getTime() - new Date(nowWin.from + 'T00:00:00').getTime()) / 86_400_000) + 1
+      const pace = Math.max(0.05, elapsed / total)
+      const tot = mb.reduce((s, r) => s + r.limit, 0)
+      // Amplop besar berbobot lebih besar: jebol Rp50.000 di amplop Rp5.000.000
+      // tidak sama beratnya dengan jebol Rp50.000 di amplop Rp100.000.
+      const sc = mb.reduce((s, r) => {
+        const cap = r.limit * pace
+        return s + r.limit * (r.spent <= cap ? 1 : Math.max(0, 1 - (r.spent - cap) / cap))
+      }, 0) / tot
+      pillars.push({
+        key: 'budget', label: 'Kepatuhan Anggaran', weight: 20, score: sc,
+        detail: `${mb.filter(r => r.spent <= r.limit * pace).length} dari ${mb.length} amplop sesuai pace (hari ke-${elapsed} dari ${total})`,
+        hint: 'Jaga laju belanja tiap amplop sepadan dengan sisa hari di bulan ini.',
+      })
+    }
+
+    // Stabilitas: pengeluaran yang naik-turun ekstrem menyulitkan perencanaan,
+    // walau rata-ratanya wajar.
+    // Mulai dari i=1: bulan BERJALAN masih separuh jalan, memasukkannya membuat
+    // variasi terlihat ekstrem tiap awal bulan padahal belanjanya normal.
+    const per = [1, 2, 3].map(i => {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      const pre = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      return sumBy(txs.filter(t => t.date.startsWith(pre)), 'expense')
+    }).filter(v => v > 0)
+    if (per.length >= 2) {
+      const mean = per.reduce((a, b) => a + b, 0) / per.length
+      const sd = Math.sqrt(per.reduce((s, v) => s + (v - mean) ** 2, 0) / per.length)
+      const cv = mean > 0 ? sd / mean : 0
+      pillars.push({
+        key: 'stable', label: 'Stabilitas Pengeluaran', weight: 15, score: clamp01((0.6 - cv) / 0.45),
+        detail: `variasi ${Math.round(cv * 100)}% antar-bulan`,
+        hint: 'Pengeluaran yang rata tiap bulan lebih mudah direncanakan.',
+      })
+    }
+
+    if (!pillars.length) return null
+    const wsum = pillars.reduce((s, p) => s + p.weight, 0)
+    const score = Math.round((pillars.reduce((s, p) => s + p.weight * p.score, 0) / wsum) * 100)
+    const band = score >= 80 ? { label: 'Sangat Sehat', color: '#10b981' }
+      : score >= 60 ? { label: 'Sehat', color: '#6366f1' }
+      : score >= 40 ? { label: 'Cukup', color: '#f59e0b' }
+      : { label: 'Perlu Perhatian', color: '#ef4444' }
+    // Saran diambil dari pilar terlemah yang masih punya ruang perbaikan.
+    const weakest = [...pillars].filter(p => p.score < 0.95).sort((a, b) => a.score - b.score)[0]
+    return { score, band, pillars, weakest, mInc, mExp }
+  }, [txs, totalBalance, budgets, budgetCats])
+
   const goalProgress = useMemo(() => {
     const m = new Map<string, number>()
     for (const e of goalEntries) m.set(e.goal_id, (m.get(e.goal_id) ?? 0) + Number(e.amount))
@@ -488,7 +595,9 @@ export default function KeuanganPage() {
   const StatTile = ({ label, value, sub: s, color, delta }: { label: string; value: string; sub?: string; color?: string; delta?: number | null }) => (
     <div className="rounded-3xl bg-white p-4 shadow-sm">
       <p className="text-[11px] font-semibold text-slate-400">{label}</p>
-      <p className={`text-xl font-black tabular-nums mt-1 truncate ${color ?? ''}`}>{value}</p>
+      {/* Nominal penuh jauh lebih panjang dari versi singkat — ukurannya ikut
+          lebar layar supaya tidak terpotong di ponsel. */}
+      <p className={`text-[15px] sm:text-lg md:text-xl font-black tabular-nums mt-1 truncate ${color ?? ''}`}>{value}</p>
       <div className="flex items-center gap-1.5 mt-0.5">
         {delta != null && (
           <span className={`inline-flex items-center gap-0.5 text-[10px] font-black ${delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
@@ -519,7 +628,7 @@ export default function KeuanganPage() {
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <p className="text-[10px] text-slate-400 font-semibold">Total</p>
-              <p className="text-[13px] font-black tabular-nums">{rpShort(total)}</p>
+              <p className="text-[13px] font-black tabular-nums">{rp(total)}</p>
             </div>
           </div>
           <div className="flex-1 space-y-1.5 min-w-0">
@@ -527,7 +636,7 @@ export default function KeuanganPage() {
               <div key={b.cid} className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: catColor(b.cat, i) }} />
                 <span className="text-[12px] font-semibold truncate flex-1">{b.cat?.name ?? 'Tanpa kategori'}</span>
-                <span className="text-[11px] text-slate-400 tabular-nums">{rpShort(b.v)}</span>
+                <span className="text-[11px] text-slate-400 tabular-nums">{rp(b.v)}</span>
                 <span className="text-[12px] font-black tabular-nums w-9 text-right">{total > 0 ? Math.round((b.v / total) * 100) : 0}%</span>
               </div>
             ))}
@@ -558,7 +667,7 @@ export default function KeuanganPage() {
           </p>
         </div>
         {t.receipt_url && <span className="shrink-0 w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400"><Camera size={12} /></span>}
-        <p className={`text-[13px] font-black tabular-nums shrink-0 ${color}`}>{sign}{rpShort(Number(t.amount))}</p>
+        <p className={`text-[13px] font-black tabular-nums shrink-0 ${color}`}>{sign}{rp(Number(t.amount))}</p>
       </button>
     )
   }
@@ -626,9 +735,11 @@ export default function KeuanganPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <StatTile label="Masuk" value={rpShort(income)} color="text-emerald-600" delta={pctChange(income, prevIncome)} sub="vs periode lalu" />
-                    <StatTile label="Keluar" value={rpShort(expense)} color="text-rose-600" delta={pctChange(expense, prevExpense)} sub="vs periode lalu" />
+                    <StatTile label="Masuk" value={rp(income)} color="text-emerald-600" delta={pctChange(income, prevIncome)} sub="vs periode lalu" />
+                    <StatTile label="Keluar" value={rp(expense)} color="text-rose-600" delta={pctChange(expense, prevExpense)} sub="vs periode lalu" />
                   </div>
+
+                  {health && <HealthCard h={health} />}
 
                   <div className="rounded-3xl bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-3">
@@ -650,7 +761,7 @@ export default function KeuanganPage() {
                                 <p className="text-[13px] font-bold truncate">{a.name}</p>
                                 <p className="text-[11px] text-slate-400">{(KIND_META[a.kind] ?? KIND_META.lainnya).label}</p>
                               </div>
-                              <p className="text-[14px] font-black tabular-nums">{rpShort(balances.get(a.id) ?? 0)}</p>
+                              <p className="text-[14px] font-black tabular-nums">{rp(balances.get(a.id) ?? 0)}</p>
                             </button>
                           )
                         })}
@@ -663,7 +774,7 @@ export default function KeuanganPage() {
                   <div className="rounded-3xl bg-white p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-1">
                       <p className="text-[13px] font-black">Arus Kas · {range.label}</p>
-                      <span className={`text-[13px] font-black tabular-nums ${income - expense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{income - expense >= 0 ? '+' : ''}{rpShort(income - expense)}</span>
+                      <span className={`text-[13px] font-black tabular-nums ${income - expense >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{income - expense >= 0 ? '+' : ''}{rp(income - expense)}</span>
                     </div>
                     <div className="h-44 mt-2">
                       <ResponsiveContainer width="100%" height="100%">
@@ -674,7 +785,7 @@ export default function KeuanganPage() {
                           </defs>
                           <CartesianGrid stroke="#F1F5F9" vertical={false} />
                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
-                          <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={52} />
+                          <YAxis tickFormatter={(v: number) => rpAxis(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={74} />
                           <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
                           <Area type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2} fill="url(#dIn)" />
                           <Area type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2} fill="url(#dOut)" />
@@ -733,10 +844,10 @@ export default function KeuanganPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <StatTile label="Masuk" value={rpShort(sumBy(listTxs, 'income'))} color="text-emerald-600" sub={`${listTxs.filter(t => t.type === 'income').length} transaksi`} />
-                  <StatTile label="Keluar" value={rpShort(sumBy(listTxs, 'expense'))} color="text-rose-600" sub={`${listTxs.filter(t => t.type === 'expense').length} transaksi`} />
-                  <StatTile label="Selisih" value={rpShort(sumBy(listTxs, 'income') - sumBy(listTxs, 'expense'))} color={sumBy(listTxs, 'income') - sumBy(listTxs, 'expense') >= 0 ? 'text-emerald-600' : 'text-rose-600'} sub={`${listTxs.length} total`} />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <StatTile label="Masuk" value={rp(sumBy(listTxs, 'income'))} color="text-emerald-600" sub={`${listTxs.filter(t => t.type === 'income').length} transaksi`} />
+                  <StatTile label="Keluar" value={rp(sumBy(listTxs, 'expense'))} color="text-rose-600" sub={`${listTxs.filter(t => t.type === 'expense').length} transaksi`} />
+                  <StatTile label="Selisih" value={rp(sumBy(listTxs, 'income') - sumBy(listTxs, 'expense'))} color={sumBy(listTxs, 'income') - sumBy(listTxs, 'expense') >= 0 ? 'text-emerald-600' : 'text-rose-600'} sub={`${listTxs.length} total`} />
                 </div>
 
                 {grouped.length === 0 ? (
@@ -754,9 +865,9 @@ export default function KeuanganPage() {
                           <div className="flex items-center justify-between mb-2 px-1">
                             <p className="text-[12px] font-black text-slate-500">{fmtTgl(date)}</p>
                             <p className="text-[11px] font-bold tabular-nums">
-                              {inD > 0 && <span className="text-emerald-600">+{rpShort(inD)}</span>}
+                              {inD > 0 && <span className="text-emerald-600">+{rp(inD)}</span>}
                               {inD > 0 && outD > 0 && <span className="text-slate-300"> · </span>}
-                              {outD > 0 && <span className="text-rose-500">−{rpShort(outD)}</span>}
+                              {outD > 0 && <span className="text-rose-500">−{rp(outD)}</span>}
                             </p>
                           </div>
                           <div className="space-y-1">
@@ -776,9 +887,9 @@ export default function KeuanganPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <StatTile label="Rasio Tabungan" value={savingsRate == null ? '—' : `${Math.round(savingsRate)}%`}
                     color={savingsRate != null && savingsRate >= 0 ? 'text-emerald-600' : 'text-rose-600'} sub="dari pemasukan" />
-                  <StatTile label="Rata-rata Harian" value={rpShort(avgDaily)} sub={`${periodDays} hari`} />
-                  <StatTile label="Kategori Terbesar" value={expBreakdown[0]?.cat?.name ?? '—'} sub={expBreakdown[0] ? rpShort(expBreakdown[0].v) : 'belum ada'} />
-                  <StatTile label="Total Ditabung" value={rpShort(totalSaved)} color="text-indigo-600" sub="semua target" />
+                  <StatTile label="Rata-rata Harian" value={rp(avgDaily)} sub={`${periodDays} hari`} />
+                  <StatTile label="Kategori Terbesar" value={expBreakdown[0]?.cat?.name ?? '—'} sub={expBreakdown[0] ? rp(expBreakdown[0].v) : 'belum ada'} />
+                  <StatTile label="Total Ditabung" value={rp(totalSaved)} color="text-indigo-600" sub="semua target" />
                 </div>
 
                 {(bizSplit.biz > 0 || bizSplit.pri > 0) && (
@@ -791,11 +902,11 @@ export default function KeuanganPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center gap-2">
                         <span className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center"><User size={15} /></span>
-                        <div><p className="text-[11px] text-slate-400 font-semibold">Pribadi</p><p className="text-[14px] font-black tabular-nums">{rpShort(bizSplit.pri)}</p></div>
+                        <div><p className="text-[11px] text-slate-400 font-semibold">Pribadi</p><p className="text-[14px] font-black tabular-nums">{rp(bizSplit.pri)}</p></div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center"><Briefcase size={15} /></span>
-                        <div><p className="text-[11px] text-slate-400 font-semibold">Bisnis</p><p className="text-[14px] font-black tabular-nums">{rpShort(bizSplit.biz)}</p></div>
+                        <div><p className="text-[11px] text-slate-400 font-semibold">Bisnis</p><p className="text-[14px] font-black tabular-nums">{rp(bizSplit.biz)}</p></div>
                       </div>
                     </div>
                   </div>
@@ -819,7 +930,7 @@ export default function KeuanganPage() {
                         </defs>
                         <CartesianGrid stroke="#F1F5F9" vertical={false} />
                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94A3B8', fontWeight: 700 }} axisLine={false} tickLine={false} />
-                        <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={58} />
+                        <YAxis tickFormatter={(v: number) => rpAxis(v)} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={78} />
                         <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown, n: unknown) => [rp(Number(v ?? 0)), n === 'masuk' ? 'Masuk' : 'Keluar']} />
                         <Area type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2.5} fill="url(#gIn)" />
                         <Area type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2.5} fill="url(#gOut)" />
@@ -841,7 +952,7 @@ export default function KeuanganPage() {
                         <BarChart data={dailySeries} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
                           <CartesianGrid stroke="#F1F5F9" vertical={false} />
                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={20} />
-                          <YAxis tickFormatter={(v: number) => rpShort(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={52} />
+                          <YAxis tickFormatter={(v: number) => rpAxis(v)} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={74} />
                           <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => [rp(Number(v ?? 0)), 'Pengeluaran']} />
                           <Bar dataKey="keluar" fill="#818cf8" radius={[6, 6, 0, 0]} />
                         </BarChart>
@@ -975,13 +1086,13 @@ export default function KeuanganPage() {
                                 <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, r.pct)}%`, background: clr }} />
                               </div>
                               <p className="text-[11px] text-slate-400 tabular-nums">
-                                {rpShort(r.spent)} dari {rpShort(r.limit)}
+                                {rp(r.spent)} dari {rp(r.limit)}
                                 {r.spent <= r.limit
-                                  ? <> · sisa <b className="text-slate-600">{rpShort(r.limit - r.spent)}</b></>
-                                  : <> · lebih <b className="text-rose-500">{rpShort(r.spent - r.limit)}</b></>}
+                                  ? <> · sisa <b className="text-slate-600">{rp(r.limit - r.spent)}</b></>
+                                  : <> · lebih <b className="text-rose-500">{rp(r.spent - r.limit)}</b></>}
                               </p>
                               {r.perDay !== null && r.spent <= r.limit && (
-                                <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">≈ {rpShort(r.perDay)}/hari untuk {r.daysLeft} hari tersisa</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums">≈ {rp(r.perDay)}/hari untuk {r.daysLeft} hari tersisa</p>
                               )}
 
                               {r.cats.length > 0 ? (
@@ -1110,6 +1221,72 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
           className={`w-8 h-8 rounded-full transition-transform ${value === c ? 'ring-2 ring-offset-2 ring-slate-300 scale-110' : 'hover:scale-105'}`}
           style={{ background: c }} />
       ))}
+    </div>
+  )
+}
+
+// ── skor kesehatan keuangan ──
+function HealthCard({ h }: { h: Health }) {
+  const R = 46, C = 2 * Math.PI * R
+  return (
+    <div className="rounded-3xl bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <p className="text-[13px] font-black flex items-center gap-1.5"><HeartPulse size={16} style={{ color: h.band.color }} /> Skor Kesehatan</p>
+        <span className="text-[10px] font-bold text-slate-300">90 hari terakhir</span>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="relative shrink-0" style={{ width: 108, height: 108 }}>
+          <svg width="108" height="108" viewBox="0 0 108 108" className="-rotate-90">
+            <circle cx="54" cy="54" r={R} fill="none" stroke="#F0F0F4" strokeWidth="10" />
+            <circle cx="54" cy="54" r={R} fill="none" stroke={h.band.color} strokeWidth="10" strokeLinecap="round"
+              strokeDasharray={`${(h.score / 100) * C} ${C}`} />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-3xl font-black tabular-nums leading-none" style={{ color: h.band.color }}>{h.score}</span>
+            <span className="text-[9px] font-bold text-slate-300 mt-0.5">dari 100</span>
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-black" style={{ color: h.band.color }}>{h.band.label}</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
+            Rata-rata per bulan: masuk <b className="text-slate-600">{rp(h.mInc)}</b>, keluar <b className="text-slate-600">{rp(h.mExp)}</b>.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2.5 mt-4">
+        {h.pillars.map(p => {
+          const pct = Math.round(p.score * 100)
+          const clr = pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444'
+          return (
+            <div key={p.key}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-slate-600 truncate">{p.label} <span className="text-slate-300 font-semibold">· bobot {p.weight}%</span></p>
+                <span className="text-[11px] font-black tabular-nums shrink-0" style={{ color: clr }}>{pct}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-[#F0F0F4] overflow-hidden mt-1">
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: clr }} />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">{p.detail}</p>
+            </div>
+          )
+        })}
+      </div>
+
+      {h.weakest && (
+        <div className="mt-4 rounded-2xl bg-[#F7F7FA] px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Paling berdampak</p>
+          <p className="text-[12px] text-slate-600 leading-relaxed"><b>{h.weakest.label}</b> — {h.weakest.hint}</p>
+        </div>
+      )}
+
+      {h.pillars.length < 4 && (
+        <p className="text-[10px] text-slate-300 mt-2.5 leading-relaxed">
+          Pilar yang datanya belum ada dilewati, bukan dinilai nol — bobotnya dibagi ke pilar lain.
+        </p>
+      )}
     </div>
   )
 }
@@ -1668,7 +1845,7 @@ function GoalDetailSheet({ goal, entries, saved, userId, onClose, onChanged }: {
           {entries.map(e => (
             <div key={e.id} className="flex items-center justify-between rounded-xl bg-[#F7F7FA] px-3.5 py-2.5">
               <span className="text-[12px] text-slate-500">{fmtTgl(e.date)}</span>
-              <span className={`text-[13px] font-black tabular-nums ${Number(e.amount) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{Number(e.amount) >= 0 ? '+' : ''}{rpShort(Number(e.amount))}</span>
+              <span className={`text-[13px] font-black tabular-nums ${Number(e.amount) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{Number(e.amount) >= 0 ? '+' : ''}{rp(Number(e.amount))}</span>
             </div>
           ))}
         </div>
