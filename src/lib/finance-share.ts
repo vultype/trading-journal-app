@@ -2,19 +2,28 @@
 // /s/[slug]. Dipakai bersama oleh klien (yang menyusunnya) dan halaman publik
 // (yang menampilkannya).
 //
-// Yang MASUK ke sini hanya angka AGREGAT. Tidak ada baris transaksi, tidak ada
-// nama rekening, tidak ada catatan, tidak ada tanggal transaksi, tidak ada URL
-// struk — bukan karena tidak muat, tapi karena apa pun yang ada di payload
-// otomatis ikut terbuka ke siapa pun yang memegang tautannya, selamanya.
+// Apa pun yang ada di payload otomatis ikut terbuka ke siapa pun yang memegang
+// tautannya, selamanya. Karena itu tiap tambahan isi punya sakelarnya sendiri
+// di UI, bukan ikut satu sakelar besar.
 //
-// v1 → v2 menambah rincian per kategori dan deret chart. Tautan v1 yang sudah
-// terlanjur dibuat tetap bisa dibuka: seluruh field baru opsional, jadi halaman
-// publik hanya menampilkan lebih sedikit, bukan gagal.
+// v1 → v2  rincian agregat per kategori + deret chart.
+// v2 → v3  daftar transaksi per kategori (tanggal, catatan, nominal) dan total
+//          saldo. Ini isi paling sensitif: catatan transaksi adalah teks bebas
+//          yang bisa memuat nama orang, nomor, atau apa pun yang pernah diketik
+//          — jadi pilihannya harus sadar, bukan efek samping.
+//
+// Yang TETAP tidak pernah ikut: nama rekening, URL struk, dan id apa pun yang
+// bisa dipakai menelusuri balik ke baris aslinya.
+//
+// Tautan versi lama tetap bisa dibuka: seluruh field baru opsional, jadi halaman
+// lama menampilkan lebih sedikit, bukan gagal.
 
-export const SHARE_V = 2 as const
-export type ShareVersion = 1 | 2
+export const SHARE_V = 3 as const
+export type ShareVersion = 1 | 2 | 3
 
 export type ShareTone = 'good' | 'warn' | 'bad' | 'info'
+
+export type ShareTx = { d: string; n?: string; v: number }
 
 export type ShareCat = {
   name: string; color: string; v: number; pct: number
@@ -23,6 +32,7 @@ export type ShareCat = {
   max?: number            // transaksi terbesar
   days?: number           // hari aktif
   trend?: number[]        // 6 bulan terakhir, sejajar dengan monthLabels
+  txs?: ShareTx[]         // daftar transaksi (opsional, dibatasi 60 baris)
 }
 
 export type SharePoint = { label: string; masuk: number; keluar: number }
@@ -34,6 +44,7 @@ export type SharePayload = {
   masked: boolean
   note?: string
   totals?: { income: number; expense: number; net: number }
+  balance?: number                     // total saldo seluruh rekening saat dibuat
   score?: {
     score: number
     band: { label: string; color: string }
@@ -79,6 +90,9 @@ export function maskPayload(p: SharePayload): SharePayload {
   if (!p.masked) return p
   const cat = (rows?: ShareCat[]): ShareCat[] | undefined => rows?.map(r => ({
     ...r, v: 0, avg: undefined, max: undefined,
+    // Tanggal dan catatan tetap — itulah gunanya daftar transaksi. Yang
+    // disamarkan nominalnya, konsisten dengan bagian lain halaman.
+    txs: r.txs?.map(t => ({ ...t, v: 0 })),
     // Tren per kategori diskalakan terhadap puncaknya SENDIRI: grafik ini hanya
     // pernah dilihat satu kategori pada satu waktu, jadi yang berguna adalah
     // bentuknya. Labelnya di UI menyebut ini relatif, bukan nominal.
@@ -88,6 +102,7 @@ export function maskPayload(p: SharePayload): SharePayload {
     ...p,
     rel: true,
     totals: undefined,
+    balance: undefined,
     expense: cat(p.expense),
     income: cat(p.income),
     cashflow: p.cashflow ? relPoints(p.cashflow) : undefined,

@@ -51,7 +51,7 @@ type Health = {
   mInc: number; mExp: number
 }
 
-type ShareOpts = { score: boolean; insights: boolean; cats: boolean; charts: boolean; masked: boolean }
+type ShareOpts = { score: boolean; insights: boolean; cats: boolean; charts: boolean; txs: boolean; balance: boolean; masked: boolean }
 type ShareRow = { id: string; slug: string; masked: boolean; expires_at: string | null; views: number }
 
 type Insight = { key: string; tone: 'good' | 'warn' | 'bad' | 'info'; title: string; text: string }
@@ -773,6 +773,13 @@ export default function KeuanganPage() {
           max: mine.reduce((m, t) => Math.max(m, Number(t.amount)), 0),
           days: new Set(mine.map(t => t.date)).size,
           trend,
+          // Dibatasi 60 baris TERBESAR per kategori: payload tetap wajar, dan
+          // yang terpotong adalah transaksi kecil yang paling tidak informatif.
+          // UI penerima menyebut pemotongan ini eksplisit.
+          txs: o.txs
+            ? [...mine].sort((x, y) => Number(y.amount) - Number(x.amount)).slice(0, 60)
+                .map(t => ({ d: t.date, n: t.note ?? undefined, v: Number(t.amount) }))
+            : undefined,
         }
       })
 
@@ -782,6 +789,7 @@ export default function KeuanganPage() {
       createdAt: new Date().toISOString(),
       masked: o.masked,
       totals: { income, expense, net: income - expense },
+      balance: o.balance ? totalBalance : undefined,
       monthLabels,
       score: o.score && health ? {
         score: health.score, band: health.band,
@@ -1497,7 +1505,7 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
 
 // ── bagikan ringkasan lewat tautan pendek ──
 function ShareSheet({ build, onClose }: { build: (o: ShareOpts) => SharePayload; onClose: () => void }) {
-  const [opts, setOpts] = useState<ShareOpts>({ score: true, insights: true, cats: true, charts: true, masked: true })
+  const [opts, setOpts] = useState<ShareOpts>({ score: true, insights: true, cats: true, charts: true, txs: true, balance: true, masked: true })
   const [ttl, setTtl] = useState(7)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1570,6 +1578,8 @@ function ShareSheet({ build, onClose }: { build: (o: ShareOpts) => SharePayload;
           <Toggle k="insights" label="Sertakan insight" desc="Temuan otomatis di periode ini." />
           <Toggle k="cats" label="Sertakan rincian kategori" desc="Porsi per kategori, bisa diketuk tamu untuk melihat jumlah transaksi, rata-rata, terbesar, dan tren 6 bulan." />
           <Toggle k="charts" label="Sertakan chart" desc="Arus kas 6 bulan dan pengeluaran harian di periode ini." />
+          <Toggle k="txs" label="Sertakan daftar transaksi" desc="Tanggal dan catatan tiap transaksi ikut terbagi (maks 60 terbesar per kategori). Catatan adalah teks bebas — periksa dulu isinya." />
+          <Toggle k="balance" label="Sertakan total saldo" desc="Total saldo seluruh rekening saat ini. Nama rekening tidak ikut." />
 
           <div>
             <label className="text-[11px] font-bold text-slate-400 block mb-1.5">Masa berlaku</label>

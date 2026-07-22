@@ -9,9 +9,9 @@ import { useState } from 'react'
 import Link from 'next/link'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-  AreaChart, Area,
+  AreaChart, Area, PieChart, Pie, Cell,
 } from 'recharts'
-import { X as XIcon, ChevronRight, TrendingUp } from 'lucide-react'
+import { X as XIcon, ChevronRight, TrendingUp, Wallet } from 'lucide-react'
 import { SHARE_TONE, rpShare, type SharePayload, type ShareCat } from '@/lib/finance-share'
 
 const TIP = { borderRadius: 14, border: '1px solid #E2E8F0', fontSize: 12, fontWeight: 700, background: '#fff' }
@@ -34,6 +34,28 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
         <p className="text-[13px] font-black">{t}</p>
         <span className="text-[10px] font-bold text-slate-300">ketuk untuk rincian</span>
       </div>
+
+      {/* Donut memakai `pct`, bukan `v` — saat nominal disembunyikan `v` sudah
+          dinolkan, dan donut dari nilai nol tidak menggambar apa pun. */}
+      <div className="w-40 h-40 mx-auto relative mb-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={rows.map(r => ({ name: r.name, value: Math.max(0.01, r.pct) }))}
+              dataKey="value" innerRadius={48} outerRadius={72} paddingAngle={2} strokeWidth={0}
+              isAnimationActive={false} className="cursor-pointer"
+              onClick={(_, i) => setPick({ c: rows[i], kind })}>
+              {rows.map(r => <Cell key={r.name} fill={r.color} />)}
+            </Pie>
+            <Tooltip contentStyle={TIP} formatter={(v: unknown) => `${Math.round(Number(v ?? 0))}%`} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <p className="text-[10px] text-slate-400 font-semibold">{rows.length} kategori</p>
+          <p className="text-[13px] font-black tabular-nums">{rows[0] ? `${Math.round(rows[0].pct)}%` : ''}</p>
+          <p className="text-[9px] text-slate-300 truncate max-w-[88px]">{rows[0]?.name ?? ''}</p>
+        </div>
+      </div>
+
       <div className="space-y-2.5">
         {rows.map(r => (
           <button key={r.name} onClick={() => setPick({ c: r, kind })}
@@ -75,6 +97,14 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
         </div>
 
         {p.note && <Card><p className="text-[13px] text-slate-600 leading-relaxed whitespace-pre-line">{p.note}</p></Card>}
+
+        {p.balance != null && (
+          <div className="rounded-3xl p-6 shadow-sm" style={{ background: '#E3F84E' }}>
+            <p className="text-[12px] font-semibold text-lime-900/60 mb-1 flex items-center gap-1.5"><Wallet size={14} /> Total Saldo</p>
+            <p className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 tabular-nums">{rpShare(p.balance)}</p>
+            <p className="text-[11px] text-lime-900/60 mt-1">Saldo seluruh rekening saat ringkasan ini dibuat.</p>
+          </div>
+        )}
 
         {p.totals && (
           <div className="grid grid-cols-3 gap-3">
@@ -279,6 +309,30 @@ function CatDetail({ c, kind, masked, rel, monthLabels, onClose }: {
                 <p className="text-[10px] text-slate-300 mt-1.5 leading-relaxed">
                   Tinggi batang relatif terhadap bulan tertinggi kategori ini — bukan perbandingan antar-kategori.
                 </p>
+              )}
+            </div>
+          )}
+
+          {c.txs && c.txs.length > 0 && (
+            <div className="mt-4">
+              <p className="text-[11px] font-bold text-slate-400 mb-1.5">
+                Transaksi ({c.txs.length}{c.count != null && c.count > c.txs.length ? ` dari ${c.count}` : ''})
+              </p>
+              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                {c.txs.map((t, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 rounded-xl bg-[#F7F7FA] px-3.5 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-bold truncate">{t.n || c.name}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(t.d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <span className="text-[13px] font-black tabular-nums shrink-0" style={{ color: c.color }}>{money(t.v)}</span>
+                  </div>
+                ))}
+              </div>
+              {c.count != null && c.count > c.txs.length && (
+                <p className="text-[10px] text-slate-300 mt-1.5">Menampilkan {c.txs.length} transaksi terbesar.</p>
               )}
             </div>
           )}
