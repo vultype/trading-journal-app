@@ -1338,6 +1338,129 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     )
   })() : null
 
+  // ── Kesimpulan Dolar + Yield → Emas, DIBANDINGKAN dengan teknikal nyata ──
+  // Aturan intermarket klasik: dolar & yield sama-sama menguat menekan emas;
+  // sama-sama melemah mendukung emas; bertentangan → emas cenderung menyamping.
+  //
+  // Yang membuat panel ini berguna bukan aturannya (itu teori umum), melainkan
+  // PEMBANDINGNYA dengan harga emas sungguhan. Korelasi ini sering meleset —
+  // saat meleset, harga yang benar, bukan teorinya.
+  const MacroVerdictPanel = macroCandleSnap?.blend ? (() => {
+    const b = macroCandleSnap.blend!
+    // impact = dampak KE EMAS. Arah instrumennya sendiri adalah kebalikannya.
+    const dolarArah = -b.dollarImpact          // + = dolar menguat
+    const yieldArah = -b.yieldImpact           // + = yield naik
+    const kuat = (v: number) => Math.abs(v) >= 20
+    const dolarLbl = !kuat(dolarArah) ? 'Datar' : dolarArah > 0 ? 'Menguat' : 'Melemah'
+    const yieldLbl = !kuat(yieldArah) ? 'Datar' : yieldArah > 0 ? 'Naik' : 'Turun'
+
+    // Kesimpulan makro untuk emas
+    let makroEmas: 'BULLISH' | 'BEARISH' | 'SIDEWAYS' = 'SIDEWAYS'
+    let alasan = ''
+    if (yieldStale) {
+      // Yield belum buka → hanya dolar yang bisa dibaca, keyakinan lebih rendah.
+      makroEmas = !kuat(dolarArah) ? 'SIDEWAYS' : dolarArah > 0 ? 'BEARISH' : 'BULLISH'
+      alasan = !kuat(dolarArah)
+        ? 'Dolar datar dan pasar yield belum buka — makro belum memberi arah.'
+        : `Dolar ${dolarLbl.toLowerCase()} sementara pasar yield belum buka. Kesimpulan hanya dari dolar, jadi keyakinannya lebih rendah dari biasanya.`
+    } else if (kuat(dolarArah) && kuat(yieldArah)) {
+      if (dolarArah > 0 && yieldArah > 0) { makroEmas = 'BEARISH'; alasan = 'Dolar menguat DAN yield naik — keduanya menekan emas. Ini kombinasi paling bearish untuk emas.' }
+      else if (dolarArah < 0 && yieldArah < 0) { makroEmas = 'BULLISH'; alasan = 'Dolar melemah DAN yield turun — keduanya mendukung emas. Ini kombinasi paling bullish untuk emas.' }
+      else { makroEmas = 'SIDEWAYS'; alasan = `Dolar ${dolarLbl.toLowerCase()} tapi yield ${yieldLbl.toLowerCase()} — keduanya bertentangan, saling meredam. Emas cenderung menyamping.` }
+    } else {
+      makroEmas = 'SIDEWAYS'
+      alasan = 'Dolar dan yield sama-sama belum bergerak tegas — belum ada dorongan makro yang berarti.'
+    }
+
+    const mc = makroEmas === 'BULLISH' ? '#10b981' : makroEmas === 'BEARISH' ? '#ef4444' : '#94a3b8'
+    // Realita teknikal emas sebagai pembanding
+    const teknikal = conf.label   // BULLISH / BEARISH / NETRAL
+    const cocok = makroEmas !== 'SIDEWAYS' && teknikal !== 'NETRAL' && makroEmas === teknikal
+    const meleset = makroEmas !== 'SIDEWAYS' && teknikal !== 'NETRAL' && makroEmas !== teknikal
+
+    const Kolom = ({ label, val, arahLbl, live }: { label: string; val: number; arahLbl: string; live: boolean }) => (
+      <div className="flex-1 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+        <p className="text-[11px] font-semibold text-white/45 mb-1.5">{label}</p>
+        {live ? (
+          <>
+            <p className="text-lg font-black" style={{ color: Math.abs(val) < 20 ? 'rgba(255,255,255,.55)' : val > 0 ? '#f87171' : '#34d399' }}>
+              {arahLbl === 'Datar' ? '→' : val > 0 ? '▲' : '▼'} {arahLbl}
+            </p>
+            <p className="text-[11px] text-white/35 tabular-nums mt-0.5">skor {val >= 0 ? '+' : ''}{Math.round(val)}</p>
+          </>
+        ) : (
+          <p className="text-[13px] text-amber-400/80 flex items-center gap-1.5 mt-1"><Clock size={13} /> Belum buka</p>
+        )}
+      </div>
+    )
+
+    return (
+      <Panel title="Dolar + Yield → Kesimpulan Emas" icon={GitBranch} accent={mc}
+        info="Aturan intermarket: dolar & yield sama-sama menguat menekan emas; sama-sama melemah mendukung emas; bertentangan membuat emas cenderung menyamping. Panel ini membandingkan kesimpulan aturan tersebut dengan pergerakan teknikal XAU/USD yang SEBENARNYA — karena korelasi ini kerap meleset, dan saat meleset harga yang benar.">
+        <div className="space-y-3">
+          {/* Dua input */}
+          <div className="flex gap-2.5">
+            <Kolom label="Dolar" val={dolarArah} arahLbl={dolarLbl} live />
+            <Kolom label="Yield 10Y" val={yieldArah} arahLbl={yieldLbl} live={!yieldStale} />
+          </div>
+
+          {/* Kesimpulan makro */}
+          <div className="rounded-xl border-2 p-3.5" style={{ borderColor: mc, background: `${mc}12` }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Menurut Aturan Makro, Emas</p>
+            <p className="text-2xl font-black tracking-tight" style={{ color: mc }}>
+              {makroEmas === 'BULLISH' ? '▲ BULLISH' : makroEmas === 'BEARISH' ? '▼ BEARISH' : '↔ SIDEWAYS'}
+            </p>
+            <p className="text-[12px] text-white/60 leading-relaxed mt-1.5">{alasan}</p>
+          </div>
+
+          {/* Realita teknikal emas */}
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Kenyataan Harga XAU/USD</p>
+            <div className="flex items-end justify-between gap-3 flex-wrap mb-2.5">
+              <div>
+                <p className="text-xl font-black tabular-nums">${f2(feed.price)}</p>
+                <p className="text-[11px] tabular-nums" style={{ color: feed.changePct >= 0 ? '#34d399' : '#f87171' }}>
+                  {feed.changePct >= 0 ? '+' : ''}{feed.changePct.toFixed(2)}% hari ini
+                </p>
+              </div>
+              <span className={`text-base font-black ${dirColor(teknikal)}`}>{teknikal === 'NETRAL' ? 'CAMPUR' : teknikal}</span>
+            </div>
+            <div className="flex gap-1.5">
+              {TFS.map(tf => {
+                const bl = feed.tf[tf].bias.label
+                return (
+                  <div key={tf} className="flex-1 rounded-lg px-2 py-1.5 text-center"
+                    style={{ background: bl === 'BULLISH' ? '#10b98118' : bl === 'BEARISH' ? '#ef444418' : 'rgba(255,255,255,.04)' }}>
+                    <p className="text-[10px] text-white/40 font-semibold">{tf}</p>
+                    <p className={`text-[11px] font-black ${dirColor(bl)}`}>{bl === 'BULLISH' ? 'BULL' : bl === 'BEARISH' ? 'BEAR' : '—'}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Putusan perbandingan */}
+          <div className="rounded-xl p-3.5" style={{
+            background: meleset ? '#f59e0b14' : cocok ? '#10b98112' : 'rgba(255,255,255,.03)',
+            border: `1px solid ${meleset ? '#f59e0b44' : cocok ? '#10b98133' : 'rgba(255,255,255,.08)'}`,
+          }}>
+            <p className="text-[13px] leading-relaxed" style={{ color: meleset ? '#fcd34d' : cocok ? '#6ee7b7' : 'rgba(255,255,255,.65)' }}>
+              {meleset
+                ? `Makro bilang ${makroEmas.toLowerCase()}, tapi harga emas justru ${teknikal.toLowerCase()}. Korelasi sedang TIDAK berlaku — bisa karena permintaan safe-haven, pembelian bank sentral, atau arus yang tak terbaca dolar/yield. Dalam kondisi begini, harga yang benar; jangan melawan harga hanya karena teori makro.`
+                : cocok
+                  ? `Makro dan harga emas sama-sama ${teknikal.toLowerCase()}. Ini konfirmasi terkuat — makro mendukung apa yang dilakukan harga.`
+                  : 'Belum ada pertentangan maupun konfirmasi tegas antara makro dan harga. Andalkan struktur harga dan level.'}
+            </p>
+          </div>
+
+          <p className="text-[11px] text-white/30 leading-relaxed">
+            Aturannya: dolar ▲ + yield ▲ → emas bearish · dolar ▼ + yield ▼ → emas bullish · bertentangan → emas sideways.
+          </p>
+        </div>
+      </Panel>
+    )
+  })() : null
+
   const MomentumPanel = (
     <Panel title="Volatilitas & Momentum" icon={Waves} info="Volatilitas = seberapa besar pergerakan sekarang vs rata-rata (rasio ATR M5). Rendah = kurang reliabel/whipsaw, Tinggi = pergerakan cepat. RSI = jenuh beli (>70)/jual (<30). Jarum bergetar seperti speedometer.">
       <div className="rounded-xl bg-white/[0.03] p-2.5 mb-2.5 flex items-center gap-3">
@@ -2384,7 +2507,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                 suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{SignalMeterPanel}</div>
-              {MacroMtfPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MacroMtfPanel}</div>}
+              {MacroMtfPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MacroMtfPanel}{MacroVerdictPanel}</div>}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{HtfBiasPanel}{ReversalPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{OscillatorPanel}{MomentumPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ProjeksiPanel}{ZonaPanel}</div>
@@ -2484,7 +2607,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                   </> : undefined} />
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MakroKesimpulanPanel}{RiskSentimentPanel}</div>
-              {MacroMtfPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MacroMtfPanel}</div>}
+              {MacroMtfPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MacroMtfPanel}{MacroVerdictPanel}</div>}
               {CrossPanel}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
               {GvzPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{GvzPanel}</div>}
