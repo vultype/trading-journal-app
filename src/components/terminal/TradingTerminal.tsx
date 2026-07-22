@@ -927,13 +927,18 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const fastMacro = fastMacroRaw ? { ...fastMacroRaw, yieldImpact: yieldStale ? 0 : fastMacroRaw.yieldImpact } : null
   const macroM15Raw = macroTechReady ? macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15) : null
   const macroM15 = macroM15Raw ? { ...macroM15Raw, yieldImpact: yieldStale ? 0 : macroM15Raw.yieldImpact } : null
-  // Ringkasan makro per-candle (M5/M15/H1) untuk diumpankan ke Analisa AI.
-  const macroCandleSnap = macroTechReady ? {
-    M5: macroCandleImpact(macroTech.uup!.M5, macroTech.ief!.M5),
-    M15: macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15),
-    H1: macroCandleImpact(macroTech.uup!.H1, macroTech.ief!.H1),
-    blend: fastMacro,
-  } : null
+  // Ringkasan makro per-candle (M5/M15/H1) — dipakai panel Makro MTF sekaligus
+  // diumpankan ke Analisa AI. yieldImpact dinolkan saat beku, konsisten dengan
+  // perlakuan di skor: jangan sampai AI & panel melihat angka yang berbeda.
+  const macroCandleSnap = macroTechReady ? (() => {
+    const z = (m: { dollarImpact: number; yieldImpact: number }) => ({ ...m, yieldImpact: yieldStale ? 0 : m.yieldImpact })
+    return {
+      M5: z(macroCandleImpact(macroTech.uup!.M5, macroTech.ief!.M5)),
+      M15: z(macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15)),
+      H1: z(macroCandleImpact(macroTech.uup!.H1, macroTech.ief!.H1)),
+      blend: fastMacro,
+    }
+  })() : null
   const sc = scores(feed.tf, macro, null, riskOn, cross.uup?.changePct ?? null, fastMacro)
   const conf = confluence(feed.tf)
   const dir = sc.label
@@ -1229,6 +1234,72 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       <p className="text-[9px] text-white/30 mt-2 pt-2 border-t border-white/5">Entry paling aman searah TF besar (H1).</p>
     </Panel>
   )
+  // ── Makro per-timeframe, disandingkan dengan bias Teknikal ──
+  // Tujuannya menjawab "apakah makro dan teknikal searah di TF yang sama?".
+  // Sebelumnya data M5/M15/H1 ini sudah dihitung tapi hanya dikirim ke AI —
+  // tidak pernah terlihat user, padahal justru di sinilah korelasi/divergensi
+  // makro vs teknikal paling jelas terbaca.
+  const MacroMtfPanel = macroCandleSnap ? (() => {
+    const rows = TFS.map(tf => {
+      const m = macroCandleSnap[tf]
+      const tech = feed.tf[tf].bias
+      // Dampak makro ke EMAS: positif = mendukung emas, negatif = menekan.
+      const macroDir = m.dollarImpact + (yieldStale ? 0 : m.yieldImpact) > 20 ? 'BULLISH'
+        : m.dollarImpact + (yieldStale ? 0 : m.yieldImpact) < -20 ? 'BEARISH' : 'NETRAL'
+      const sejalan = macroDir !== 'NETRAL' && tech.label !== 'NETRAL' && macroDir === tech.label
+      const lawan = macroDir !== 'NETRAL' && tech.label !== 'NETRAL' && macroDir !== tech.label
+      return { tf, m, tech, macroDir, sejalan, lawan }
+    })
+    const nLawan = rows.filter(r => r.lawan).length
+    const nSejalan = rows.filter(r => r.sejalan).length
+    const bar = (v: number) => {
+      const c = v > 20 ? '#10b981' : v < -20 ? '#ef4444' : 'rgba(255,255,255,.25)'
+      return (
+        <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden relative">
+          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/15" />
+          <div className="absolute top-0 bottom-0 rounded-full" style={{ background: c, left: v >= 0 ? '50%' : `${50 + v / 2}%`, width: `${Math.abs(v) / 2}%` }} />
+        </div>
+      )
+    }
+    return (
+      <Panel title="Makro per-Timeframe vs Teknikal" icon={Scale}
+        info="Dampak makro ke EMAS dihitung pada struktur candle M5/M15/H1 — sama seperti pilar Teknikal — supaya bisa dibandingkan langsung. Hijau = mendukung emas, merah = menekan. Kolom kanan adalah bias Teknikal di TF yang sama; kalau berlawanan, sinyal sedang bertentangan dan risiko whipsaw naik."
+        right={<span className="text-[10px] font-bold" style={{ color: nLawan >= 2 ? '#ef4444' : nSejalan >= 2 ? '#10b981' : 'rgba(255,255,255,.45)' }}>
+          {nLawan >= 2 ? 'BERTENTANGAN' : nSejalan >= 2 ? 'SEJALAN' : 'CAMPUR'}
+        </span>}>
+        <div className="space-y-2.5">
+          <div className="grid grid-cols-[2rem_1fr_1fr_4.5rem] gap-2 text-[9px] font-bold uppercase tracking-wider text-white/35">
+            <span>TF</span><span>Dolar</span><span>Yield</span><span className="text-right">Teknikal</span>
+          </div>
+          {rows.map(r => (
+            <div key={r.tf} className="grid grid-cols-[2rem_1fr_1fr_4.5rem] gap-2 items-center">
+              <span className="text-[11px] font-bold text-white/60">{r.tf}</span>
+              <div className="flex items-center gap-1.5">{bar(r.m.dollarImpact)}<span className="text-[9px] tabular-nums w-7 text-right text-white/45">{r.m.dollarImpact >= 0 ? '+' : ''}{Math.round(r.m.dollarImpact)}</span></div>
+              {yieldStale
+                ? <span className="text-[9px] text-amber-400/70 flex items-center gap-1"><Clock size={9} /> beku</span>
+                : <div className="flex items-center gap-1.5">{bar(r.m.yieldImpact)}<span className="text-[9px] tabular-nums w-7 text-right text-white/45">{r.m.yieldImpact >= 0 ? '+' : ''}{Math.round(r.m.yieldImpact)}</span></div>}
+              <span className={`text-[10px] font-bold text-right ${dirColor(r.tech.label)}`}>
+                {r.lawan ? '⚠ ' : r.sejalan ? '✓ ' : ''}{r.tech.label}
+              </span>
+            </div>
+          ))}
+          <div className="pt-2 border-t border-white/5 space-y-1">
+            <p className="text-[10px] text-white/45 leading-relaxed">
+              {nLawan >= 2
+                ? '⚠ Makro dan Teknikal berlawanan di mayoritas timeframe — kondisi rawan whipsaw. Kurangi ukuran posisi atau tunggu keduanya searah.'
+                : nSejalan >= 2
+                  ? '✓ Makro dan Teknikal searah di mayoritas timeframe — konfluensi terkuat untuk entry.'
+                  : 'Sinyal campur antar timeframe — belum ada dorongan dominan.'}
+            </p>
+            <p className="text-[9px] text-white/25 leading-relaxed">
+              Dolar: {macroTech.dollarLive ? 'forex 24 jam (live)' : 'proxy ETF UUP'} · Yield: proxy ETF IEF{yieldStale ? ` (beku ${Math.round(macroTech.yieldStaleMin!)} mnt — bursa AS tutup, kontribusi dinolkan)` : ' (live)'}
+            </p>
+          </div>
+        </div>
+      </Panel>
+    )
+  })() : null
+
   const MomentumPanel = (
     <Panel title="Volatilitas & Momentum" icon={Waves} info="Volatilitas = seberapa besar pergerakan sekarang vs rata-rata (rasio ATR M5). Rendah = kurang reliabel/whipsaw, Tinggi = pergerakan cepat. RSI = jenuh beli (>70)/jual (<30). Jarum bergetar seperti speedometer.">
       <div className="rounded-xl bg-white/[0.03] p-2.5 mb-2.5 flex items-center gap-3">
@@ -2275,6 +2346,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                 suggestions={['Layak entry sekarang atau tunggu pullback?', 'Level stop & target yang logis di mana?', 'Tren M15/H1 searah tidak?']} />
               <ChartPanel onExpand={() => setChartFull(true)} hasAiLevels={!!ai.data?.chartLevels} />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MtfPanel}{SignalMeterPanel}</div>
+              {MacroMtfPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MacroMtfPanel}</div>}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{HtfBiasPanel}{ReversalPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{OscillatorPanel}{MomentumPanel}</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{ProjeksiPanel}{ZonaPanel}</div>
@@ -2374,6 +2446,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
                   </> : undefined} />
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MakroKesimpulanPanel}{RiskSentimentPanel}</div>
+              {MacroMtfPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{MacroMtfPanel}</div>}
               {CrossPanel}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{YieldCurvePanel}{GoldSilverPanel}</div>
               {GvzPanel && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">{GvzPanel}</div>}
