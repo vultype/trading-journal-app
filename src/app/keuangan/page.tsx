@@ -51,7 +51,7 @@ type Health = {
   mInc: number; mExp: number
 }
 
-type ShareOpts = { score: boolean; insights: boolean; cats: boolean; masked: boolean }
+type ShareOpts = { score: boolean; insights: boolean; cats: boolean; charts: boolean; masked: boolean }
 type ShareRow = { id: string; slug: string; masked: boolean; expires_at: string | null; views: number }
 
 type Insight = { key: string; tone: 'good' | 'warn' | 'bad' | 'info'; title: string; text: string }
@@ -746,26 +746,54 @@ export default function KeuanganPage() {
   // pernah menyertakan baris transaksi, nama rekening, catatan, maupun URL
   // struk. Apa pun yang masuk ke sini otomatis ikut terbuka ke siapa pun yang
   // memegang tautannya.
-  const buildShare = (o: ShareOpts): SharePayload => ({
-    v: SHARE_V,
-    period: range.label,
-    createdAt: new Date().toISOString(),
-    masked: o.masked,
-    totals: { income, expense, net: income - expense },
-    score: o.score && health ? {
-      score: health.score, band: health.band,
-      pillars: health.pillars.map(p => ({ label: p.label, weight: p.weight, score: p.score, detail: p.detail })),
-    } : undefined,
-    expense: o.cats ? expBreakdown.slice(0, 8).map((b, i) => ({
-      name: b.cat?.name ?? 'Tanpa kategori', color: catColor(b.cat, i),
-      v: b.v, pct: expense > 0 ? (b.v / expense) * 100 : 0,
-    })) : undefined,
-    income: o.cats ? incBreakdown.slice(0, 8).map((b, i) => ({
-      name: b.cat?.name ?? 'Tanpa kategori', color: catColor(b.cat, i),
-      v: b.v, pct: income > 0 ? (b.v / income) * 100 : 0,
-    })) : undefined,
-    insights: o.insights ? insights.slice(0, 10).map(i => ({ tone: i.tone, title: i.title, text: i.text })) : undefined,
-  })
+  const buildShare = (o: ShareOpts): SharePayload => {
+    const monthLabels: string[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(new Date().getFullYear(), new Date().getMonth() - i, 1)
+      monthLabels.push(BLN3[d.getMonth()])
+    }
+    // Rincian per kategori: hanya AGREGAT. Jumlah, rata-rata, terbesar, hari
+    // aktif, dan bentuk tren 6 bulan — tanpa satu pun catatan, tanggal, atau
+    // rekening yang bisa mengidentifikasi transaksi tertentu.
+    const catRows = (bd: typeof expBreakdown, kind: 'income' | 'expense', tot: number) =>
+      bd.slice(0, 8).map((b, i) => {
+        const mine = periodTxs.filter(t => t.type === kind && (t.category_id ?? '-') === b.cid)
+        const trend: number[] = []
+        for (let k = 5; k >= 0; k--) {
+          const d = new Date(new Date().getFullYear(), new Date().getMonth() - k, 1)
+          const pre = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+          trend.push(txs.filter(t => t.type === kind && (t.category_id ?? '-') === b.cid && t.date.startsWith(pre))
+            .reduce((s, t) => s + Number(t.amount), 0))
+        }
+        return {
+          name: b.cat?.name ?? 'Tanpa kategori', color: catColor(b.cat, i),
+          v: b.v, pct: tot > 0 ? (b.v / tot) * 100 : 0,
+          count: mine.length,
+          avg: mine.length ? b.v / mine.length : 0,
+          max: mine.reduce((m, t) => Math.max(m, Number(t.amount)), 0),
+          days: new Set(mine.map(t => t.date)).size,
+          trend,
+        }
+      })
+
+    return {
+      v: SHARE_V,
+      period: range.label,
+      createdAt: new Date().toISOString(),
+      masked: o.masked,
+      totals: { income, expense, net: income - expense },
+      monthLabels,
+      score: o.score && health ? {
+        score: health.score, band: health.band,
+        pillars: health.pillars.map(p => ({ label: p.label, weight: p.weight, score: p.score, detail: p.detail })),
+      } : undefined,
+      expense: o.cats ? catRows(expBreakdown, 'expense', expense) : undefined,
+      income: o.cats ? catRows(incBreakdown, 'income', income) : undefined,
+      insights: o.insights ? insights.slice(0, 10).map(i => ({ tone: i.tone, title: i.title, text: i.text })) : undefined,
+      cashflow: o.charts ? cashflow6m.map(m => ({ label: m.label, masuk: m.masuk, keluar: m.keluar })) : undefined,
+      daily: o.charts ? dailySeries.map(d => ({ label: d.label, masuk: d.masuk, keluar: d.keluar })) : undefined,
+    }
+  }
 
   const V2Banner = needsV2 ? (
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
@@ -1469,7 +1497,7 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
 
 // ── bagikan ringkasan lewat tautan pendek ──
 function ShareSheet({ build, onClose }: { build: (o: ShareOpts) => SharePayload; onClose: () => void }) {
-  const [opts, setOpts] = useState<ShareOpts>({ score: true, insights: true, cats: true, masked: true })
+  const [opts, setOpts] = useState<ShareOpts>({ score: true, insights: true, cats: true, charts: true, masked: true })
   const [ttl, setTtl] = useState(7)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1540,7 +1568,8 @@ function ShareSheet({ build, onClose }: { build: (o: ShareOpts) => SharePayload;
           <Toggle k="masked" label="Sembunyikan nominal" desc="Hanya persentase, skor, dan perbandingan yang tampil. Nominal rupiah diganti Rp•••." />
           <Toggle k="score" label="Sertakan skor kesehatan" desc="Skor 0–100 beserta rincian tiap pilarnya." />
           <Toggle k="insights" label="Sertakan insight" desc="Temuan otomatis di periode ini." />
-          <Toggle k="cats" label="Sertakan rincian kategori" desc="Porsi pengeluaran & pemasukan per kategori." />
+          <Toggle k="cats" label="Sertakan rincian kategori" desc="Porsi per kategori, bisa diketuk tamu untuk melihat jumlah transaksi, rata-rata, terbesar, dan tren 6 bulan." />
+          <Toggle k="charts" label="Sertakan chart" desc="Arus kas 6 bulan dan pengeluaran harian di periode ini." />
 
           <div>
             <label className="text-[11px] font-bold text-slate-400 block mb-1.5">Masa berlaku</label>
