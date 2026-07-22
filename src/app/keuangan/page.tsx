@@ -174,6 +174,8 @@ export default function KeuanganPage() {
   const [editTx, setEditTx] = useState<FinTx | null>(null)
   const [detailTx, setDetailTx] = useState<FinTx | null>(null)
   const [showAcc, setShowAcc] = useState(false)
+  // rekening yang langsung dibuka dalam mode edit saat sheet terbuka
+  const [accFocus, setAccFocus] = useState<string | null>(null)
   const [showCat, setShowCat] = useState(false)
   const [showGoal, setShowGoal] = useState(false)
   const [goalDetail, setGoalDetail] = useState<FinGoal | null>(null)
@@ -641,14 +643,15 @@ export default function KeuanganPage() {
                           const Icon = (KIND_META[a.kind] ?? KIND_META.lainnya).icon
                           const clr = a.color || colorAt(i)
                           return (
-                            <div key={a.id} className="flex items-center gap-3 rounded-2xl bg-[#F7F7FA] px-4 py-3">
+                            <button key={a.id} onClick={() => { setAccFocus(a.id); setShowAcc(true) }}
+                              className="w-full flex items-center gap-3 rounded-2xl bg-[#F7F7FA] px-4 py-3 text-left hover:bg-slate-100 transition-colors">
                               <span className="flex items-center justify-center w-9 h-9 rounded-full" style={{ background: `${clr}1f`, color: clr }}><Icon size={16} /></span>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[13px] font-bold truncate">{a.name}</p>
                                 <p className="text-[11px] text-slate-400">{(KIND_META[a.kind] ?? KIND_META.lainnya).label}</p>
                               </div>
                               <p className="text-[14px] font-black tabular-nums">{rpShort(balances.get(a.id) ?? 0)}</p>
-                            </div>
+                            </button>
                           )
                         })}
                       </div>
@@ -1065,7 +1068,7 @@ export default function KeuanganPage() {
           onEdit={() => { setEditTx(detailTx); setDetailTx(null) }}
           onDelete={() => delTx(detailTx.id)} />
       )}
-      {showAcc && <AccSheet accounts={accounts} balances={balances} userId={sub.userId!} onClose={() => setShowAcc(false)} onChanged={loadAll} />}
+      {showAcc && <AccSheet accounts={accounts} balances={balances} focusId={accFocus} userId={sub.userId!} onClose={() => { setShowAcc(false); setAccFocus(null) }} onChanged={loadAll} />}
       {showCat && <CatSheet cats={cats} userId={sub.userId!} onClose={() => setShowCat(false)} onChanged={loadAll} />}
       {budgetSheet && (
         <BudgetSheet
@@ -1339,8 +1342,8 @@ function TxSheet({ kind, edit, accounts, cats, userId, onClose, onSaved }: {
 }
 
 // ── kelola rekening ──
-function AccSheet({ accounts, balances, userId, onClose, onChanged }: {
-  accounts: FinAccount[]; balances: Map<string, number>; userId: string
+function AccSheet({ accounts, balances, focusId, userId, onClose, onChanged }: {
+  accounts: FinAccount[]; balances: Map<string, number>; focusId?: string | null; userId: string
   onClose: () => void; onChanged: () => void
 }) {
   const [name, setName] = useState('')
@@ -1348,6 +1351,42 @@ function AccSheet({ accounts, balances, userId, onClose, onChanged }: {
   const [init, setInit] = useState('')
   const [color, setColor] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // ── edit satu rekening (inline, menggantikan barisnya) ──
+  // Sheet ini di-mount ulang tiap kali dibuka, jadi focusId cukup dibaca sekali
+  // sebagai nilai awal — tidak perlu effect yang menyinkronkan ulang.
+  const focused = focusId ? accounts.find(a => a.id === focusId) : null
+  const [editId, setEditId] = useState<string | null>(focused?.id ?? null)
+  const [eName, setEName] = useState(focused?.name ?? '')
+  const [eKind, setEKind] = useState(focused?.kind ?? 'bank')
+  const [eBal, setEBal] = useState(focused ? Math.round(balances.get(focused.id) ?? 0).toLocaleString('id-ID') : '')
+
+  function openEdit(a: FinAccount) {
+    setEditId(a.id); setEName(a.name); setEKind(a.kind)
+    setEBal(Math.round(balances.get(a.id) ?? 0).toLocaleString('id-ID'))
+  }
+
+  // Saldo adalah nilai TURUNAN (saldo awal + transaksi), jadi tidak bisa ditulis
+  // langsung. Yang diubah adalah saldo awalnya, digeser sebesar selisih antara
+  // saldo yang diinginkan dan saldo hasil hitungan sekarang.
+  //
+  // Ini sengaja TIDAK dibuat sebagai transaksi penyesuaian: transaksi akan
+  // terhitung sebagai pemasukan/pengeluaran dan merusak rasio tabungan,
+  // rata-rata harian, serta seluruh chart arus kas — padahal uangnya tidak
+  // benar-benar masuk atau keluar, hanya catatannya yang salah.
+  async function saveEdit(a: FinAccount) {
+    if (!eName.trim()) { toast.error('Isi nama rekening'); return }
+    const target = Number(eBal.replace(/[^\d-]/g, '')) || 0
+    const cur = Math.round(balances.get(a.id) ?? 0)
+    const nextInit = Number(a.initial_balance) + (target - cur)
+    setBusy(true)
+    const { error } = await createClient().from('fin_accounts')
+      .update({ name: eName.trim(), kind: eKind, initial_balance: nextInit }).eq('id', a.id)
+    setBusy(false)
+    if (error) { toast.error(error.message); return }
+    toast.success(target !== cur ? `Saldo disesuaikan ke ${rp(target)}` : 'Rekening diperbarui')
+    setEditId(null); onChanged()
+  }
 
   async function add() {
     if (!name.trim()) { toast.error('Isi nama rekening'); return }
@@ -1375,24 +1414,72 @@ function AccSheet({ accounts, balances, userId, onClose, onChanged }: {
   return (
     <Sheet title="Kelola Rekening" onClose={onClose}>
       <div className="space-y-2 mb-5">
-        {accounts.map((a, i) => (
-          <div key={a.id} className="rounded-2xl bg-[#F7F7FA] px-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: a.color || colorAt(i) }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-bold truncate">{a.name}</p>
-                <p className="text-[11px] text-slate-400">{(KIND_META[a.kind] ?? KIND_META.lainnya).label} · saldo {rp(balances.get(a.id) ?? 0)}</p>
+        {accounts.map((a, i) => {
+          if (editId === a.id) {
+            const cur = Math.round(balances.get(a.id) ?? 0)
+            const target = Number(eBal.replace(/[^\d-]/g, '')) || 0
+            const delta = target - cur
+            return (
+              <div key={a.id} className="rounded-2xl bg-white ring-2 ring-indigo-200 px-4 py-3.5 space-y-3">
+                <input value={eName} onChange={e => setEName(e.target.value)} placeholder="Nama rekening"
+                  className="w-full h-11 px-3.5 rounded-xl bg-[#F7F7FA] text-[13px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200" autoFocus />
+                <select value={eKind} onChange={e => setEKind(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl bg-[#F7F7FA] text-[13px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
+                  {Object.entries(KIND_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                </select>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 block mb-1.5">Saldo saat ini (Rp)</label>
+                  {/* Minus di awal dipertahankan — kartu kredit & rekening yang
+                      overdraft memang bersaldo negatif. */}
+                  <input value={eBal} inputMode="numeric"
+                    onChange={e => {
+                      const neg = e.target.value.trimStart().startsWith('-')
+                      const d = e.target.value.replace(/[^\d]/g, '')
+                      setEBal((neg ? '-' : '') + (d ? Number(d).toLocaleString('id-ID') : ''))
+                    }}
+                    className="w-full h-11 px-3.5 rounded-xl bg-[#F7F7FA] text-[14px] font-black tabular-nums outline-none focus:ring-2 focus:ring-indigo-200" />
+                  {delta !== 0 ? (
+                    <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                      Selisih <b className={delta > 0 ? 'text-emerald-600' : 'text-rose-500'}>{delta > 0 ? '+' : '−'}{rp(Math.abs(delta))}</b> diterapkan ke saldo awal
+                      ({rp(Number(a.initial_balance))} → <b className="text-slate-600">{rp(Number(a.initial_balance) + delta)}</b>).
+                      Riwayat transaksi tidak berubah.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-300 mt-1.5">Saldo awal {rp(Number(a.initial_balance))} + riwayat transaksi.</p>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <button onClick={() => saveEdit(a)} disabled={busy}
+                    className="flex-1 h-11 rounded-xl bg-indigo-500 text-white text-[13px] font-black hover:bg-indigo-600 disabled:opacity-50">
+                    {busy ? <Loader2 size={15} className="animate-spin inline" /> : 'Simpan'}
+                  </button>
+                  <button onClick={() => setEditId(null)} className="px-4 h-11 rounded-xl bg-[#F7F7FA] text-slate-500 text-[13px] font-black hover:bg-slate-100">Batal</button>
+                </div>
               </div>
-              <button onClick={() => del(a.id)} className="text-slate-300 hover:text-rose-500"><Trash2 size={15} /></button>
+            )
+          }
+          return (
+            <div key={a.id} className="rounded-2xl bg-[#F7F7FA] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: a.color || colorAt(i) }} />
+                <button onClick={() => openEdit(a)} className="flex-1 min-w-0 text-left">
+                  <p className="text-[13px] font-bold truncate">{a.name}</p>
+                  <p className="text-[11px] text-slate-400">{(KIND_META[a.kind] ?? KIND_META.lainnya).label} · saldo {rp(balances.get(a.id) ?? 0)}</p>
+                </button>
+                <button onClick={() => openEdit(a)} className="text-slate-300 hover:text-indigo-500"><Pencil size={14} /></button>
+                <button onClick={() => del(a.id)} className="text-slate-300 hover:text-rose-500"><Trash2 size={15} /></button>
+              </div>
+              <div className="flex gap-1.5 mt-2">
+                {PALETTE.map(c => (
+                  <button key={c} onClick={() => setAccColor(a.id, c)}
+                    className={`w-5 h-5 rounded-full ${a.color === c ? 'ring-2 ring-offset-1 ring-slate-300' : ''}`} style={{ background: c }} />
+                ))}
+              </div>
             </div>
-            <div className="flex gap-1.5 mt-2">
-              {PALETTE.map(c => (
-                <button key={c} onClick={() => setAccColor(a.id, c)}
-                  className={`w-5 h-5 rounded-full ${a.color === c ? 'ring-2 ring-offset-1 ring-slate-300' : ''}`} style={{ background: c }} />
-              ))}
-            </div>
-          </div>
-        ))}
+          )
+        })}
         {accounts.length === 0 && <p className="text-center text-[13px] text-slate-300 py-4">Belum ada rekening.</p>}
       </div>
       <div className="space-y-3 border-t border-slate-100 pt-4">
