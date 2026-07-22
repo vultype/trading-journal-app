@@ -917,7 +917,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const riskOn = riskOnScore(cross, usOpen)
   // Makro per-candle (UUP=dolar, IEF=yield 10Y terbalik) — M5/M15/H1, sebanding dgn Teknikal.
   const macroTechReady = macroTech.uup && macroTech.ief
-  // Yield BEKU = bursa AS tutup (IEF adalah ETF, hanya trading 09:30-16:00 ET).
+  // Yield BELUM BUKA = bursa AS tutup (IEF adalah ETF, hanya trading 09:30-16:00 ET).
   // Di sesi Asia/Eropa datanya berjam-jam lalu. Memakainya seolah-olah hidup
   // membuat terminal menampilkan dampak -100 penuh keyakinan dari data basi,
   // padahal emas sedang bergerak live. Karena itu kontribusinya DINOLKAN, bukan
@@ -928,7 +928,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   const macroM15Raw = macroTechReady ? macroCandleImpact(macroTech.uup!.M15, macroTech.ief!.M15) : null
   const macroM15 = macroM15Raw ? { ...macroM15Raw, yieldImpact: yieldStale ? 0 : macroM15Raw.yieldImpact } : null
   // Ringkasan makro per-candle (M5/M15/H1) — dipakai panel Makro MTF sekaligus
-  // diumpankan ke Analisa AI. yieldImpact dinolkan saat beku, konsisten dengan
+  // diumpankan ke Analisa AI. yieldImpact dinolkan saat pasarnya belum buka, konsisten dengan
   // perlakuan di skor: jangan sampai AI & panel melihat angka yang berbeda.
   const macroCandleSnap = macroTechReady ? (() => {
     const z = (m: { dollarImpact: number; yieldImpact: number }) => ({ ...m, yieldImpact: yieldStale ? 0 : m.yieldImpact })
@@ -1252,49 +1252,87 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     })
     const nLawan = rows.filter(r => r.lawan).length
     const nSejalan = rows.filter(r => r.sejalan).length
+    // Bar dua arah dari titik tengah: kanan = mendukung emas, kiri = menekan.
+    // Dibuat tebal (h-2.5) agar terbaca sekilas tanpa memicingkan mata.
     const bar = (v: number) => {
-      const c = v > 20 ? '#10b981' : v < -20 ? '#ef4444' : 'rgba(255,255,255,.25)'
+      const c = v > 20 ? '#10b981' : v < -20 ? '#ef4444' : 'rgba(255,255,255,.3)'
       return (
-        <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden relative">
-          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/15" />
-          <div className="absolute top-0 bottom-0 rounded-full" style={{ background: c, left: v >= 0 ? '50%' : `${50 + v / 2}%`, width: `${Math.abs(v) / 2}%` }} />
+        <div className="flex-1 h-2.5 rounded-full bg-white/[0.06] overflow-hidden relative">
+          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/20" />
+          <div className="absolute top-0 bottom-0 rounded-full transition-all" style={{ background: c, left: v >= 0 ? '50%' : `${50 + v / 2}%`, width: `${Math.max(1.5, Math.abs(v) / 2)}%` }} />
         </div>
       )
     }
+    const verdictC = nLawan >= 2 ? '#ef4444' : nSejalan >= 2 ? '#10b981' : 'rgba(255,255,255,.5)'
+    const verdictT = nLawan >= 2 ? 'BERTENTANGAN' : nSejalan >= 2 ? 'SEJALAN' : 'CAMPUR'
     return (
-      <Panel title="Makro per-Timeframe vs Teknikal" icon={Scale}
-        info="Dampak makro ke EMAS dihitung pada struktur candle M5/M15/H1 — sama seperti pilar Teknikal — supaya bisa dibandingkan langsung. Hijau = mendukung emas, merah = menekan. Kolom kanan adalah bias Teknikal di TF yang sama; kalau berlawanan, sinyal sedang bertentangan dan risiko whipsaw naik."
-        right={<span className="text-[10px] font-bold" style={{ color: nLawan >= 2 ? '#ef4444' : nSejalan >= 2 ? '#10b981' : 'rgba(255,255,255,.45)' }}>
-          {nLawan >= 2 ? 'BERTENTANGAN' : nSejalan >= 2 ? 'SEJALAN' : 'CAMPUR'}
-        </span>}>
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-[2rem_1fr_1fr_4.5rem] gap-2 text-[9px] font-bold uppercase tracking-wider text-white/35">
-            <span>TF</span><span>Dolar</span><span>Yield</span><span className="text-right">Teknikal</span>
-          </div>
+      <Panel title="Makro per-Timeframe vs Teknikal" icon={Scale} accent={verdictC}
+        info="Dampak makro ke EMAS dihitung pada struktur candle M5/M15/H1 — sama seperti pilar Teknikal — supaya bisa dibandingkan langsung. Bar ke kanan = mendukung emas, ke kiri = menekan. Kolom Teknikal adalah bias di TF yang sama; kalau berlawanan, sinyal sedang bertentangan dan risiko whipsaw naik."
+        right={<span className="text-[11px] font-black px-2.5 py-1 rounded-lg" style={{ background: `${verdictC}22`, color: verdictC }}>{verdictT}</span>}>
+        <div className="space-y-3">
           {rows.map(r => (
-            <div key={r.tf} className="grid grid-cols-[2rem_1fr_1fr_4.5rem] gap-2 items-center">
-              <span className="text-[11px] font-bold text-white/60">{r.tf}</span>
-              <div className="flex items-center gap-1.5">{bar(r.m.dollarImpact)}<span className="text-[9px] tabular-nums w-7 text-right text-white/45">{r.m.dollarImpact >= 0 ? '+' : ''}{Math.round(r.m.dollarImpact)}</span></div>
-              {yieldStale
-                ? <span className="text-[9px] text-amber-400/70 flex items-center gap-1"><Clock size={9} /> beku</span>
-                : <div className="flex items-center gap-1.5">{bar(r.m.yieldImpact)}<span className="text-[9px] tabular-nums w-7 text-right text-white/45">{r.m.yieldImpact >= 0 ? '+' : ''}{Math.round(r.m.yieldImpact)}</span></div>}
-              <span className={`text-[10px] font-bold text-right ${dirColor(r.tech.label)}`}>
-                {r.lawan ? '⚠ ' : r.sejalan ? '✓ ' : ''}{r.tech.label}
-              </span>
+            <div key={r.tf} className="rounded-xl border p-3.5"
+              style={{ borderColor: r.lawan ? '#ef444440' : r.sejalan ? '#10b98140' : 'rgba(255,255,255,.08)', background: r.lawan ? '#ef44440a' : r.sejalan ? '#10b9810a' : 'rgba(255,255,255,.02)' }}>
+              {/* Baris judul TF + verdict */}
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-base font-black text-white/85">{r.tf}</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md"
+                  style={{ background: r.lawan ? '#ef444422' : r.sejalan ? '#10b98122' : 'rgba(255,255,255,.06)', color: r.lawan ? '#f87171' : r.sejalan ? '#34d399' : 'rgba(255,255,255,.45)' }}>
+                  {r.lawan ? 'Berlawanan' : r.sejalan ? 'Searah' : 'Netral'}
+                </span>
+              </div>
+
+              {/* Dolar */}
+              <div className="flex items-center gap-3 mb-2.5">
+                <span className="text-[12px] font-semibold text-white/50 w-16 shrink-0">Dolar</span>
+                {bar(r.m.dollarImpact)}
+                <span className="text-[13px] font-black tabular-nums w-12 text-right"
+                  style={{ color: r.m.dollarImpact > 20 ? '#34d399' : r.m.dollarImpact < -20 ? '#f87171' : 'rgba(255,255,255,.5)' }}>
+                  {r.m.dollarImpact >= 0 ? '+' : ''}{Math.round(r.m.dollarImpact)}
+                </span>
+              </div>
+
+              {/* Yield */}
+              <div className="flex items-center gap-3 mb-2.5">
+                <span className="text-[12px] font-semibold text-white/50 w-16 shrink-0">Yield</span>
+                {yieldStale ? (
+                  <span className="flex-1 flex items-center gap-1.5 text-[12px] text-amber-400/80">
+                    <Clock size={13} /> Pasar yield belum buka
+                  </span>
+                ) : (
+                  <>
+                    {bar(r.m.yieldImpact)}
+                    <span className="text-[13px] font-black tabular-nums w-12 text-right"
+                      style={{ color: r.m.yieldImpact > 20 ? '#34d399' : r.m.yieldImpact < -20 ? '#f87171' : 'rgba(255,255,255,.5)' }}>
+                      {r.m.yieldImpact >= 0 ? '+' : ''}{Math.round(r.m.yieldImpact)}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Teknikal — pembanding */}
+              <div className="flex items-center gap-3 pt-2.5 border-t border-white/[0.06]">
+                <span className="text-[12px] font-semibold text-white/50 w-16 shrink-0">Teknikal</span>
+                <span className={`text-[13px] font-black ${dirColor(r.tech.label)}`}>{r.tech.label}</span>
+              </div>
             </div>
           ))}
-          <div className="pt-2 border-t border-white/5 space-y-1">
-            <p className="text-[10px] text-white/45 leading-relaxed">
+
+          <div className="rounded-xl p-3.5" style={{ background: `${verdictC}12`, border: `1px solid ${verdictC}33` }}>
+            <p className="text-[13px] leading-relaxed" style={{ color: nLawan >= 2 ? '#fca5a5' : nSejalan >= 2 ? '#6ee7b7' : 'rgba(255,255,255,.7)' }}>
               {nLawan >= 2
-                ? '⚠ Makro dan Teknikal berlawanan di mayoritas timeframe — kondisi rawan whipsaw. Kurangi ukuran posisi atau tunggu keduanya searah.'
+                ? 'Makro dan Teknikal berlawanan di mayoritas timeframe — kondisi rawan whipsaw. Kurangi ukuran posisi atau tunggu keduanya searah.'
                 : nSejalan >= 2
-                  ? '✓ Makro dan Teknikal searah di mayoritas timeframe — konfluensi terkuat untuk entry.'
+                  ? 'Makro dan Teknikal searah di mayoritas timeframe — konfluensi terkuat untuk entry.'
                   : 'Sinyal campur antar timeframe — belum ada dorongan dominan.'}
             </p>
-            <p className="text-[9px] text-white/25 leading-relaxed">
-              Dolar: {macroTech.dollarLive ? 'forex 24 jam (live)' : 'proxy ETF UUP'} · Yield: proxy ETF IEF{yieldStale ? ` (beku ${Math.round(macroTech.yieldStaleMin!)} mnt — bursa AS tutup, kontribusi dinolkan)` : ' (live)'}
-            </p>
           </div>
+
+          <p className="text-[11px] text-white/35 leading-relaxed">
+            Dolar: {macroTech.dollarLive ? 'forex 24 jam (live)' : 'proxy ETF UUP'} · Yield: {yieldStale
+              ? `pasar yield belum buka — data terakhir ${Math.round(macroTech.yieldStaleMin!)} menit lalu, kontribusinya tidak dihitung`
+              : 'live'}
+          </p>
         </div>
       </Panel>
     )
@@ -1985,7 +2023,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       // penanda umur bila datanya beku (bursa AS tutup) — menampilkan dampak
       // -100 dari data 6 jam lalu tanpa keterangan itu menyesatkan.
       out.push({ l: `Dolar (M15, ${macroTech.dollarLive ? 'forex 24 jam' : 'proxy UUP'})`, arah: macroM15.dollarImpact > 20 ? 'bullish' : macroM15.dollarImpact < -20 ? 'bearish' : 'netral', d: `dampak ${macroM15.dollarImpact >= 0 ? '+' : ''}${Math.round(macroM15.dollarImpact)}` })
-      out.push({ l: `Yield (M15, proxy IEF)${yieldStale ? ' — BEKU' : ''}`, arah: yieldStale ? 'netral' : macroM15.yieldImpact > 20 ? 'bullish' : macroM15.yieldImpact < -20 ? 'bearish' : 'netral', d: yieldStale ? `data ${Math.round(macroTech.yieldStaleMin!)} mnt lalu — bursa AS tutup` : `dampak ${macroM15.yieldImpact >= 0 ? '+' : ''}${Math.round(macroM15.yieldImpact)}` })
+      out.push({ l: `Yield (M15, proxy IEF)${yieldStale ? ' — belum buka' : ''}`, arah: yieldStale ? 'netral' : macroM15.yieldImpact > 20 ? 'bullish' : macroM15.yieldImpact < -20 ? 'bearish' : 'netral', d: yieldStale ? `pasar yield belum buka · data ${Math.round(macroTech.yieldStaleMin!)} mnt lalu` : `dampak ${macroM15.yieldImpact >= 0 ? '+' : ''}${Math.round(macroM15.yieldImpact)}` })
     }
     const dLive = cross.uup?.changePct
     if (dLive != null) out.push({ l: 'Dolar (live, harian)', arah: dLive > 0.05 ? 'bearish' : dLive < -0.05 ? 'bullish' : 'netral', d: `UUP ${dLive >= 0 ? '+' : ''}${dLive.toFixed(2)}% hari ini` })
@@ -2010,12 +2048,12 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
         </div>
       </div>
       {/* Transparansi kesegaran data — user berhak tahu skor ini dihitung dari
-          data hidup atau data beku, terutama saat trading di sesi Asia. */}
+          data hidup atau pasarnya belum buka, terutama saat trading di sesi Asia. */}
       {yieldStale && (
         <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/[0.09] border border-amber-500/30 p-3 mb-3">
           <Clock size={15} className="text-amber-400 shrink-0 mt-0.5" />
           <div className="text-[11px] text-amber-100/85 leading-relaxed">
-            <b>Yield beku — bursa AS tutup.</b> Data yield (ETF IEF) terakhir {Math.round(macroTech.yieldStaleMin!)} menit lalu, jadi kontribusinya dinolkan agar tidak memberi sinyal palsu.
+            <b>Pasar yield belum buka.</b> Data yield (ETF IEF) terakhir {Math.round(macroTech.yieldStaleMin!)} menit lalu, jadi kontribusinya belum dihitung agar tidak memberi sinyal palsu.
             {macroTech.dollarLive
               ? ' Dolar tetap live dari forex 24 jam.'
               : ' Dolar juga memakai proxy ETF — kehati-hatian ekstra.'}
