@@ -10,7 +10,9 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/admin', '/hub', '/account', '/checkout', '/terminal', '/lot-calculator', '/api/'],
+      // /s/ = tautan berbagi ringkasan keuangan. Pribadi, tidak boleh terindeks
+      // (halamannya juga sudah memasang meta robots noindex).
+      disallow: ['/admin', '/hub', '/account', '/checkout', '/terminal', '/lot-calculator', '/keuangan', '/s/', '/api/'],
     },
     sitemap: `${base}/sitemap.xml`,
     host: base,

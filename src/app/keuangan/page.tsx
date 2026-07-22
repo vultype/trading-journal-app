@@ -30,8 +30,9 @@ import {
   Camera, Briefcase, Settings2, LayoutDashboard,
   ChartPie, PiggyBank, SlidersHorizontal, CalendarClock, Sparkles, Pencil,
   ArrowUpRight, ArrowDownRight, ReceiptText, ListFilter, User, HeartPulse,
-  TriangleAlert, Info, CircleCheck, Lightbulb,
+  TriangleAlert, Info, CircleCheck, Lightbulb, Share2, Copy,
 } from 'lucide-react'
+import { SHARE_V, type SharePayload } from '@/lib/finance-share'
 
 // ── tipe ──
 type FinAccount = { id: string; name: string; kind: string; initial_balance: number; color: string | null }
@@ -49,6 +50,9 @@ type Health = {
   pillars: HealthPillar[]; weakest: HealthPillar | undefined
   mInc: number; mExp: number
 }
+
+type ShareOpts = { score: boolean; insights: boolean; cats: boolean; masked: boolean }
+type ShareRow = { id: string; slug: string; masked: boolean; expires_at: string | null; views: number }
 
 type Insight = { key: string; tone: 'good' | 'warn' | 'bad' | 'info'; title: string; text: string }
 const TONE: Record<Insight['tone'], { bg: string; fg: string; icon: React.ElementType }> = {
@@ -198,6 +202,7 @@ export default function KeuanganPage() {
   // null = tertutup · 'new' = buat baru · FinBudget = sedang diedit
   const [budgetSheet, setBudgetSheet] = useState<null | 'new' | FinBudget>(null)
   const [catInsight, setCatInsight] = useState<{ cid: string; kind: 'income' | 'expense' } | null>(null)
+  const [showShare, setShowShare] = useState(false)
 
   useEffect(() => {
     if (!sub.loading && !sub.userId) router.replace('/login?next=%2Fkeuangan')
@@ -737,6 +742,31 @@ export default function KeuanganPage() {
   }
 
 
+  // Payload berbagi — SELALU dirakit ulang dari angka periode aktif, tidak
+  // pernah menyertakan baris transaksi, nama rekening, catatan, maupun URL
+  // struk. Apa pun yang masuk ke sini otomatis ikut terbuka ke siapa pun yang
+  // memegang tautannya.
+  const buildShare = (o: ShareOpts): SharePayload => ({
+    v: SHARE_V,
+    period: range.label,
+    createdAt: new Date().toISOString(),
+    masked: o.masked,
+    totals: { income, expense, net: income - expense },
+    score: o.score && health ? {
+      score: health.score, band: health.band,
+      pillars: health.pillars.map(p => ({ label: p.label, weight: p.weight, score: p.score, detail: p.detail })),
+    } : undefined,
+    expense: o.cats ? expBreakdown.slice(0, 8).map((b, i) => ({
+      name: b.cat?.name ?? 'Tanpa kategori', color: catColor(b.cat, i),
+      v: b.v, pct: expense > 0 ? (b.v / expense) * 100 : 0,
+    })) : undefined,
+    income: o.cats ? incBreakdown.slice(0, 8).map((b, i) => ({
+      name: b.cat?.name ?? 'Tanpa kategori', color: catColor(b.cat, i),
+      v: b.v, pct: income > 0 ? (b.v / income) * 100 : 0,
+    })) : undefined,
+    insights: o.insights ? insights.slice(0, 10).map(i => ({ tone: i.tone, title: i.title, text: i.text })) : undefined,
+  })
+
   const V2Banner = needsV2 ? (
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
       <p className="font-black text-[14px] text-amber-800 mb-1">Fitur ini butuh migrasi v2</p>
@@ -881,6 +911,7 @@ export default function KeuanganPage() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button onClick={() => setShowShare(true)} className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm hover:shadow transition-shadow" title="Bagikan ringkasan"><Share2 size={17} /></button>
             <button onClick={() => setShowCat(true)} className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm hover:shadow transition-shadow" title="Kelola kategori"><Settings2 size={17} /></button>
             <button onClick={() => setShowAcc(true)} className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm hover:shadow transition-shadow" title="Kelola rekening"><Wallet size={17} /></button>
           </div>
@@ -1389,6 +1420,7 @@ export default function KeuanganPage() {
           onClose={() => setBudgetSheet(null)}
           onChanged={() => { setBudgetSheet(null); loadAll() }} />
       )}
+      {showShare && <ShareSheet build={buildShare} onClose={() => setShowShare(false)} />}
       {catInsight && (
         <CatInsightSheet
           cid={catInsight.cid} kind={catInsight.kind}
@@ -1432,6 +1464,126 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
           style={{ background: c }} />
       ))}
     </div>
+  )
+}
+
+// ── bagikan ringkasan lewat tautan pendek ──
+function ShareSheet({ build, onClose }: { build: (o: ShareOpts) => SharePayload; onClose: () => void }) {
+  const [opts, setOpts] = useState<ShareOpts>({ score: true, insights: true, cats: true, masked: true })
+  const [ttl, setTtl] = useState(7)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState('')
+  const [list, setList] = useState<ShareRow[]>([])
+
+  const load = async () => {
+    const { data: { session } } = await createClient().auth.getSession()
+    if (!session) return
+    const r = await fetch('/api/keuangan/share', { headers: { Authorization: `Bearer ${session.access_token}` } })
+    const j = await r.json().catch(() => ({}))
+    if (r.ok) setList(j.shares ?? [])
+  }
+  useEffect(() => { load() }, [])
+
+  async function create() {
+    setBusy(true)
+    const { data: { session } } = await createClient().auth.getSession()
+    if (!session) { setBusy(false); toast.error('Sesi berakhir, muat ulang halaman'); return }
+    const r = await fetch('/api/keuangan/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ payload: build(opts), masked: opts.masked, ttlDays: ttl, note: note.trim() || undefined }),
+    })
+    const j = await r.json().catch(() => ({}))
+    setBusy(false)
+    if (!r.ok) { toast.error(j.error ?? 'Gagal membuat tautan'); return }
+    setUrl(j.url); toast.success('Tautan dibuat'); load()
+  }
+
+  async function revoke(id: string) {
+    if (!window.confirm('Cabut tautan ini? Tamu yang memegangnya langsung tidak bisa membuka lagi.')) return
+    const { data: { session } } = await createClient().auth.getSession()
+    if (!session) return
+    const r = await fetch(`/api/keuangan/share?id=${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${session.access_token}` } })
+    if (!r.ok) { toast.error('Gagal mencabut'); return }
+    toast.success('Tautan dicabut'); load()
+  }
+
+  const Toggle = ({ k, label, desc }: { k: keyof ShareOpts; label: string; desc: string }) => (
+    <label className="flex items-start gap-3 rounded-2xl bg-[#F7F7FA] px-4 py-3 cursor-pointer">
+      <input type="checkbox" checked={opts[k]} onChange={e => setOpts(p => ({ ...p, [k]: e.target.checked }))} className="accent-indigo-500 mt-0.5" />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-bold">{label}</span>
+        <span className="block text-[11px] text-slate-400 leading-relaxed">{desc}</span>
+      </span>
+    </label>
+  )
+
+  return (
+    <Sheet title="Bagikan Ringkasan" onClose={onClose}>
+      {url ? (
+        <div className="space-y-3">
+          <div className="rounded-3xl bg-emerald-50 border border-emerald-200 p-5 text-center">
+            <p className="text-[12px] font-black text-emerald-700 mb-2">Tautan siap dibagikan</p>
+            <p className="text-[13px] font-bold break-all text-slate-700">{url}</p>
+          </div>
+          <button onClick={() => { navigator.clipboard.writeText(url); toast.success('Tautan disalin') }} className={btnPrimary}>Salin Tautan</button>
+          <button onClick={() => setUrl('')} className="w-full h-11 rounded-2xl bg-[#F7F7FA] text-slate-500 text-[13px] font-black hover:bg-slate-100">Buat lagi</button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[12px] text-slate-500 leading-relaxed">
+            Tautan berisi <b>salinan tetap</b> ringkasan periode yang sedang Anda lihat — bukan sambungan ke data asli.
+            Angkanya tidak ikut berubah saat transaksi bertambah, dan tamu tidak pernah bisa menembus ke transaksi Anda.
+          </p>
+
+          <Toggle k="masked" label="Sembunyikan nominal" desc="Hanya persentase, skor, dan perbandingan yang tampil. Nominal rupiah diganti Rp•••." />
+          <Toggle k="score" label="Sertakan skor kesehatan" desc="Skor 0–100 beserta rincian tiap pilarnya." />
+          <Toggle k="insights" label="Sertakan insight" desc="Temuan otomatis di periode ini." />
+          <Toggle k="cats" label="Sertakan rincian kategori" desc="Porsi pengeluaran & pemasukan per kategori." />
+
+          <div>
+            <label className="text-[11px] font-bold text-slate-400 block mb-1.5">Masa berlaku</label>
+            <div className="grid grid-cols-4 gap-2">
+              {[{ d: 1, l: '1 hari' }, { d: 7, l: '7 hari' }, { d: 30, l: '30 hari' }, { d: 0, l: 'Selamanya' }].map(o => (
+                <button key={o.d} type="button" onClick={() => setTtl(o.d)}
+                  className={`h-10 rounded-xl text-[12px] font-black transition-colors ${ttl === o.d ? 'bg-indigo-500 text-white' : 'bg-[#F7F7FA] text-slate-500 hover:bg-slate-100'}`}>{o.l}</button>
+              ))}
+            </div>
+          </div>
+
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={2} maxLength={240}
+            placeholder="Catatan untuk penerima (opsional)"
+            className="w-full px-4 py-3 rounded-2xl bg-[#F7F7FA] text-[13px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200 resize-none" />
+
+          <button onClick={create} disabled={busy} className={btnPrimary}>
+            {busy ? <Loader2 size={16} className="animate-spin inline" /> : 'Buat Tautan'}
+          </button>
+
+          {list.length > 0 && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-[12px] font-black text-slate-500 mb-2">Tautan aktif ({list.length})</p>
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {list.map(s => (
+                  <div key={s.id} className="flex items-center gap-2 rounded-xl bg-[#F7F7FA] px-3.5 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-bold truncate">/s/{s.slug}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {s.views}× dibuka · {s.masked ? 'nominal disembunyikan' : 'nominal terlihat'}
+                        {s.expires_at ? ` · sampai ${fmtTglPendek(s.expires_at.slice(0, 10))}` : ' · tanpa batas waktu'}
+                      </p>
+                    </div>
+                    <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/s/${s.slug}`); toast.success('Disalin') }}
+                      className="text-slate-300 hover:text-indigo-500 shrink-0"><Copy size={14} /></button>
+                    <button onClick={() => revoke(s.id)} className="text-slate-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Sheet>
   )
 }
 
