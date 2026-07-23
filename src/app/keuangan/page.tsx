@@ -30,7 +30,7 @@ import {
   Camera, Briefcase, Settings2, LayoutDashboard,
   ChartPie, PiggyBank, SlidersHorizontal, CalendarClock, Sparkles, Pencil,
   ArrowUpRight, ArrowDownRight, ReceiptText, ListFilter, User, HeartPulse,
-  TriangleAlert, Info, CircleCheck, Lightbulb, Share2, Copy,
+  TriangleAlert, Info, CircleCheck, Lightbulb, Share2, Copy, Inbox, Mail, RefreshCw,
 } from 'lucide-react'
 import { SHARE_V, type SharePayload } from '@/lib/finance-share'
 
@@ -107,13 +107,23 @@ const SEED_CATS: { name: string; type: 'income' | 'expense'; is_business?: boole
   { name: 'Lainnya (Keluar)', type: 'expense' },
 ]
 
-type TabId = 'home' | 'tx' | 'analytics' | 'goals' | 'budget'
+type FinInbox = {
+  id: string; ext_ref: string; status: string; tx_date: string | null
+  amount: number | null; fee: number | null; merchant: string | null
+  transfer_type: string | null; source_fund: string | null
+  suggested_type: 'income' | 'expense' | 'transfer' | null
+  suggested_category_id: string | null; suggested_account_id: string | null
+  parse_error: string | null; raw: string | null; received_at: string
+}
+
+type TabId = 'home' | 'tx' | 'analytics' | 'goals' | 'budget' | 'inbox'
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'home', label: 'Ringkasan', icon: LayoutDashboard },
   { id: 'tx', label: 'Transaksi', icon: ReceiptText },
   { id: 'analytics', label: 'Analitik', icon: ChartPie },
   { id: 'goals', label: 'Target', icon: PiggyBank },
   { id: 'budget', label: 'Anggaran', icon: SlidersHorizontal },
+  { id: 'inbox', label: 'Inbox', icon: Inbox },
 ]
 
 type Preset = 'today' | 'week' | 'month' | '3m' | 'year' | 'custom'
@@ -172,6 +182,8 @@ export default function KeuanganPage() {
   const [goalEntries, setGoalEntries] = useState<FinGoalEntry[]>([])
   const [budgets, setBudgets] = useState<FinBudget[]>([])
   const [budgetCats, setBudgetCats] = useState<FinBudgetCat[]>([])
+  const [inbox, setInbox] = useState<FinInbox[]>([])
+  const [needsInbox, setNeedsInbox] = useState(false)
   const [loading, setLoading] = useState(true)
   const [needsMigration, setNeedsMigration] = useState(false)
   const [needsV2, setNeedsV2] = useState(false)
@@ -247,6 +259,11 @@ export default function KeuanganPage() {
       setBudgets((b.data ?? []) as FinBudget[])
       setNeedsV2(false)
     }
+    const ib = await sb.from('fin_inbox').select('*')
+      .in('status', ['draft', 'gagal']).order('received_at', { ascending: false }).limit(200)
+    if (ib.error) setNeedsInbox(true)
+    else { setInbox((ib.data ?? []) as FinInbox[]); setNeedsInbox(false) }
+
     // v3 terpisah dari v2: tabel jembatan kategori-anggaran baru ada di v3, dan
     // Target sudah bisa dipakai walau anggaran belum dimigrasi.
     if (bc.error) setNeedsV3(true)
@@ -956,13 +973,22 @@ export default function KeuanganPage() {
           </div>
         </header>
 
-        <nav className="hidden md:flex gap-1.5 p-1 rounded-2xl bg-white shadow-sm w-fit mb-4">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-4 h-10 rounded-xl text-[13px] font-black transition-colors ${tab === t.id ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
-              <t.icon size={15} /> {t.label}
-            </button>
-          ))}
+        {/* Tampil juga di ponsel dan bisa digeser: bilah bawah hanya memuat 4
+            tab, jadi tanpa ini Anggaran dan Inbox tidak pernah bisa dibuka dari
+            ponsel sama sekali. */}
+        <nav className="flex gap-1.5 p-1 rounded-2xl bg-white shadow-sm md:w-fit mb-4 overflow-x-auto">
+          {TABS.map(t => {
+            const badge = t.id === 'inbox' ? inbox.filter(r => r.status === 'draft').length : 0
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`shrink-0 flex items-center gap-1.5 px-3.5 md:px-4 h-10 rounded-xl text-[12px] md:text-[13px] font-black transition-colors ${tab === t.id ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <t.icon size={15} /> {t.label}
+                {badge > 0 && (
+                  <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] flex items-center justify-center ${tab === t.id ? 'bg-white/25 text-white' : 'bg-indigo-500 text-white'}`}>{badge}</span>
+                )}
+              </button>
+            )
+          })}
         </nav>
 
         {needsMigration ? (
@@ -1404,6 +1430,13 @@ export default function KeuanganPage() {
                 )}
               </div>
             )}
+
+            {/* ════════ INBOX EMAIL BANK ════════ */}
+            {tab === 'inbox' && (
+              <InboxTab
+                rows={inbox} needsMigration={needsInbox}
+                cats={cats} accounts={accounts} userId={sub.userId!} onChanged={loadAll} />
+            )}
           </>
         )}
       </div>
@@ -1502,6 +1535,204 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
           className={`w-8 h-8 rounded-full transition-transform ${value === c ? 'ring-2 ring-offset-2 ring-slate-300 scale-110' : 'hover:scale-105'}`}
           style={{ background: c }} />
       ))}
+    </div>
+  )
+}
+
+// ── inbox email bank ──
+//
+// Draf dari notifikasi BCA. Menyetujui = MEMBUAT fin_transactions, lalu menandai
+// barisnya approved. Urutannya sengaja begitu: kalau penandaan gagal setelah
+// transaksi dibuat, yang terjadi adalah draf muncul lagi (bisa dilihat dan
+// diabaikan) — bukan transaksi yang hilang tanpa jejak.
+function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
+  rows: FinInbox[]; needsMigration: boolean
+  cats: FinCategory[]; accounts: FinAccount[]; userId: string; onChanged: () => void
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [token, setToken] = useState<string | null>(null)
+  const [showSetup, setShowSetup] = useState(false)
+  const [edit, setEdit] = useState<Record<string, { type: string; cat: string; acc: string; remember: boolean }>>({})
+
+  const draft = rows.filter(r => r.status === 'draft')
+  const failed = rows.filter(r => r.status === 'gagal')
+
+  const val = (r: FinInbox) => edit[r.id] ?? {
+    type: r.suggested_type ?? 'expense',
+    cat: r.suggested_category_id ?? '',
+    acc: r.suggested_account_id ?? accounts[0]?.id ?? '',
+    remember: true,
+  }
+  const set = (id: string, patch: Partial<{ type: string; cat: string; acc: string; remember: boolean }>) =>
+    setEdit(p => ({ ...p, [id]: { ...(p[id] ?? val(rows.find(r => r.id === id)!)), ...patch } }))
+
+  async function loadToken() {
+    const sb = createClient()
+    const { data } = await sb.from('fin_ingest_tokens').select('token').eq('user_id', userId).maybeSingle()
+    setToken(data?.token ?? null)
+  }
+  useEffect(() => { if (!needsMigration) loadToken() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [needsMigration])
+
+  async function rotate() {
+    // 32 byte acak dari crypto browser — token inilah satu-satunya yang menjaga
+    // endpoint ingest, jadi tidak boleh dari Math.random().
+    const buf = new Uint8Array(32)
+    crypto.getRandomValues(buf)
+    const t = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
+    const { error } = await createClient().from('fin_ingest_tokens')
+      .upsert({ user_id: userId, token: t }, { onConflict: 'user_id' })
+    if (error) { toast.error(error.message); return }
+    setToken(t); toast.success('Token baru dibuat — perbarui di Apps Script')
+  }
+
+  async function approve(r: FinInbox) {
+    const v = val(r)
+    if (!v.acc) { toast.error('Pilih rekening'); return }
+    if (v.type !== 'transfer' && !v.cat) { toast.error('Pilih kategori'); return }
+    setBusy(r.id)
+    const sb = createClient()
+    const { data: tx, error } = await sb.from('fin_transactions').insert({
+      user_id: userId, account_id: v.acc,
+      category_id: v.type === 'transfer' ? null : v.cat,
+      type: v.type, amount: Number(r.amount),
+      note: [r.merchant, r.transfer_type].filter(Boolean).join(' · ').slice(0, 200) || null,
+      date: r.tx_date,
+    }).select('id').single()
+    if (error || !tx) { setBusy(null); toast.error(error?.message ?? 'Gagal'); return }
+
+    await sb.from('fin_inbox').update({ status: 'approved', tx_id: tx.id }).eq('id', r.id)
+
+    // "Ingat pilihan ini": transaksi berikutnya dari merchant yang sama langsung
+    // datang dengan tebakan yang benar.
+    if (v.remember && r.merchant) {
+      await sb.from('fin_rules').upsert({
+        user_id: userId, match: r.merchant.slice(0, 80),
+        type: v.type, category_id: v.type === 'transfer' ? null : v.cat, account_id: v.acc,
+      }, { onConflict: 'user_id,match' })
+    }
+    setBusy(null); toast.success('Transaksi dicatat'); onChanged()
+  }
+
+  async function ignore(r: FinInbox) {
+    setBusy(r.id)
+    const { error } = await createClient().from('fin_inbox').update({ status: 'ignored' }).eq('id', r.id)
+    setBusy(null)
+    if (error) { toast.error(error.message); return }
+    toast.success('Diabaikan'); onChanged()
+  }
+
+  if (needsMigration) return (
+    <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
+      <p className="font-black text-[14px] text-amber-800 mb-1">Fitur ini butuh migrasi inbox</p>
+      <p className="text-[12px] text-amber-700/80 leading-relaxed">
+        Jalankan <code className="px-1.5 py-0.5 rounded bg-amber-100 text-[11px]">supabase-personal-finance-inbox.sql</code> di Supabase → SQL Editor, lalu muat ulang.
+      </p>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[15px] font-black flex items-center gap-2"><Mail size={17} className="text-indigo-500" /> Inbox Email Bank</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Notifikasi BCA masuk sebagai draf — tinjau sebelum jadi transaksi.</p>
+        </div>
+        <button onClick={() => setShowSetup(v => !v)} className="shrink-0 px-4 h-10 rounded-full bg-white shadow-sm text-[13px] font-black hover:shadow">Setup</button>
+      </div>
+
+      {showSetup && (
+        <div className="rounded-3xl bg-white p-5 shadow-sm space-y-3">
+          <p className="text-[13px] font-black">Token Ingest</p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Tempel token ini ke Google Apps Script (<code className="px-1 rounded bg-slate-100">scripts/gmail-bca-ingest.gs</code>).
+            Token adalah satu-satunya yang menjaga endpoint — jangan dibagikan, dan putar ulang bila bocor.
+          </p>
+          {token ? (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 truncate text-[11px] font-bold bg-[#F7F7FA] rounded-xl px-3 py-2.5">{token}</code>
+              <button onClick={() => { navigator.clipboard.writeText(token); toast.success('Disalin') }}
+                className="shrink-0 w-10 h-10 rounded-xl bg-[#F7F7FA] flex items-center justify-center hover:bg-slate-100"><Copy size={15} /></button>
+            </div>
+          ) : <p className="text-[12px] text-slate-300">Belum ada token.</p>}
+          <button onClick={rotate} className="w-full h-11 rounded-2xl bg-[#F7F7FA] text-slate-600 text-[13px] font-black hover:bg-slate-100 flex items-center justify-center gap-1.5">
+            <RefreshCw size={15} /> {token ? 'Putar Ulang Token' : 'Buat Token'}
+          </button>
+        </div>
+      )}
+
+      {failed.length > 0 && (
+        <div className="rounded-3xl bg-rose-50 border border-rose-200 p-4">
+          <p className="text-[12px] font-black text-rose-700 mb-1">{failed.length} email gagal dibaca</p>
+          <p className="text-[11px] text-rose-600/80 leading-relaxed">
+            Formatnya tidak dikenali — kemungkinan BCA mengubah template. Emailnya disimpan utuh, tidak ada yang hilang.
+            Kirimkan satu contohnya agar parser diperbarui.
+          </p>
+        </div>
+      )}
+
+      {draft.length === 0 ? (
+        <div className="rounded-3xl bg-white p-10 text-center shadow-sm">
+          <Inbox size={28} className="mx-auto text-indigo-300 mb-3" />
+          <p className="font-black text-[15px] mb-1">Tidak ada draf</p>
+          <p className="text-[13px] text-slate-400">Notifikasi BCA yang masuk akan muncul di sini untuk ditinjau.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {draft.map(r => {
+            const v = val(r)
+            const rel = cats.filter(c => c.type === (v.type === 'income' ? 'income' : 'expense'))
+            return (
+              <div key={r.id} className="rounded-3xl bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-black truncate">{r.merchant ?? 'Transaksi BCA'}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {r.tx_date ? fmtTgl(r.tx_date) : '—'}{r.transfer_type ? ` · ${r.transfer_type}` : ''}
+                      {r.source_fund ? ` · ${r.source_fund}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[16px] font-black tabular-nums text-rose-600">{rp(Number(r.amount ?? 0))}</p>
+                    {Number(r.fee) > 0 && <p className="text-[10px] text-slate-400">termasuk biaya {rp(Number(r.fee))}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2.5">
+                  <select value={v.type} onChange={e => set(r.id, { type: e.target.value, cat: '' })}
+                    className="h-11 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
+                    <option value="expense">Pengeluaran</option>
+                    <option value="income">Pemasukan</option>
+                    <option value="transfer">Transfer</option>
+                  </select>
+                  <select value={v.cat} onChange={e => set(r.id, { cat: e.target.value })} disabled={v.type === 'transfer'}
+                    className="h-11 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-40">
+                    <option value="">Pilih kategori…</option>
+                    {rel.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select value={v.acc} onChange={e => set(r.id, { acc: e.target.value })}
+                    className="h-11 px-3 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </div>
+
+                <label className="flex items-center gap-2 mb-2.5 cursor-pointer">
+                  <input type="checkbox" checked={v.remember} onChange={e => set(r.id, { remember: e.target.checked })} className="accent-indigo-500" />
+                  <span className="text-[11px] text-slate-500">Ingat pilihan ini untuk <b>{r.merchant ?? 'merchant ini'}</b></span>
+                </label>
+
+                <div className="flex gap-2">
+                  <button onClick={() => approve(r)} disabled={busy === r.id}
+                    className="flex-1 h-11 rounded-xl bg-indigo-500 text-white text-[13px] font-black hover:bg-indigo-600 disabled:opacity-50">
+                    {busy === r.id ? <Loader2 size={15} className="animate-spin inline" /> : 'Catat Transaksi'}
+                  </button>
+                  <button onClick={() => ignore(r)} disabled={busy === r.id}
+                    className="px-4 h-11 rounded-xl bg-[#F7F7FA] text-slate-500 text-[13px] font-black hover:bg-slate-100 disabled:opacity-50">Abaikan</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
