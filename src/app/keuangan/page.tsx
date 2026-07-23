@@ -875,7 +875,7 @@ export default function KeuanganPage() {
         <p className="text-center text-[13px] text-slate-300 py-14">Belum ada data di periode ini.</p>
       ) : (
         <div className="flex items-center gap-4">
-          <div className="w-36 h-36 shrink-0 relative">
+          <div className="w-36 h-36 shrink-0 relative overflow-hidden">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
                 <Pie data={rows.map(b => ({ name: b.cat?.name ?? 'Lainnya', value: b.v }))}
@@ -935,7 +935,10 @@ export default function KeuanganPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] text-slate-900" style={{ fontFeatureSettings: '"tnum"' }}>
+    // overflow-x-hidden: ResponsiveContainer recharts tidak menyusut kembali saat
+    // viewport MENGECIL — memutar ponsel dari lanskap ke potret meninggalkan SVG
+    // selebar layar lama dan halaman jadi bisa digeser ke samping.
+    <div className="min-h-screen overflow-x-hidden bg-[#F2F2F7] text-slate-900" style={{ fontFeatureSettings: '"tnum"' }}>
       <div className="max-w-5xl mx-auto px-4 pb-32 md:pb-12">
 
         <header className="flex items-center justify-between py-5">
@@ -1186,7 +1189,7 @@ export default function KeuanganPage() {
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-300 mb-2">Konteks jangka panjang — tidak terpengaruh filter periode.</p>
-                  <div className="h-56">
+                  <div className="h-56 w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={cashflow6m} margin={{ top: 12, right: 4, left: 4, bottom: 0 }}>
                         <defs>
@@ -1214,7 +1217,7 @@ export default function KeuanganPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="rounded-3xl bg-white p-5 shadow-sm">
                     <p className="text-[13px] font-black mb-2">Pengeluaran Harian · {range.label}</p>
-                    <div className="h-48">
+                    <div className="h-48 w-full min-w-0 overflow-hidden">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={dailySeries} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
                           <CartesianGrid stroke="#F1F5F9" vertical={false} />
@@ -1748,7 +1751,7 @@ function CatInsightSheet({ cid, kind, cat, txs, periodTxs, prevPeriodTxs, accoun
 
       <div className="mb-4">
         <p className="text-[11px] font-bold text-slate-400 mb-1.5">Tren 6 bulan</p>
-        <div className="h-28">
+        <div className="h-28 w-full min-w-0 overflow-hidden">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={trend} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />

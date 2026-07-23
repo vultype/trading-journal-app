@@ -37,7 +37,7 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
 
       {/* Donut memakai `pct`, bukan `v` — saat nominal disembunyikan `v` sudah
           dinolkan, dan donut dari nilai nol tidak menggambar apa pun. */}
-      <div className="w-40 h-40 mx-auto relative mb-4">
+      <div className="w-40 h-40 mx-auto relative mb-4 overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={rows.map(r => ({ name: r.name, value: Math.max(0.01, r.pct) }))}
@@ -81,7 +81,11 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
   )
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] text-slate-900 px-4 py-8 md:py-12">
+    // overflow-x-hidden: ResponsiveContainer recharts tidak menyusut kembali saat
+    // viewport MENGECIL — memutar ponsel dari lanskap ke potret meninggalkan SVG
+    // selebar layar lama dan halaman jadi bisa digeser ke samping. Terbukti di
+    // uji resize 375→320. Tiap kotak chart juga diberi overflow-hidden sendiri.
+    <div className="min-h-screen overflow-x-hidden bg-[#F2F2F7] text-slate-900 px-4 py-8 md:py-12">
       <div className="mx-auto w-full max-w-2xl space-y-4">
         <div className="text-center mb-2">
           <p className="text-[11px] font-black uppercase tracking-wider text-indigo-500">Ringkasan Keuangan</p>
@@ -106,19 +110,38 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
           </div>
         )}
 
+        {/* Di ponsel: satu kartu berisi tiga BARIS (label kiri, nominal kanan).
+            Tiga kolom sejajar hanya menyisakan ~78px per nominal di layar 375px,
+            dan "Rp24.500.000" butuh 104px — jadi angkanya terpotong jadi
+            "Rp24.50…". Nominal keuangan yang terpotong lebih buruk daripada tata
+            letak yang lebih tinggi. Mulai sm ke atas baru dijejer tiga. */}
         {p.totals && (
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { k: 'Masuk', v: p.totals.income, c: 'text-emerald-600' },
-              { k: 'Keluar', v: p.totals.expense, c: 'text-rose-600' },
-              { k: 'Selisih', v: p.totals.net, c: p.totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600' },
-            ].map(s => (
-              <div key={s.k} className="rounded-3xl bg-white p-4 shadow-sm">
-                <p className="text-[11px] font-semibold text-slate-400">{s.k}</p>
-                <p className={`text-[15px] sm:text-lg font-black tabular-nums mt-1 truncate ${s.c}`}>{money(s.v)}</p>
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="sm:hidden rounded-3xl bg-white px-5 py-2 shadow-sm">
+              {[
+                { k: 'Masuk', v: p.totals.income, c: 'text-emerald-600' },
+                { k: 'Keluar', v: p.totals.expense, c: 'text-rose-600' },
+                { k: 'Selisih', v: p.totals.net, c: p.totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600' },
+              ].map(s => (
+                <div key={s.k} className="flex items-center justify-between gap-3 py-2.5 border-b border-slate-100 last:border-0">
+                  <span className="text-[12px] font-semibold text-slate-400">{s.k}</span>
+                  <span className={`text-[16px] font-black tabular-nums ${s.c}`}>{money(s.v)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="hidden sm:grid grid-cols-3 gap-3">
+              {[
+                { k: 'Masuk', v: p.totals.income, c: 'text-emerald-600' },
+                { k: 'Keluar', v: p.totals.expense, c: 'text-rose-600' },
+                { k: 'Selisih', v: p.totals.net, c: p.totals.net >= 0 ? 'text-emerald-600' : 'text-rose-600' },
+              ].map(s => (
+                <div key={s.k} className="rounded-3xl bg-white p-4 shadow-sm">
+                  <p className="text-[11px] font-semibold text-slate-400">{s.k}</p>
+                  <p className={`text-lg font-black tabular-nums mt-1 truncate ${s.c}`}>{money(s.v)}</p>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {p.score && (
@@ -168,9 +191,9 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500" />Keluar</span>
               </div>
             </div>
-            <div className="h-52">
+            <div className="h-52 w-full min-w-0 overflow-hidden">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={p.cashflow} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <AreaChart data={p.cashflow} margin={{ top: 4, right: masked ? 14 : 4, left: masked ? 14 : 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gm" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#10b981" stopOpacity={0.28} /><stop offset="100%" stopColor="#10b981" stopOpacity={0} />
@@ -195,9 +218,9 @@ export default function ShareView({ p, title, expiresAt }: { p: SharePayload; ti
         {p.daily && p.daily.length > 1 && (
           <Card>
             <p className="text-[13px] font-black mb-3">Pengeluaran Harian · {p.period}</p>
-            <div className="h-40">
+            <div className="h-40 w-full min-w-0 overflow-hidden">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={p.daily} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <BarChart data={p.daily} margin={{ top: 4, right: masked ? 14 : 4, left: masked ? 14 : 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EEF0F4" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                   <YAxis tickFormatter={axis} tick={{ fontSize: 9, fill: '#94A3B8' }} axisLine={false} tickLine={false} width={masked ? 8 : 74} />
@@ -293,7 +316,7 @@ function CatDetail({ c, kind, masked, rel, monthLabels, onClose }: {
           {trend.length > 0 && (
             <div>
               <p className="text-[11px] font-bold text-slate-400 mb-1.5">Tren 6 bulan</p>
-              <div className="h-32">
+              <div className="h-32 w-full min-w-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={trend} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
@@ -318,7 +341,7 @@ function CatDetail({ c, kind, masked, rel, monthLabels, onClose }: {
               <p className="text-[11px] font-bold text-slate-400 mb-1.5">
                 Transaksi ({c.txs.length}{c.count != null && c.count > c.txs.length ? ` dari ${c.count}` : ''})
               </p>
-              <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              <div className="space-y-1.5 md:max-h-72 md:overflow-y-auto">
                 {c.txs.map((t, i) => (
                   <div key={i} className="flex items-center justify-between gap-3 rounded-xl bg-[#F7F7FA] px-3.5 py-2.5">
                     <div className="min-w-0">
