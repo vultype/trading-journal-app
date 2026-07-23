@@ -98,7 +98,7 @@ export async function POST(req: Request) {
 - Regime pasar: ${snap.regime} (ADX ${snap.adx}, arah ${snap.adxTrend}) | Momentum komposit ${snap.momentum} | Bollinger squeeze: ${snap.bbSqueeze ? 'ya' : 'tidak'} | Sentimen risiko: ${snap.riskSentiment}
 - Teknikal per timeframe (bias/RSI/MACD/Stoch%K/struktur/sinyal-reversal): M5 ${snap.tf?.M5?.bias}/${snap.tf?.M5?.rsi}/${snap.tf?.M5?.macd}/${snap.tf?.M5?.stoch}/${snap.tf?.M5?.struktur}/${snap.tf?.M5?.reversal ?? 'tidak ada'}, M15 ${snap.tf?.M15?.bias}/${snap.tf?.M15?.rsi}/${snap.tf?.M15?.macd}/${snap.tf?.M15?.stoch}/${snap.tf?.M15?.struktur}/${snap.tf?.M15?.reversal ?? 'tidak ada'}, H1 ${snap.tf?.H1?.bias}/${snap.tf?.H1?.rsi}/${snap.tf?.H1?.macd}/${snap.tf?.H1?.stoch}/${snap.tf?.H1?.struktur}/${snap.tf?.H1?.reversal ?? 'tidak ada'}; ADX ${snap.adx} (${snap.trendDir}); ATR M15 ${snap.atrM15}; VWAP M15 ${snap.vwapM15}
 - Bias timeframe BESAR (filter arah, jangan lawan tren ini): H4 ${snap.biasTFbesar?.H4 ? `${snap.biasTFbesar.H4.bias}/RSI${snap.biasTFbesar.H4.rsi}/${snap.biasTFbesar.H4.struktur}` : 'belum tersedia'}, Daily ${snap.biasTFbesar?.D1 ? `${snap.biasTFbesar.D1.bias}/RSI${snap.biasTFbesar.D1.rsi}/${snap.biasTFbesar.D1.struktur}` : 'belum tersedia'}
-- Pivot: P ${snap.pivots?.P}, R1 ${snap.pivots?.R1}, R2 ${snap.pivots?.R2}, S1 ${snap.pivots?.S1}, S2 ${snap.pivots?.S2}
+- Level MAJOR harian (dari OHLC kemarin; sebut ke user sebagai "major support/resistance", JANGAN pakai kata "pivot" — istilah itu tidak dipakai di UI): titik tengah ${snap.pivots?.P}, major resistance ${snap.pivots?.R1} & ${snap.pivots?.R2}, major support ${snap.pivots?.S1} & ${snap.pivots?.S2}
 - Makro (FRED, HARIAN/lambat): Indeks Dolar ${snap.macro?.dollar?.value} (prior ${snap.macro?.dollar?.prior}), US10Y ${snap.macro?.us10y?.value}%, US2Y ${snap.macro?.us02y?.value}%, Yield Curve 2s10s ${snap.yieldCurve2s10}%, Real Yield ${snap.macro?.realyield?.value}%, Ekspektasi Inflasi(breakeven) ${snap.macro?.breakeven?.value}%, CPI ${snap.macro?.cpi?.value}%, Core CPI ${snap.macro?.corecpi?.value}%, Core PCE ${snap.macro?.corepce?.value}%, Fed Funds ${snap.macro?.fedfunds?.value}%, Pengangguran ${snap.macro?.unrate?.value}%, NFP(perubahan bulanan) ${snap.macro?.nfp?.value}K (prior ${snap.macro?.nfp?.prior}K), Pertumbuhan Upah(YoY) ${snap.macro?.wagegrowth?.value}%
 - Makro PER-CANDLE (proxy intraday, sebanding TF teknikal — dampak KE EMAS −100..+100, + = dukung emas): ${snap.macroCandle ? `Dolar(UUP,dibalik) M5 ${snap.macroCandle.M5.dolar} / M15 ${snap.macroCandle.M15.dolar} / H1 ${snap.macroCandle.H1.dolar}; Yield(IEF,10Y) M5 ${snap.macroCandle.M5.yield} / M15 ${snap.macroCandle.M15.yield} / H1 ${snap.macroCandle.H1.yield}${snap.macroCandle.blend ? `; blend Dolar ${snap.macroCandle.blend.dolar} Yield ${snap.macroCandle.blend.yield}` : ''}` : 'belum tersedia'}
 - COT (${snap.cot?.date}): Funds/institusi net ${snap.cot?.funds?.net} (Δ${snap.cot?.funds?.deltaNet}), Commercials net ${snap.cot?.commercials?.net}, Retail net ${snap.cot?.retail?.net} (Δ${snap.cot?.retail?.deltaNet})
@@ -122,7 +122,7 @@ ${newsSummary}${userPrompt ? `\n\nKONTEKS/PERMINTAAN DARI TRADER (WAJIB dipertim
       output_config: { effort: 'high' },
       system: `Kamu kepala analis (Head of Research) SCALPING XAU/USD di sebuah trading desk. Fokus utamamu SCALPING: analisa dan keputusan bertumpu pada timeframe kecil M5, M15, dan H1 (intraday). Susun ANALISA MENYELURUH yang menggabungkan TEKNIKAL (utamakan M5/M15/H1), MAKRO, dan SENTIMEN dari data terminal yang diberikan.
 
-FOKUS SCALPING (penting): bobot terbesar ada di M5, M15, dan H1 — di sinilah entry/exit scalping terjadi. Bicarakan struktur & momentum M5/M15/H1 secara konkret (RSI, MACD, Stoch, VWAP, pivot, price action candle). H4/Daily dipakai sebagai KONTEKS arah besar saja (angin latar), BUKAN veto: kalau setup scalping M5/M15/H1 bagus tapi berlawanan H4/Daily, tetap boleh diambil sebagai scalp lawan-arah jangka pendek — cukup sebutkan itu sebagai risiko dan pakai target lebih rapat. Level & target scalping harus realistis untuk intraday (jarak poin wajar untuk XAU).
+FOKUS SCALPING (penting): bobot terbesar ada di M5, M15, dan H1 — di sinilah entry/exit scalping terjadi. Bicarakan struktur & momentum M5/M15/H1 secara konkret (RSI, MACD, Stoch, VWAP, level major, price action candle). H4/Daily dipakai sebagai KONTEKS arah besar saja (angin latar), BUKAN veto: kalau setup scalping M5/M15/H1 bagus tapi berlawanan H4/Daily, tetap boleh diambil sebagai scalp lawan-arah jangka pendek — cukup sebutkan itu sebagai risiko dan pakai target lebih rapat. Level & target scalping harus realistis untuk intraday (jarak poin wajar untuk XAU).
 
 BERIKAN 1 ARAH YANG JELAS (WAJIB): trader butuh SATU kesimpulan arah. verdict HARUS "Bullish" atau "Bearish" (condong ke arah bukti terkuat dari M5/M15/H1 + makro/sentimen) — pakai "Netral" HANYA bila bukti benar-benar seimbang 50:50. Jangan berlindung di "netral/tunggu" hanya karena ragu; nyatakan arah bias yang paling mungkin beserta alasannya.
 
@@ -141,7 +141,7 @@ RUBRIC CONVICTION (wajib dipatuhi):
 - "Sedang": mayoritas searah tapi ada 1-2 konflik (mis. lawan H4/Daily, atau ada rilis berita dekat).
 - "Rendah": pilar bertentangan / regime Ranging tanpa arah jelas. Conviction Rendah tetap boleh memberi arah bias — keputusan boleh TUNGGU untuk TIMING entry, tapi verdict tetap menyebut 1 arah.
 
-SELF-CHECK sebelum jawab (kerjakan dalam penalaranmu): (1) apa arah bias terkuat dari M5/M15/H1? (2) konsisten dengan regime? (3) kalau ada rilis berita dekat, sudahkah kutawarkan cara main-nya (bukan sekadar melarang)? (4) R:R dari entry/sl/tp masuk akal untuk scalping (≥ 1:1.3)? (5) angka level konsisten dengan harga sekarang & pivot? Jika ada yang gagal, revisi sebelum menulis JSON.
+SELF-CHECK sebelum jawab (kerjakan dalam penalaranmu): (1) apa arah bias terkuat dari M5/M15/H1? (2) konsisten dengan regime? (3) kalau ada rilis berita dekat, sudahkah kutawarkan cara main-nya (bukan sekadar melarang)? (4) R:R dari entry/sl/tp masuk akal untuk scalping (≥ 1:1.3)? (5) angka level konsisten dengan harga sekarang & level major? Jika ada yang gagal, revisi sebelum menulis JSON.
 
 ANGKA WAJIB: entry/sl/tp di plan & chartLevels HARUS angka harga konkret (bukan "di area support"); di plan sebutkan juga jarak dalam poin dan rasio R:R terhitung (mis. "SL 4051.2 (-8.3 poin), TP 4074.5 (+15 poin), R:R 1:1.8").
 
@@ -157,7 +157,7 @@ Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
  "headline":"<1 kalimat kesimpulan utama yang tegas>",
  "executive":"<ringkasan eksekutif 2-3 kalimat menggabungkan semua faktor>",
  "confluence":[{"faktor":"<Konfluensi TF | Dolar & Yield | Inflasi/Fed | COT | VIX/Risk | Berita>","arah":"bullish|bearish|netral","catatan":"<1 frasa singkat>"}],
- "technical":"<analisa teknikal: konfluensi TF, RSI, ADX/kekuatan tren, posisi vs VWAP, level pivot penting>",
+ "technical":"<analisa teknikal: konfluensi TF, RSI, ADX/kekuatan tren, posisi vs VWAP, level major penting>",
  "macro":"<analisa makro: dolar, yield, inflasi, arah kebijakan Fed & implikasinya ke emas>",
  "sentiment":"<analisa sentimen: berita terkini + posisi COT (retail vs institusi) + VIX/saham + BTC>",
  "levelKunci":{"support":"<level/zona support terdekat>","resistance":"<level/zona resistance terdekat>"},
@@ -170,7 +170,7 @@ Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:
 
 confluence 4-6 item (mencakup teknikal, makro, sentimen). scenarios 2, risks 2-3, watch 2-3. Bahasa Indonesia, tegas, informatif, mudah dibaca & membantu keputusan. Berbasis data yang diberikan — jangan mengarang angka. Jika ada KONTEKS/PERMINTAAN DARI TRADER, sesuaikan fokus, gaya (mis. scalping), timeframe, dan rekomendasi dengan permintaan itu tanpa mengabaikan data lain.
 
-PENTING untuk chartLevels: isi dengan ANGKA harga bersih (bukan teks/range), konsisten dengan harga saat ini & pivot yang diberikan, agar bisa digambar sebagai garis di chart. Jika keputusan TUNGGU dan belum ada rencana entry, set entry/sl/tp ke null tapi tetap isi support & resistance dari level terdekat.`,
+PENTING untuk chartLevels: isi dengan ANGKA harga bersih (bukan teks/range), konsisten dengan harga saat ini & level major yang diberikan, agar bisa digambar sebagai garis di chart. Jika keputusan TUNGGU dan belum ada rencana entry, set entry/sl/tp ke null tapi tetap isi support & resistance dari level terdekat.`,
       messages: [{ role: 'user', content: dataBlock }],
     })
 

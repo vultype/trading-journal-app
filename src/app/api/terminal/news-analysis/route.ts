@@ -62,7 +62,7 @@ Prinsip:
 - Prioritas komponen: Core (inti) > headline; YoY = acuan struktural Fed; MoM = momentum/kejutan yang menggerakkan harga saat rilis. Untuk NFP: angka NFP & Average Hourly Earnings paling berdampak. Kalau komponen bertentangan, tentukan mana yang menang.
 - Inflasi/data panas (di atas ekspektasi) → dolar & yield naik → BEARISH emas. Data dingin → BULLISH emas. Risk-off → bullish emas.
 - Klasifikasikan headline: mana yang MENDUKUNG emas naik vs MENEKAN emas.
-- Rujuk angka nyata dari snapshot (harga, VWAP, pivot, RSI, ADX, yield, dolar, real yield, dsb). Jangan mengarang angka.
+- Rujuk angka nyata dari snapshot (harga, VWAP, level major, RSI, ADX, yield, dolar, real yield, dsb). Jangan mengarang angka.
 - Bahasa Indonesia, ringkas, mudah dipahami pemula.
 
 DATA PENDUKUNG / BERKORELASI (WAJIB, berlaku untuk SEMUA jenis event, bukan hanya yang di atas contoh):

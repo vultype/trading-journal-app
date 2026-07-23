@@ -959,13 +959,18 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
   // Zona Support/Resistance untuk SCALPING — band di sekitar level pivot, hanya yang DEKAT harga.
   // Zona S/R untuk SCALPING — utamakan swing intraday M5 & M15 (paling DEKAT harga),
   // pivot harian dipakai sebagai pelengkap. Band lebarnya skala ATR (M5 utk lebih rapat).
-  type ZoneSrc = 'M5' | 'M15' | 'Pivot'
+  // 'major' = level pivot harian (dihitung dari OHLC kemarin). Istilah "Pivot"
+  // sengaja tidak ditampilkan ke layar: itu jargon yang tidak memberi tahu
+  // trader apa pun tentang CARA MEMAKAINYA. Yang perlu langsung terbaca adalah
+  // bahwa level ini kelas berat — tetap sama sepanjang hari dan dilihat semua
+  // pelaku pasar — berbeda dari swing M5/M15 yang lokal dan cepat basi.
+  type ZoneSrc = 'M5' | 'M15' | 'major'
   type Zone = { kind: 'res' | 'sup'; label: string; src: ZoneSrc; mid: number; low: number; high: number; dist: number; inside: boolean }
   const zoneW = clamp((feed.tf.M5.atr || 2) * 0.5, 1, 5)  // setengah lebar band (skala volatilitas M5)
   const swM5 = swingLevels(feed.tf.M5.candles), swM15 = swingLevels(feed.tf.M15.candles)
   type LvCand = { price: number; src: ZoneSrc }
-  const pivRes: LvCand[] = pivotsLive ? [{ price: pivotsLive.R1, src: 'Pivot' }, { price: pivotsLive.R2, src: 'Pivot' }] : []
-  const pivSup: LvCand[] = pivotsLive ? [{ price: pivotsLive.S1, src: 'Pivot' }, { price: pivotsLive.S2, src: 'Pivot' }] : []
+  const pivRes: LvCand[] = pivotsLive ? [{ price: pivotsLive.R1, src: 'major' }, { price: pivotsLive.R2, src: 'major' }] : []
+  const pivSup: LvCand[] = pivotsLive ? [{ price: pivotsLive.S1, src: 'major' }, { price: pivotsLive.S2, src: 'major' }] : []
   const resCand: LvCand[] = [...swM5.highs.map(p => ({ price: p, src: 'M5' as const })), ...swM15.highs.map(p => ({ price: p, src: 'M15' as const })), ...pivRes].filter(l => l.price > feed.price + 0.2)
   const supCand: LvCand[] = [...swM5.lows.map(p => ({ price: p, src: 'M5' as const })), ...swM15.lows.map(p => ({ price: p, src: 'M15' as const })), ...pivSup].filter(l => l.price < feed.price - 0.2)
   // gabung level yang berdekatan (dalam ~1 lebar band), ambil 3 terdekat ke harga
@@ -1480,15 +1485,24 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
       <div className="flex justify-between text-[10px] mt-2 pt-2 border-t border-white/5"><span className="text-white/45" title="Rata-rata harga sejak awal sesi hari ini (anchored, bukan jendela sembarang)">Harga vs VWAP Sesi M15</span><span className={`font-bold ${feed.price > feed.tf.M15.vwap ? 'text-emerald-400' : 'text-red-400'}`}>{feed.price > feed.tf.M15.vwap ? 'di atas (+' : 'di bawah ('}{(feed.price - feed.tf.M15.vwap).toFixed(1)})</span></div>
     </Panel>
   )
-  const ZonaRow = ({ z }: { z: typeof allZones[number] }) => (
-    <div className={`rounded-lg border px-2.5 py-1.5 ${z.inside ? 'border-amber-500/40 bg-amber-500/10' : z.kind === 'res' ? 'border-red-500/20 bg-red-500/[0.05]' : 'border-emerald-500/20 bg-emerald-500/[0.05]'}`}>
-      <div className="flex items-center justify-between">
-        <span className={`flex items-center gap-1.5 text-[11px] font-bold ${z.kind === 'res' ? 'text-red-400' : 'text-emerald-400'}`}>{z.kind === 'res' ? '🔴' : '🟢'} {z.label}<span className="rounded px-1 py-0.5 text-[8px] font-bold bg-white/10 text-white/50">{z.src}</span></span>
-        <span className={`text-[10px] font-bold tabular-nums ${z.inside ? 'text-amber-400' : 'text-white/40'}`}>{z.inside ? 'DI DALAM ZONA' : `${z.dist >= 0 ? '+' : ''}${z.dist.toFixed(1)} poin`}</span>
+  const ZonaRow = ({ z }: { z: typeof allZones[number] }) => {
+    const major = z.src === 'major'
+    // Badge level major dibuat menonjol (amber, bukan abu-abu seperti M5/M15):
+    // perbedaan kelasnya harus terlihat sekilas tanpa harus membaca teksnya.
+    const badge = major ? (z.kind === 'res' ? 'MAJOR RESISTANCE' : 'MAJOR SUPPORT') : z.src
+    return (
+      <div className={`rounded-lg border px-2.5 py-1.5 ${z.inside ? 'border-amber-500/40 bg-amber-500/10' : z.kind === 'res' ? 'border-red-500/20 bg-red-500/[0.05]' : 'border-emerald-500/20 bg-emerald-500/[0.05]'}`}>
+        <div className="flex items-start justify-between gap-2">
+          <span className={`flex items-center gap-1.5 flex-wrap text-[11px] font-bold min-w-0 ${z.kind === 'res' ? 'text-red-400' : 'text-emerald-400'}`}>
+            {z.kind === 'res' ? '🔴' : '🟢'} {z.label}
+            <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold tracking-wide ${major ? 'bg-amber-500/20 text-amber-300' : 'bg-white/10 text-white/50'}`}>{badge}</span>
+          </span>
+          <span className={`shrink-0 text-[10px] font-bold tabular-nums ${z.inside ? 'text-amber-400' : 'text-white/40'}`}>{z.inside ? 'DI DALAM ZONA' : `${z.dist >= 0 ? '+' : ''}${z.dist.toFixed(1)} poin`}</span>
+        </div>
+        <p className="text-[11px] font-bold tabular-nums text-white/85 mt-0.5">{f2(z.low)} – {f2(z.high)}</p>
       </div>
-      <p className="text-[11px] font-bold tabular-nums text-white/85 mt-0.5">{f2(z.low)} – {f2(z.high)}</p>
-    </div>
-  )
+    )
+  }
   // ── Proyeksi: arah leg, target, kedalaman koreksi, sisa ruang harian ──
   // Sengaja dibingkai "level proyeksi", BUKAN prediksi: yang dihitung adalah
   // tempat harga cenderung bereaksi (Fib extension/retracement dari leg nyata),
@@ -1622,7 +1636,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     </Panel>
   )
   const ZonaPanel = (
-    <Panel title="Zona Support & Resistance (Scalping)" icon={Layers} info="Zona S/R TERDEKAT dari swing intraday M5 & M15 (paling relevan untuk scalping) + pivot harian. Tag M5/M15/Pivot menandai sumbernya. Lebar band ikut volatilitas (ATR M5). Resistance di atas (rem naik), support di bawah (rem turun). Amber = harga sedang di dalam zona.">
+    <Panel title="Zona Support & Resistance (Scalping)" icon={Layers} info="Zona S/R TERDEKAT dari harga. Tag M5/M15 = swing intraday, level lokal yang cepat basi begitu ditembus. Tag MAJOR = level harian dari OHLC kemarin — tetap sama sepanjang hari dan dilihat hampir semua pelaku pasar, jadi reaksi di sana cenderung lebih tajam dan tembusnya lebih bermakna. M5/M15 yang bertumpuk dengan MAJOR = zona terkuat. Lebar band ikut volatilitas (ATR M5). Amber = harga sedang di dalam zona.">
       {allZones.length ? (
         <div className="space-y-2">
           <div className="space-y-1.5">{resZones.slice().reverse().map((z, i) => <ZonaRow key={`r${i}`} z={z} />)}</div>
@@ -1820,7 +1834,7 @@ export function TradingTerminal({ plan = 'pro', isAdmin = false }: { plan?: 'fre
     { label: 'Candle H4/Daily', sub: 'Twelve Data · tiap 5 mnt', ts: live.htfAt, interval: 300_000, forced: liveForced },
     { label: 'Lintas-Aset', sub: 'Twelve Data · tiap 45 dtk', ts: cross.updatedAt, interval: 45_000 },
     { label: 'Makro', sub: 'FRED · tiap 1 jam', ts: macroAt, interval: 3_600_000 },
-    { label: 'Pivot Harian', sub: 'Twelve Data · tiap 1 jam', ts: pivotAt, interval: 3_600_000 },
+    { label: 'Level Major Harian', sub: 'Twelve Data · tiap 1 jam', ts: pivotAt, interval: 3_600_000 },
     { label: 'COT Institusi', sub: 'CFTC Socrata · tiap 6 jam', ts: cotAt, interval: 6 * 3_600_000 },
     { label: 'Berita RSS', sub: 'Multi-sumber · tiap 10 mnt', ts: newsAt, interval: 600_000 },
   ]
