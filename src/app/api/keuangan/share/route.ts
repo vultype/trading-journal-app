@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'crypto'
 import { ADMIN_EMAIL } from '@/lib/notify-admin'
-import { maskPayload, SHARE_V, type SharePayload } from '@/lib/finance-share'
+import { maskPayload, isKnownShareVersion, type SharePayload } from '@/lib/finance-share'
 
 // Tautan berbagi ringkasan keuangan (ADMIN-ONLY untuk membuat; publik untuk
 // membaca lewat halaman /s/[slug]).
@@ -45,7 +45,9 @@ export async function POST(req: Request) {
 
   const b = await req.json().catch(() => ({} as Record<string, unknown>))
   const raw = b.payload as SharePayload | undefined
-  if (!raw || raw.v !== SHARE_V) return NextResponse.json({ error: 'Data ringkasan tidak dikenal.' }, { status: 400 })
+  if (!raw || !isKnownShareVersion(raw.v)) {
+    return NextResponse.json({ error: 'Data ringkasan tidak dikenal. Muat ulang halaman lalu coba lagi.' }, { status: 400 })
+  }
 
   const masked = b.masked !== false
   const title = String(b.title || 'Ringkasan Keuangan').slice(0, 80)

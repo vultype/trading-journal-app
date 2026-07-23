@@ -21,6 +21,18 @@
 export const SHARE_V = 3 as const
 export type ShareVersion = 1 | 2 | 3
 
+// Versi yang MASIH diterima saat membuat tautan baru — bukan hanya yang terbaru.
+//
+// Menuntut kecocokan persis dengan SHARE_V terlihat aman, tapi keliru: halaman
+// /keuangan yang sudah terbuka di tab pengguna masih memakai bundel lama, dan
+// tiap kenaikan versi langsung membuat tombol "Buat Tautan" gagal sampai tab-nya
+// di-reload keras. Menerima versi lama tidak menurunkan keamanan — seluruh field
+// bersifat opsional, maskPayload memprosesnya sama saja, dan halaman publik
+// hanya menampilkan lebih sedikit.
+export const SHARE_ACCEPTED: readonly number[] = [1, 2, 3]
+export const isKnownShareVersion = (v: unknown): v is ShareVersion =>
+  typeof v === 'number' && SHARE_ACCEPTED.includes(v)
+
 export type ShareTone = 'good' | 'warn' | 'bad' | 'info'
 
 export type ShareTx = { d: string; n?: string; v: number }

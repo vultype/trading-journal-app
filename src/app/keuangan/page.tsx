@@ -1523,17 +1523,25 @@ function ShareSheet({ build, onClose }: { build: (o: ShareOpts) => SharePayload;
 
   async function create() {
     setBusy(true)
-    const { data: { session } } = await createClient().auth.getSession()
-    if (!session) { setBusy(false); toast.error('Sesi berakhir, muat ulang halaman'); return }
-    const r = await fetch('/api/keuangan/share', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ payload: build(opts), masked: opts.masked, ttlDays: ttl, note: note.trim() || undefined }),
-    })
-    const j = await r.json().catch(() => ({}))
-    setBusy(false)
-    if (!r.ok) { toast.error(j.error ?? 'Gagal membuat tautan'); return }
-    setUrl(j.url); toast.success('Tautan dibuat'); load()
+    // finally: tanpa ini, satu kegagalan saat merakit payload atau satu putus
+    // jaringan meninggalkan tombol dalam keadaan berputar selamanya — tidak ada
+    // pesan, dan tidak ada jalan mencoba lagi selain memuat ulang halaman.
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) { toast.error('Sesi berakhir, muat ulang halaman'); return }
+      const r = await fetch('/api/keuangan/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ payload: build(opts), masked: opts.masked, ttlDays: ttl, note: note.trim() || undefined }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { toast.error(j.error ?? 'Gagal membuat tautan'); return }
+      setUrl(j.url); toast.success('Tautan dibuat'); load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal membuat tautan')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function revoke(id: string) {
