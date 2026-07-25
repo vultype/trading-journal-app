@@ -1658,18 +1658,39 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
   const [token, setToken] = useState<string | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [lihatGagal, setLihatGagal] = useState<FinInbox | null>(null)
-  const [edit, setEdit] = useState<Record<string, { type: string; cat: string; acc: string; remember: boolean }>>({})
+  type Draf = { type: string; cat: string; acc: string; remember: boolean; rule: string }
+  const [edit, setEdit] = useState<Record<string, Draf>>({})
 
   const draft = rows.filter(r => r.status === 'draft')
   const failed = rows.filter(r => r.status === 'gagal')
 
-  const val = (r: FinInbox) => edit[r.id] ?? {
+  // Kunci aturan — teks yang dicocokkan untuk transaksi BERIKUTNYA. Ini BUKAN
+  // judul draf.
+  //
+  // Nama penerima transfer berbeda tiap orang. Memakainya sebagai kunci
+  // menghasilkan aturan yang tidak akan pernah cocok lagi, dan fin_rules
+  // membengkak berisi nama orang satu per satu — otomatisasinya tidak pernah
+  // benar-benar menolong. Yang berulang adalah JENIS transaksinya.
+  //
+  // Pengecualian Virtual Account: di sana Company/Product Name justru stabil dan
+  // berulang (top-up DANA selalu "PT ESPAY DEBIT INDONESIA…"), dan itu jauh
+  // lebih spesifik daripada jenisnya.
+  const kunciDefault = (r: FinInbox) => {
+    const t = (r.transfer_type ?? '').trim()
+    const m = (r.merchant ?? '').trim()
+    if (!t) return m
+    if (!m || m === t) return t
+    return /virtual account/i.test(t) ? m : t
+  }
+
+  const val = (r: FinInbox): Draf => edit[r.id] ?? {
     type: r.suggested_type ?? 'expense',
     cat: r.suggested_category_id ?? '',
     acc: r.suggested_account_id ?? accounts[0]?.id ?? '',
     remember: true,
+    rule: kunciDefault(r),
   }
-  const set = (id: string, patch: Partial<{ type: string; cat: string; acc: string; remember: boolean }>) =>
+  const set = (id: string, patch: Partial<Draf>) =>
     setEdit(p => ({ ...p, [id]: { ...(p[id] ?? val(rows.find(r => r.id === id)!)), ...patch } }))
 
   async function loadToken() {
@@ -1708,11 +1729,13 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
 
     await sb.from('fin_inbox').update({ status: 'approved', tx_id: tx.id }).eq('id', r.id)
 
-    // "Ingat pilihan ini": transaksi berikutnya dari merchant yang sama langsung
-    // datang dengan tebakan yang benar.
-    if (v.remember && r.merchant) {
+    // Aturan disimpan dengan kunci PILIHAN USER (v.rule), bukan r.merchant.
+    // Untuk transfer antar-orang, merchant adalah nama penerima yang berbeda
+    // tiap kali — aturan berbasis itu tidak akan pernah cocok lagi.
+    const kunci = v.rule.trim()
+    if (v.remember && kunci) {
       await sb.from('fin_rules').upsert({
-        user_id: userId, match: r.merchant.slice(0, 80),
+        user_id: userId, match: kunci.slice(0, 80),
         type: v.type, category_id: v.type === 'transfer' ? null : v.cat, account_id: v.acc,
       }, { onConflict: 'user_id,match' })
     }
@@ -1896,10 +1919,32 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
                   </select>
                 </div>
 
-                <label className="flex items-center gap-2 mb-2.5 cursor-pointer">
-                  <input type="checkbox" checked={v.remember} onChange={e => set(r.id, { remember: e.target.checked })} className="accent-indigo-500" />
-                  <span className="text-[11px] text-slate-500">Ingat pilihan ini untuk <b>{r.merchant ?? 'merchant ini'}</b></span>
-                </label>
+                {/* Kunci aturan ditampilkan dan bisa diubah, bukan ditebak diam-diam.
+                    Bedanya besar: memilih nama penerima berarti aturan yang tidak
+                    akan pernah cocok lagi, karena tiap transfer ke orang berbeda. */}
+                <div className="mb-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={v.remember} onChange={e => set(r.id, { remember: e.target.checked })} className="accent-indigo-500" />
+                    <span className="text-[11px] text-slate-500">Ingat pilihan ini untuk transaksi berikutnya</span>
+                  </label>
+                  {v.remember && (() => {
+                    const opsi = Array.from(new Set([r.transfer_type, r.merchant].filter((x): x is string => !!x && !!x.trim())))
+                    const orang = v.rule === r.merchant && r.merchant !== r.transfer_type && !/virtual account/i.test(r.transfer_type ?? '')
+                    return (
+                      <div className="mt-1.5 pl-6">
+                        <select value={v.rule} onChange={e => set(r.id, { rule: e.target.value })}
+                          className="w-full h-10 px-3 rounded-xl bg-[#F7F7FA] text-[11px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
+                          {opsi.map(o => <option key={o} value={o}>Cocokkan: {o}</option>)}
+                        </select>
+                        <p className={`text-[10px] leading-relaxed mt-1 ${orang ? 'text-amber-600' : 'text-slate-400'}`}>
+                          {orang
+                            ? 'Ini nama penerima — berbeda tiap transfer, jadi aturannya tidak akan cocok lagi. Pilih jenis transaksinya kalau ingin berlaku untuk semua transfer.'
+                            : 'Draf berikutnya yang teksnya mengandung ini akan langsung terisi kategori & rekening yang sama.'}
+                        </p>
+                      </div>
+                    )
+                  })()}
+                </div>
 
                 <div className="flex gap-2">
                   <button onClick={() => approve(r)} disabled={busy === r.id}
