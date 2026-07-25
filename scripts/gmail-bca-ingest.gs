@@ -34,69 +34,12 @@ var LABEL = 'datalitiq-terkirim';
 
 var MAX_PER_RUN = 25;   // batas per eksekusi, supaya tidak kena limit Apps Script
 
-function kirimNotifikasiBCA() {
-  var label = GmailApp.getUserLabelByName(LABEL) || GmailApp.createLabel(LABEL);
-  var threads = GmailApp.search(QUERY, 0, MAX_PER_RUN);
-  var terkirim = 0, gagal = 0;
-
-  for (var i = 0; i < threads.length; i++) {
-    var msgs = threads[i].getMessages();
-    var semuaOk = true;
-
-    for (var j = 0; j < msgs.length; j++) {
-      var m = msgs[j];
-      var from = m.getFrom();
-      if (from.indexOf('bca.co.id') === -1) continue;   // jaga-jaga
-
-      var payload = {
-        token: TOKEN,
-        messageId: m.getId(),
-        subject: m.getSubject(),
-        from: from,
-        text: m.getPlainBody(),
-        html: m.getBody(),
-      };
-
-      try {
-        var res = UrlFetchApp.fetch(ENDPOINT, {
-          method: 'post',
-          contentType: 'application/json',
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true,
-        });
-        var code = res.getResponseCode();
-        if (code >= 200 && code < 300) {
-          terkirim++;
-        } else {
-          gagal++;
-          semuaOk = false;
-          Logger.log('Gagal ' + code + ': ' + res.getContentText().slice(0, 300));
-        }
-      } catch (e) {
-        gagal++;
-        semuaOk = false;
-        Logger.log('Error: ' + e);
-      }
-    }
-
-    // Label HANYA dipasang kalau seluruh pesan di thread berhasil terkirim.
-    // Memasangnya lebih awal berarti email yang gagal terkirim hilang dari
-    // query selamanya — dan transaksinya tidak akan pernah tercatat.
-    if (semuaOk) label.addToThread(threads[i]);
-  }
-
-  Logger.log('Selesai. Terkirim: ' + terkirim + ', gagal: ' + gagal);
-}
-
-/** Jalankan SEKALI untuk memasang trigger otomatis tiap 10 menit. */
-function pasangTrigger() {
-  var ada = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < ada.length; i++) {
-    if (ada[i].getHandlerFunction() === 'kirimNotifikasiBCA') ScriptApp.deleteTrigger(ada[i]);
-  }
-  ScriptApp.newTrigger('kirimNotifikasiBCA').timeBased().everyMinutes(10).create();
-  Logger.log('Trigger dipasang: tiap 10 menit.');
-}
+// ══ ujiCoba SENGAJA DITARUH PALING ATAS ══════════════════════════════════
+// Apps Script memilih fungsi PERTAMA di file sebagai target default tombol Run.
+// Kalau kirimNotifikasiBCA yang di atas, satu klik Run tanpa mengganti dropdown
+// langsung menjalankan sinkronisasi penuh (sampai 25 email) — lambat, dan
+// memasang label sebelum setup terbukti benar. Fungsi diagnostik harus jadi
+// yang paling gampang dijalankan tidak sengaja.
 
 /**
  * Uji satu email terbaru TANPA memasang label — jalankan ini DULU sebelum
@@ -164,4 +107,74 @@ function ujiCoba() {
   } else if (code === 404 || code === 308 || code === 301) {
     Logger.log('URL salah atau kena redirect. Pastikan ENDPOINT memakai www.');
   }
+}
+
+function kirimNotifikasiBCA() {
+  var label = GmailApp.getUserLabelByName(LABEL) || GmailApp.createLabel(LABEL);
+  var threads = GmailApp.search(QUERY, 0, MAX_PER_RUN);
+  var terkirim = 0, gagal = 0;
+
+  // Log progres per thread. Tanpa ini, eksekusi yang memproses puluhan email
+  // tidak menampilkan apa pun sampai selesai — tidak bisa dibedakan dari macet.
+  Logger.log('Ditemukan ' + threads.length + ' thread untuk diproses.');
+  if (!threads.length) { Logger.log('Tidak ada email baru. Selesai.'); return; }
+
+  for (var i = 0; i < threads.length; i++) {
+    var msgs = threads[i].getMessages();
+    var semuaOk = true;
+
+    for (var j = 0; j < msgs.length; j++) {
+      var m = msgs[j];
+      var from = m.getFrom();
+      if (from.indexOf('bca.co.id') === -1) continue;   // jaga-jaga
+
+      var payload = {
+        token: TOKEN,
+        messageId: m.getId(),
+        subject: m.getSubject(),
+        from: from,
+        text: m.getPlainBody(),
+        html: m.getBody(),
+      };
+
+      try {
+        var res = UrlFetchApp.fetch(ENDPOINT, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true,
+        });
+        var code = res.getResponseCode();
+        if (code >= 200 && code < 300) {
+          terkirim++;
+        } else {
+          gagal++;
+          semuaOk = false;
+          Logger.log('Gagal ' + code + ': ' + res.getContentText().slice(0, 300));
+        }
+      } catch (e) {
+        gagal++;
+        semuaOk = false;
+        Logger.log('Error: ' + e);
+      }
+    }
+
+    // Label HANYA dipasang kalau seluruh pesan di thread berhasil terkirim.
+    // Memasangnya lebih awal berarti email yang gagal terkirim hilang dari
+    // query selamanya — dan transaksinya tidak akan pernah tercatat.
+    if (semuaOk) label.addToThread(threads[i]);
+    Logger.log('  [' + (i + 1) + '/' + threads.length + '] ' + (semuaOk ? 'ok' : 'ADA GAGAL'));
+  }
+
+  Logger.log('Selesai. Terkirim: ' + terkirim + ', gagal: ' + gagal);
+}
+
+/** Jalankan SEKALI untuk memasang trigger otomatis tiap 10 menit. */
+function pasangTrigger() {
+  var ada = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < ada.length; i++) {
+    if (ada[i].getHandlerFunction() === 'kirimNotifikasiBCA') ScriptApp.deleteTrigger(ada[i]);
+  }
+  ScriptApp.newTrigger('kirimNotifikasiBCA').timeBased().everyMinutes(10).create();
+  Logger.log('Trigger dipasang: tiap 10 menit.');
 }
