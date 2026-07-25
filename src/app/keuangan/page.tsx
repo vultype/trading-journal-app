@@ -259,8 +259,15 @@ export default function KeuanganPage() {
       setBudgets((b.data ?? []) as FinBudget[])
       setNeedsV2(false)
     }
+    // Urut berdasarkan TANGGAL TRANSAKSI, bukan received_at. Satu kali impor
+    // memasukkan puluhan baris dengan received_at nyaris identik, jadi urutannya
+    // jadi sembarang — transaksi hari ini bisa tenggelam di bawah yang sebulan
+    // lalu, dan terlihat seperti tidak masuk sama sekali.
     const ib = await sb.from('fin_inbox').select('*')
-      .in('status', ['draft', 'gagal']).order('received_at', { ascending: false }).limit(200)
+      .in('status', ['draft', 'gagal'])
+      .order('tx_date', { ascending: false, nullsFirst: false })
+      .order('received_at', { ascending: false })
+      .limit(200)
     if (ib.error) setNeedsInbox(true)
     else { setInbox((ib.data ?? []) as FinInbox[]); setNeedsInbox(false) }
 
