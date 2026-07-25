@@ -186,14 +186,47 @@ function _cacheSimpan(ids) {
   PropertiesService.getUserProperties().setProperty(PROP_KEY, potong.join(','));
 }
 
-/** Jalankan SEKALI untuk memasang trigger otomatis tiap 10 menit. */
+// Interval sinkronisasi. Hanya 1, 5, 10, 15, atau 30 yang diterima Apps Script.
+//
+// Jangan tergoda memakai 1: akun Gmail biasa dibatasi ~90 menit total runtime
+// skrip per hari. Tiap eksekusi makan ~2-5 detik walau tidak ada email baru, dan
+// 1440 eksekusi/hari sudah menyentuh batas itu — begitu kuota habis, sinkronisasi
+// BERHENTI TOTAL sampai besok. 5 menit hanya memakai ~15 menit/hari.
+var INTERVAL_MENIT = 5;
+
+/** Jalankan SEKALI untuk memasang trigger otomatis. */
 function pasangTrigger() {
   var ada = ScriptApp.getProjectTriggers();
   for (var i = 0; i < ada.length; i++) {
     if (ada[i].getHandlerFunction() === 'kirimNotifikasiBCA') ScriptApp.deleteTrigger(ada[i]);
   }
-  ScriptApp.newTrigger('kirimNotifikasiBCA').timeBased().everyMinutes(10).create();
-  Logger.log('Trigger dipasang: tiap 10 menit.');
+  ScriptApp.newTrigger('kirimNotifikasiBCA').timeBased().everyMinutes(INTERVAL_MENIT).create();
+  Logger.log('Trigger dipasang: tiap ' + INTERVAL_MENIT + ' menit.');
+  cekTrigger();
+}
+
+/** Apakah sinkronisasi otomatis sedang aktif? Jalankan kapan saja untuk memastikan. */
+function cekTrigger() {
+  var ada = ScriptApp.getProjectTriggers().filter(function (t) {
+    return t.getHandlerFunction() === 'kirimNotifikasiBCA';
+  });
+  if (!ada.length) {
+    Logger.log('TIDAK AKTIF — sinkronisasi masih manual.');
+    Logger.log('Jalankan pasangTrigger untuk mengaktifkannya.');
+    return;
+  }
+  Logger.log('AKTIF — ' + ada.length + ' trigger terpasang, tiap ' + INTERVAL_MENIT + ' menit.');
+  Logger.log('Riwayat jalannya bisa dilihat di menu Executions (ikon jam di kiri).');
+}
+
+/** Matikan sinkronisasi otomatis. */
+function matikanTrigger() {
+  var ada = ScriptApp.getProjectTriggers();
+  var n = 0;
+  for (var i = 0; i < ada.length; i++) {
+    if (ada[i].getHandlerFunction() === 'kirimNotifikasiBCA') { ScriptApp.deleteTrigger(ada[i]); n++; }
+  }
+  Logger.log(n ? n + ' trigger dihapus. Sinkronisasi kembali manual.' : 'Tidak ada trigger yang aktif.');
 }
 
 /**
