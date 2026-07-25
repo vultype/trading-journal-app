@@ -33,6 +33,7 @@ import {
   TriangleAlert, Info, CircleCheck, Lightbulb, Share2, Copy, Inbox, Mail, RefreshCw,
 } from 'lucide-react'
 import { SHARE_V, type SharePayload } from '@/lib/finance-share'
+import { parseBcaEmail } from '@/lib/bca-parser'
 
 // ── tipe ──
 type FinAccount = { id: string; name: string; kind: string; initial_balance: number; color: string | null }
@@ -1546,6 +1547,103 @@ function ColorPicker({ value, onChange }: { value: string | null; onChange: (c: 
   )
 }
 
+// ── diagnosa email yang gagal dibaca ──
+//
+// Email mentahnya di-parse ULANG di browser, bukan sekadar menampilkan pesan
+// error yang tersimpan. Alasannya: yang benar-benar menjawab "kenapa gagal"
+// bukan kalimat errornya, melainkan DAFTAR FIELD yang berhasil dikenali. Dari
+// situ langsung terlihat apakah BCA mengganti nama label, mengubah format
+// nominal, atau memang emailnya bukan jurnal transaksi.
+function GagalSheet({ r, onClose, onHapus }: { r: FinInbox; onClose: () => void; onHapus: () => void }) {
+  const raw = r.raw ?? ''
+  const hasil = parseBcaEmail({ text: raw })
+  const fields = hasil.ok ? hasil.fields : (hasil.fields ?? {})
+  const keys = Object.keys(fields)
+
+  // Tiga field ini yang menentukan lolos-tidaknya. Menampilkan status masing-
+  // masing jauh lebih berguna daripada satu pesan gagal.
+  const wajib = [
+    { label: 'Reference No.', alias: ['Reference No.', 'Reference No', 'Reference Number', 'No. Referensi'], guna: 'kunci anti-duplikat' },
+    { label: 'Transaction Date', alias: ['Transaction Date', 'Tanggal Transaksi'], guna: 'tanggal transaksi' },
+    { label: 'Pay Amount / Total Payment', alias: ['Total Payment', 'Total Pembayaran', 'Pay Amount', 'Amount', 'Nominal', 'Jumlah'], guna: 'nominal' },
+  ].map(w => {
+    const hit = w.alias.find(a => keys.some(k => k.toLowerCase() === a.toLowerCase()))
+    return { ...w, nilai: hit ? fields[keys.find(k => k.toLowerCase() === hit.toLowerCase())!] : null }
+  })
+
+  const salin = () => {
+    navigator.clipboard.writeText(raw)
+    toast.success('Isi email disalin — kirimkan ke pengembang')
+  }
+
+  return (
+    <Sheet title="Kenapa Gagal Dibaca" onClose={onClose}>
+      <div className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-3 mb-4">
+        <p className="text-[10px] font-black uppercase tracking-wider text-rose-500 mb-1">Alasan</p>
+        <p className="text-[12px] font-bold text-rose-700 leading-relaxed">{r.parse_error ?? 'Tidak tercatat'}</p>
+      </div>
+
+      <p className="text-[11px] font-bold text-slate-400 mb-1.5">Field wajib</p>
+      <div className="rounded-2xl bg-[#F7F7FA] px-4 py-1 mb-4">
+        {wajib.map(w => (
+          <div key={w.label} className="flex items-start justify-between gap-3 py-2.5 border-b border-slate-200/60 last:border-0">
+            <div className="min-w-0">
+              <p className="text-[12px] font-bold truncate">{w.label}</p>
+              <p className="text-[10px] text-slate-400">{w.guna}</p>
+            </div>
+            {w.nilai !== null ? (
+              <span className="shrink-0 text-[11px] font-bold text-emerald-600 text-right max-w-[45%] truncate">✓ {w.nilai || '(kosong)'}</span>
+            ) : (
+              <span className="shrink-0 text-[11px] font-black text-rose-500">✕ tidak ada</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {keys.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-bold text-slate-400 mb-1.5">Semua field terbaca ({keys.length})</p>
+          <div className="rounded-2xl bg-[#F7F7FA] px-4 py-1 max-h-56 overflow-y-auto">
+            {keys.map(k => (
+              <div key={k} className="flex items-start justify-between gap-3 py-2 border-b border-slate-200/60 last:border-0">
+                <span className="text-[11px] font-semibold text-slate-500 shrink-0">{k}</span>
+                <span className="text-[11px] font-bold text-right break-all">{fields[k] || '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-4">
+        <p className="text-[11px] font-black text-amber-800 mb-1">Cara membacanya</p>
+        <p className="text-[11px] text-amber-700/90 leading-relaxed">
+          {keys.length === 0
+            ? 'Tidak ada satu pun pasangan "Label : Nilai" yang terbaca. Kemungkinan besar ini bukan email jurnal transaksi BCA — bisa jadi promo, e-statement, atau notifikasi login.'
+            : wajib.some(w => w.nilai === null)
+              ? 'Sebagian field terbaca, tapi yang wajib ada yang hilang. Kalau nama labelnya berbeda dari yang dicari, berarti BCA mengubah template — kirimkan isi email di bawah agar parser ditambahi nama label barunya.'
+              : 'Semua field wajib sebenarnya terbaca sekarang. Kemungkinan kegagalan terjadi karena format nominal atau tanggalnya tidak dikenali. Kirimkan isi email di bawah.'}
+        </p>
+      </div>
+
+      <div className="mb-4">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <p className="text-[11px] font-bold text-slate-400">Isi email mentah</p>
+          <button onClick={salin} className="text-[11px] font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1"><Copy size={12} /> Salin</button>
+        </div>
+        {raw ? (
+          <pre className="rounded-2xl bg-[#F7F7FA] p-3.5 text-[10px] leading-relaxed max-h-72 overflow-auto whitespace-pre-wrap break-all">{raw}</pre>
+        ) : (
+          <p className="text-[12px] text-slate-300 py-4 text-center">Isi email tidak tersimpan.</p>
+        )}
+      </div>
+
+      <button onClick={onHapus} className="w-full h-11 rounded-2xl border border-rose-200 text-rose-500 text-[13px] font-black hover:bg-rose-50 flex items-center justify-center gap-1.5">
+        <Trash2 size={15} /> Hapus Baris Ini
+      </button>
+    </Sheet>
+  )
+}
+
 // ── inbox email bank ──
 //
 // Draf dari notifikasi BCA. Menyetujui = MEMBUAT fin_transactions, lalu menandai
@@ -1559,6 +1657,7 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
   const [busy, setBusy] = useState<string | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [showSetup, setShowSetup] = useState(false)
+  const [lihatGagal, setLihatGagal] = useState<FinInbox | null>(null)
   const [edit, setEdit] = useState<Record<string, { type: string; cat: string; acc: string; remember: boolean }>>({})
 
   const draft = rows.filter(r => r.status === 'draft')
@@ -1726,11 +1825,30 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
       {failed.length > 0 && (
         <div className="rounded-3xl bg-rose-50 border border-rose-200 p-4">
           <p className="text-[12px] font-black text-rose-700 mb-1">{failed.length} email gagal dibaca</p>
-          <p className="text-[11px] text-rose-600/80 leading-relaxed">
-            Formatnya tidak dikenali — kemungkinan BCA mengubah template. Emailnya disimpan utuh, tidak ada yang hilang.
-            Kirimkan satu contohnya agar parser diperbarui.
+          <p className="text-[11px] text-rose-600/80 leading-relaxed mb-2.5">
+            Emailnya disimpan utuh — tidak ada yang hilang. Ketuk untuk melihat penyebabnya dan isi email aslinya.
           </p>
+          <div className="space-y-1.5">
+            {failed.map(r => (
+              <button key={r.id} onClick={() => setLihatGagal(r)}
+                className="w-full text-left rounded-xl bg-white/70 hover:bg-white px-3.5 py-2.5 transition-colors">
+                <p className="text-[11px] font-bold text-rose-700 truncate">{r.parse_error ?? 'Alasan tidak tercatat'}</p>
+                <p className="text-[10px] text-rose-500/70 mt-0.5">
+                  {new Date(r.received_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ketuk untuk rincian
+                </p>
+              </button>
+            ))}
+          </div>
         </div>
+      )}
+
+      {lihatGagal && (
+        <GagalSheet r={lihatGagal} onClose={() => setLihatGagal(null)}
+          onHapus={async () => {
+            const { error } = await createClient().from('fin_inbox').delete().eq('id', lihatGagal.id)
+            if (error) { toast.error(error.message); return }
+            setLihatGagal(null); toast.success('Dihapus'); onChanged()
+          }} />
       )}
 
       {draft.length === 0 ? (
