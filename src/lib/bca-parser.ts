@@ -115,14 +115,48 @@ export function parseBcaEmail(input: { text?: string; html?: string }): BcaParse
   const d = rawDate ? parseBcaDate(rawDate) : null
   if (!d) return { ok: false, reason: `Tanggal tidak terbaca: ${rawDate ?? '(kosong)'}`, fields }
 
+  // Nama label nominal BERBEDA per jenis transaksi:
+  //   Virtual Account  → "Pay Amount" + "Total Payment"
+  //   Transfer biasa   → "Transfer Amount"
+  //   QRIS             → "Total Payment"
+  // Daftar eksplisit di bawah menangani yang sudah diketahui; sisanya ditangkap
+  // oleh penyapu di bawahnya.
   const totalRaw = get('Total Payment', 'Total Pembayaran')
-  const payRaw = get('Pay Amount', 'Amount', 'Nominal', 'Jumlah')
+  const payRaw = get('Pay Amount', 'Transfer Amount', 'Amount', 'Nominal', 'Jumlah',
+                     'Payment Amount', 'Transaction Amount', 'Nominal Transaksi')
   const total = totalRaw ? parseIdr(totalRaw) : null
   const pay = payRaw ? parseIdr(payRaw) : null
-  const amount = total ?? pay
-  if (amount == null || amount <= 0) {
-    return { ok: false, reason: `Nominal tidak terbaca: ${totalRaw ?? payRaw ?? '(kosong)'}`, fields }
+
+  // Penyapu terakhir: BCA menambah jenis transaksi baru tanpa memberi tahu, dan
+  // tiap jenis bisa memakai nama label sendiri. Mengejar tiap nama satu per satu
+  // berarti setiap jenis baru gagal diam-diam sampai ada yang menyadarinya.
+  // Di sini label apa pun yang MENGANDUNG kata nominal dan nilainya benar-benar
+  // terbaca sebagai rupiah ikut diterima — "Source Currency: IDR - Indonesian
+  // Rupiah" tersaring sendiri karena tidak menghasilkan angka.
+  let sapu: number | null = null, sapuLabel = ''
+  if (total == null && pay == null) {
+    const kandidat = Object.keys(fields)
+      .filter(k => /amount|payment|nominal|jumlah|total/i.test(k))
+      .map(k => ({ k, v: parseIdr(fields[k]) }))
+      .filter((x): x is { k: string; v: number } => x.v != null && x.v > 0)
+    // Utamakan yang mengandung "total" — itu nilai yang benar-benar keluar dari
+    // rekening bila ada biaya admin terpisah.
+    const pilih = kandidat.find(x => /total/i.test(x.k)) ?? kandidat[0]
+    if (pilih) { sapu = pilih.v; sapuLabel = pilih.k }
   }
+
+  const amount = total ?? pay ?? sapu
+  if (amount == null || amount <= 0) {
+    const terlihat = Object.keys(fields).filter(k => /amount|payment|nominal|jumlah/i.test(k))
+    return {
+      ok: false,
+      reason: terlihat.length
+        ? `Nominal tidak terbaca dari: ${terlihat.map(k => `${k}="${fields[k]}"`).join(', ')}`
+        : 'Tidak ada label nominal sama sekali di email ini.',
+      fields,
+    }
+  }
+  if (sapuLabel) fields['(nominal diambil dari)'] = sapuLabel
 
   const status = get('Status') ?? ''
   const transferType = get('Transfer Type', 'Transaction Type', 'Jenis Transaksi')
@@ -135,14 +169,25 @@ export function parseBcaEmail(input: { text?: string; html?: string }): BcaParse
     date: d.date,
     time: d.time,
     transferType,
-    merchant: get('Company/Product Name', 'Company Product Name', 'Merchant', 'Name', 'Nama') ?? transferType,
+    // Urutan sengaja: nama merchant/penerima jauh lebih berguna sebagai judul
+    // draf daripada jenis transaksinya. "MUHAMMAD BAEHAKI RAMADHA" langsung
+    // dikenali; "Transfer to BCA Account" sama untuk semua transfer dan tidak
+    // membedakan apa pun — termasuk bagi aturan kategori otomatis, yang
+    // mencocokkan teks ini.
+    merchant: get('Company/Product Name', 'Company Product Name', 'Merchant',
+                  'Beneficiary Name', 'Nama Penerima', 'Name', 'Nama') ?? transferType,
     amount,
     payAmount: pay,
     // Biaya admin: selisih antara yang keluar dari rekening dan yang diterima
     // penerima. Diabaikan diam-diam artinya saldo tidak akan pernah cocok.
     fee: total != null && pay != null && total > pay ? Math.round((total - pay) * 100) / 100 : 0,
     sourceOfFund: get('Source of Fund', 'Sumber Dana'),
-    description: get('Description', 'Keterangan') || null,
+    // "-" adalah cara BCA menulis "kosong" di Remarks; menyimpannya apa adanya
+    // membuat catatan draf berisi tanda hubung yang tidak berarti apa-apa.
+    description: (() => {
+      const v = get('Description', 'Keterangan', 'Remarks', 'Berita')
+      return v && v.trim() !== '-' ? v : null
+    })(),
     fields,
   }
 }
