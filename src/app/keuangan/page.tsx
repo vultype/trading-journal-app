@@ -747,11 +747,51 @@ export default function KeuanganPage() {
     })
   }, [periodTxs, fType, fCat, fAcc, q, cats, accounts])
 
+  // Kelompok per hari + angka pembanding antar-hari.
+  //
+  // Sekadar mengelompokkan tidak cukup untuk membedakan hari: deretan tanggal
+  // dengan nominal masing-masing tetap menuntut pembaca menghitung sendiri mana
+  // yang berat. Yang dibawa ke UI karena itu bukan cuma totalnya, tapi porsinya
+  // terhadap hari TERBOROS di periode ini — itu yang membuat perbandingannya
+  // langsung terlihat tanpa dibaca satu per satu.
   const grouped = useMemo(() => {
     const m = new Map<string, FinTx[]>()
     for (const t of listTxs) { const a = m.get(t.date) ?? []; a.push(t); m.set(t.date, a) }
-    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+    const arr = [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+    const keluarPerHari = arr.map(([, rows]) => sumBy(rows, 'expense'))
+    const maxKeluar = Math.max(0, ...keluarPerHari)
+    // Rata-rata dihitung dari hari yang ADA belanjanya saja. Kalau hari nol ikut
+    // dibagi, ambangnya turun dan hampir semua hari aktif tampak "boros".
+    const hariBelanja = keluarPerHari.filter(v => v > 0)
+    const rerata = hariBelanja.length
+      ? hariBelanja.reduce((s, v) => s + v, 0) / hariBelanja.length
+      : 0
+    return arr.map(([date, rows]) => {
+      const masuk = sumBy(rows, 'income'), keluar = sumBy(rows, 'expense')
+      return {
+        date, rows, masuk, keluar,
+        net: masuk - keluar,
+        bar: maxKeluar > 0 ? (keluar / maxKeluar) * 100 : 0,
+        // Ditandai hanya kalau BENAR-BENAR menonjol: 1,5× rata-rata hari
+        // berbelanja dan minimal Rp100.000. Tanpa ambang nominal, hari dengan
+        // dua kopi ikut ditandai "boros" dan penandanya kehilangan arti.
+        berat: rerata > 0 && keluar >= rerata * 1.5 && keluar >= 100_000,
+      }
+    })
   }, [listTxs])
+
+  // Label tanggal yang bisa dibaca sekilas. "Hari ini"/"Kemarin" lebih cepat
+  // ditangkap daripada "25 Juli 2026", dan nama hari membantu mengenali pola
+  // akhir pekan tanpa perlu mengingat tanggal berapa itu Sabtu.
+  const labelHari = (iso8: string) => {
+    const d = new Date(iso8 + 'T00:00:00')
+    const hariIni = new Date(); hariIni.setHours(0, 0, 0, 0)
+    const selisih = Math.round((hariIni.getTime() - d.getTime()) / 86_400_000)
+    if (selisih === 0) return 'Hari ini'
+    if (selisih === 1) return 'Kemarin'
+    const nama = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][d.getDay()]
+    return `${nama}, ${d.getDate()} ${BLN3[d.getMonth()]}`
+  }
 
   async function delTx(id: string) {
     if (!window.confirm('Hapus transaksi ini?')) return
@@ -1160,24 +1200,53 @@ export default function KeuanganPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {grouped.map(([date, rows]) => {
-                      const inD = sumBy(rows, 'income'), outD = sumBy(rows, 'expense')
-                      return (
-                        <div key={date} className="rounded-3xl bg-white p-4 shadow-sm">
-                          <div className="flex items-center justify-between mb-2 px-1">
-                            <p className="text-[12px] font-black text-slate-500">{fmtTgl(date)}</p>
-                            <p className="text-[11px] font-bold tabular-nums">
-                              {inD > 0 && <span className="text-emerald-600">+{rp(inD)}</span>}
-                              {inD > 0 && outD > 0 && <span className="text-slate-300"> · </span>}
-                              {outD > 0 && <span className="text-rose-500">−{rp(outD)}</span>}
+                    {grouped.map(g => (
+                      <div key={g.date} className="rounded-3xl bg-white shadow-sm overflow-hidden">
+                        {/* Header hari: sticky supaya saat menggulir daftar panjang,
+                            tanggal yang sedang dibaca tidak pernah hilang dari layar. */}
+                        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur px-4 pt-3.5 pb-2.5 border-b border-slate-100">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <div className="flex items-baseline gap-2 min-w-0">
+                              <p className="text-[13px] font-black truncate">{labelHari(g.date)}</p>
+                              <span className="text-[10px] text-slate-300 shrink-0">{g.rows.length} transaksi</span>
+                              {g.berat && (
+                                <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black">BOROS</span>
+                              )}
+                            </div>
+                            {/* Hari yang isinya transfer saja tidak punya arus kas
+                                masuk/keluar — menampilkan "+Rp0" di situ menyiratkan
+                                impas, padahal tidak ada yang diukur sama sekali. */}
+                            {g.masuk === 0 && g.keluar === 0 ? (
+                              <p className="text-[12px] font-bold text-slate-300 shrink-0">—</p>
+                            ) : (
+                              <p className={`text-[13px] font-black tabular-nums shrink-0 ${g.net >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {g.net >= 0 ? '+' : '−'}{rp(Math.abs(g.net))}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-1.5">
+                            {/* Batang = pengeluaran hari ini relatif terhadap hari
+                                TERBOROS di periode. Perbandingan antar-hari jadi
+                                terlihat sekilas, tanpa membaca angkanya satu per satu. */}
+                            <div className="flex-1 h-1.5 rounded-full bg-[#F0F0F4] overflow-hidden">
+                              <div className="h-full rounded-full transition-all"
+                                style={{ width: `${g.bar}%`, background: g.berat ? '#f59e0b' : '#cbd5e1' }} />
+                            </div>
+                            <p className="text-[10px] tabular-nums shrink-0 text-slate-400">
+                              {g.masuk > 0 && <span className="text-emerald-600 font-bold">+{rp(g.masuk)}</span>}
+                              {g.masuk > 0 && g.keluar > 0 && ' · '}
+                              {g.keluar > 0 && <span className="text-rose-500 font-bold">−{rp(g.keluar)}</span>}
+                              {g.masuk === 0 && g.keluar === 0 && 'transfer saja'}
                             </p>
                           </div>
-                          <div className="space-y-1">
-                            {rows.map(t => <TxRow key={t.id} t={t} onClick={() => setDetailTx(t)} />)}
-                          </div>
                         </div>
-                      )
-                    })}
+
+                        <div className="space-y-1 p-4 pt-2.5">
+                          {g.rows.map(t => <TxRow key={t.id} t={t} onClick={() => setDetailTx(t)} />)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
