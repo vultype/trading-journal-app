@@ -1628,6 +1628,36 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
     toast.success('Diabaikan'); onChanged()
   }
 
+  // Menghapus baris 'approved' berarti membuang kunci idempotensinya (ext_ref).
+  // Email yang sama akan diimpor lagi sebagai draf baru, dan kalau disetujui
+  // lagi akan membuat transaksi KEDUA untuk belanja yang sama. Karena itu ada
+  // dua cakupan terpisah, bukan satu tombol "hapus semua" yang samar.
+  async function hapus(mode: 'draft' | 'all') {
+    const pesan = mode === 'draft'
+      ? 'Hapus semua draf & baris gagal?\n\nTransaksi yang sudah dicatat TIDAK ikut terhapus, dan riwayat impornya tetap tersimpan — jadi email yang sama tidak akan masuk dua kali.'
+      : 'RESET TOTAL riwayat impor?\n\nSeluruh baris inbox dihapus, termasuk yang sudah disetujui.\n\nPERINGATAN: transaksi yang sudah tercatat TIDAK ikut terhapus, tapi penandanya hilang — sinkronisasi berikutnya akan mengimpor ulang email yang sama sebagai draf baru. Kalau disetujui lagi, transaksinya jadi DOBEL.\n\nLanjutkan?'
+    if (!window.confirm(pesan)) return
+
+    setBusy('bulk')
+    const sb = createClient()
+    let q = sb.from('fin_inbox').delete().eq('user_id', userId)
+    if (mode === 'draft') q = q.in('status', ['draft', 'gagal'])
+    const { error } = await q
+    setBusy(null)
+    if (error) { toast.error(error.message); return }
+    toast.success(mode === 'draft' ? 'Draf dihapus' : 'Riwayat impor direset')
+    onChanged()
+  }
+
+  async function hapusAturan() {
+    if (!window.confirm('Hapus semua aturan kategori otomatis?\n\nDraf berikutnya akan kembali tanpa tebakan kategori.')) return
+    setBusy('bulk')
+    const { error } = await createClient().from('fin_rules').delete().eq('user_id', userId)
+    setBusy(null)
+    if (error) { toast.error(error.message); return }
+    toast.success('Aturan dihapus'); onChanged()
+  }
+
   if (needsMigration) return (
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
       <p className="font-black text-[14px] text-amber-800 mb-1">Fitur ini butuh migrasi inbox</p>
@@ -1664,6 +1694,32 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
           <button onClick={rotate} className="w-full h-11 rounded-2xl bg-[#F7F7FA] text-slate-600 text-[13px] font-black hover:bg-slate-100 flex items-center justify-center gap-1.5">
             <RefreshCw size={15} /> {token ? 'Putar Ulang Token' : 'Buat Token'}
           </button>
+
+          <div className="border-t border-slate-100 pt-4 space-y-2">
+            <p className="text-[13px] font-black">Bersihkan Data</p>
+            <button onClick={() => hapus('draft')} disabled={busy === 'bulk'}
+              className="w-full h-11 rounded-2xl bg-[#F7F7FA] text-slate-600 text-[13px] font-black hover:bg-slate-100 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <Trash2 size={15} /> Hapus Semua Draf ({rows.length})
+            </button>
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              Menghapus draf &amp; baris gagal. Riwayat impor tetap tersimpan, jadi email yang sama tidak masuk dua kali.
+            </p>
+
+            <button onClick={hapusAturan} disabled={busy === 'bulk'}
+              className="w-full h-11 rounded-2xl bg-[#F7F7FA] text-slate-600 text-[13px] font-black hover:bg-slate-100 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <Trash2 size={15} /> Hapus Aturan Kategori Otomatis
+            </button>
+
+            <button onClick={() => hapus('all')} disabled={busy === 'bulk'}
+              className="w-full h-11 rounded-2xl border border-rose-200 text-rose-500 text-[13px] font-black hover:bg-rose-50 disabled:opacity-50 flex items-center justify-center gap-1.5">
+              <TriangleAlert size={15} /> Reset Total Riwayat Impor
+            </button>
+            <p className="text-[10px] text-rose-400 leading-relaxed">
+              Untuk demo/uji coba. Menghapus penanda impor, jadi email yang sama akan masuk lagi sebagai draf —
+              kalau disetujui lagi, transaksinya <b>dobel</b>. Transaksi yang sudah tercatat tidak ikut terhapus;
+              hapus lewat tab Transaksi bila perlu.
+            </p>
+          </div>
         </div>
       )}
 
