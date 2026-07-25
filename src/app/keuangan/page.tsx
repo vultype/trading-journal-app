@@ -1727,37 +1727,23 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
   const [token, setToken] = useState<string | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [lihatGagal, setLihatGagal] = useState<FinInbox | null>(null)
-  type Draf = { type: string; cat: string; acc: string; remember: boolean; rule: string }
+  type Draf = { type: string; cat: string; acc: string; note: string }
   const [edit, setEdit] = useState<Record<string, Draf>>({})
 
   const draft = rows.filter(r => r.status === 'draft')
   const failed = rows.filter(r => r.status === 'gagal')
 
-  // Kunci aturan — teks yang dicocokkan untuk transaksi BERIKUTNYA. Ini BUKAN
-  // judul draf.
-  //
-  // Nama penerima transfer berbeda tiap orang. Memakainya sebagai kunci
-  // menghasilkan aturan yang tidak akan pernah cocok lagi, dan fin_rules
-  // membengkak berisi nama orang satu per satu — otomatisasinya tidak pernah
-  // benar-benar menolong. Yang berulang adalah JENIS transaksinya.
-  //
-  // Pengecualian Virtual Account: di sana Company/Product Name justru stabil dan
-  // berulang (top-up DANA selalu "PT ESPAY DEBIT INDONESIA…"), dan itu jauh
-  // lebih spesifik daripada jenisnya.
-  const kunciDefault = (r: FinInbox) => {
-    const t = (r.transfer_type ?? '').trim()
-    const m = (r.merchant ?? '').trim()
-    if (!t) return m
-    if (!m || m === t) return t
-    return /virtual account/i.test(t) ? m : t
-  }
+  // Catatan awal dirangkai dari data email — nama penerima/merchant lebih dulu,
+  // baru jenis transaksinya. Ini cuma titik mulai; user boleh menimpanya, dan
+  // catatan itulah yang tersimpan di transaksi.
+  const catatanAwal = (r: FinInbox) =>
+    [r.merchant, r.transfer_type].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' · ').slice(0, 200)
 
   const val = (r: FinInbox): Draf => edit[r.id] ?? {
     type: r.suggested_type ?? 'expense',
     cat: r.suggested_category_id ?? '',
     acc: r.suggested_account_id ?? accounts[0]?.id ?? '',
-    remember: true,
-    rule: kunciDefault(r),
+    note: catatanAwal(r),
   }
   const set = (id: string, patch: Partial<Draf>) =>
     setEdit(p => ({ ...p, [id]: { ...(p[id] ?? val(rows.find(r => r.id === id)!)), ...patch } }))
@@ -1791,23 +1777,12 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
       user_id: userId, account_id: v.acc,
       category_id: v.type === 'transfer' ? null : v.cat,
       type: v.type, amount: Number(r.amount),
-      note: [r.merchant, r.transfer_type].filter(Boolean).join(' · ').slice(0, 200) || null,
+      note: v.note.trim().slice(0, 200) || null,
       date: r.tx_date,
     }).select('id').single()
     if (error || !tx) { setBusy(null); toast.error(error?.message ?? 'Gagal'); return }
 
     await sb.from('fin_inbox').update({ status: 'approved', tx_id: tx.id }).eq('id', r.id)
-
-    // Aturan disimpan dengan kunci PILIHAN USER (v.rule), bukan r.merchant.
-    // Untuk transfer antar-orang, merchant adalah nama penerima yang berbeda
-    // tiap kali — aturan berbasis itu tidak akan pernah cocok lagi.
-    const kunci = v.rule.trim()
-    if (v.remember && kunci) {
-      await sb.from('fin_rules').upsert({
-        user_id: userId, match: kunci.slice(0, 80),
-        type: v.type, category_id: v.type === 'transfer' ? null : v.cat, account_id: v.acc,
-      }, { onConflict: 'user_id,match' })
-    }
     setBusy(null); toast.success('Transaksi dicatat'); onChanged()
   }
 
@@ -1840,14 +1815,6 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
     onChanged()
   }
 
-  async function hapusAturan() {
-    if (!window.confirm('Hapus semua aturan kategori otomatis?\n\nDraf berikutnya akan kembali tanpa tebakan kategori.')) return
-    setBusy('bulk')
-    const { error } = await createClient().from('fin_rules').delete().eq('user_id', userId)
-    setBusy(null)
-    if (error) { toast.error(error.message); return }
-    toast.success('Aturan dihapus'); onChanged()
-  }
 
   if (needsMigration) return (
     <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 text-center">
@@ -1895,11 +1862,6 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
             <p className="text-[10px] text-slate-400 leading-relaxed">
               Menghapus draf &amp; baris gagal. Riwayat impor tetap tersimpan, jadi email yang sama tidak masuk dua kali.
             </p>
-
-            <button onClick={hapusAturan} disabled={busy === 'bulk'}
-              className="w-full h-11 rounded-2xl bg-[#F7F7FA] text-slate-600 text-[13px] font-black hover:bg-slate-100 disabled:opacity-50 flex items-center justify-center gap-1.5">
-              <Trash2 size={15} /> Hapus Aturan Kategori Otomatis
-            </button>
 
             <button onClick={() => hapus('all')} disabled={busy === 'bulk'}
               className="w-full h-11 rounded-2xl border border-rose-200 text-rose-500 text-[13px] font-black hover:bg-rose-50 disabled:opacity-50 flex items-center justify-center gap-1.5">
@@ -1988,31 +1950,21 @@ function InboxTab({ rows, needsMigration, cats, accounts, userId, onChanged }: {
                   </select>
                 </div>
 
-                {/* Kunci aturan ditampilkan dan bisa diubah, bukan ditebak diam-diam.
-                    Bedanya besar: memilih nama penerima berarti aturan yang tidak
-                    akan pernah cocok lagi, karena tiap transfer ke orang berbeda. */}
+                {/* Catatan bisa ditimpa sebelum dicatat. Prasetelnya dari data
+                    email, tapi yang tersimpan adalah apa yang tertulis di sini —
+                    saat meninjau, konteksnya masih segar dan justru itulah momen
+                    terbaik menuliskannya. */}
                 <div className="mb-2.5">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={v.remember} onChange={e => set(r.id, { remember: e.target.checked })} className="accent-indigo-500" />
-                    <span className="text-[11px] text-slate-500">Ingat pilihan ini untuk transaksi berikutnya</span>
-                  </label>
-                  {v.remember && (() => {
-                    const opsi = Array.from(new Set([r.transfer_type, r.merchant].filter((x): x is string => !!x && !!x.trim())))
-                    const orang = v.rule === r.merchant && r.merchant !== r.transfer_type && !/virtual account/i.test(r.transfer_type ?? '')
-                    return (
-                      <div className="mt-1.5 pl-6">
-                        <select value={v.rule} onChange={e => set(r.id, { rule: e.target.value })}
-                          className="w-full h-10 px-3 rounded-xl bg-[#F7F7FA] text-[11px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200">
-                          {opsi.map(o => <option key={o} value={o}>Cocokkan: {o}</option>)}
-                        </select>
-                        <p className={`text-[10px] leading-relaxed mt-1 ${orang ? 'text-amber-600' : 'text-slate-400'}`}>
-                          {orang
-                            ? 'Ini nama penerima — berbeda tiap transfer, jadi aturannya tidak akan cocok lagi. Pilih jenis transaksinya kalau ingin berlaku untuk semua transfer.'
-                            : 'Draf berikutnya yang teksnya mengandung ini akan langsung terisi kategori & rekening yang sama.'}
-                        </p>
-                      </div>
-                    )
-                  })()}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="text-[11px] font-bold text-slate-400">Catatan</label>
+                    {v.note !== catatanAwal(r) && (
+                      <button onClick={() => set(r.id, { note: catatanAwal(r) })}
+                        className="text-[10px] font-bold text-slate-400 hover:text-indigo-500">Kembalikan asli</button>
+                    )}
+                  </div>
+                  <input value={v.note} onChange={e => set(r.id, { note: e.target.value })} maxLength={200}
+                    placeholder="mis. bayar kos, patungan makan siang"
+                    className="w-full h-11 px-3.5 rounded-xl bg-[#F7F7FA] text-[12px] font-semibold outline-none focus:ring-2 focus:ring-indigo-200" />
                 </div>
 
                 <div className="flex gap-2">
