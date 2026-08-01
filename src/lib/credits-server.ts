@@ -113,8 +113,16 @@ export async function charge(sb: SupabaseClient, userId: string, action: AiActio
 }
 
 // Ringkasan saldo lengkap untuk API /credits/balance & UI.
-// Catatan: admin TIDAK dikecualikan — ikut di-meter seperti user biasa.
+// Admin = akses tak terbatas, tidak di-meter sama sekali. UI (/account,
+// panel terminal) sudah lama menunggu unlimited:true — tinggal dikirim di sini.
 export async function getBalanceSummary(userId: string, isAdmin: boolean) {
+  if (isAdmin) {
+    return {
+      isAdmin, unlimited: true,
+      allowance: 0, allowanceCap: 0, topup: 0, total: 0,
+      cycleStart: null, expiry: null,
+    }
+  }
   const sb = svc()
   const ctx = await allowanceContext(sb, userId)
   // Grant allowance best-effort — jangan gagalkan pembacaan saldo kalau grant error transien.
@@ -145,7 +153,11 @@ export async function beginAiCharge(req: Request, action: AiAction): Promise<Gat
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Tidak terautentikasi — login ulang', code: 'unauthenticated' }, { status: 401 }) }
   }
-  // Admin ikut di-meter seperti user biasa (tidak dikecualikan).
+  // Admin = akses tak terbatas, tidak pernah di-meter. Dicek SEBELUM baca saldo
+  // sama sekali — tidak perlu query ledger untuk akun yang tidak pernah di-charge.
+  if (user.isAdmin) {
+    return { ok: true, commit: async () => {} }
+  }
   const sb = svc()
   let bal: Balances
   let ctx: AllowanceCtx | null
