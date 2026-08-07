@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2, UserCog } from 'lucide-react'
+import { Plus, Trash2, Wallet, TrendingUp, Save, CheckCircle2, UserCog, Pencil, X } from 'lucide-react'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import { BrokerSelect } from '@/components/ui/broker-select'
 import { formatCurrency } from '@/lib/calculations'
@@ -17,7 +17,7 @@ import { useT, useLang } from '@/lib/i18n'
 import type { AppSettings } from '@/types'
 
 export default function SettingsPage() {
-  const { accounts, trades, transfers, settings, userEmail, isAdmin, addAccount, deleteAccount, saveSettings } = useStore()
+  const { accounts, trades, transfers, settings, userEmail, isAdmin, addAccount, updateAccount, deleteAccount, saveSettings } = useStore()
   const fmtCur = (n: number) => formatCurrency(n, settings.currency)
   const t = useT()
   const [lang, setLang] = useLang()
@@ -81,6 +81,41 @@ export default function SettingsPage() {
   function canDelete(id: string) {
     return !trades.some(t => t.account_id === id) &&
            !transfers.some(t => t.account_id === id)
+  }
+
+  // ─── Edit akun broker ───
+  const [editId, setEditId]         = useState<string | null>(null)
+  const [eName, setEName]           = useState('')
+  const [eBroker, setEBroker]       = useState('')
+  const [eCur, setECur]             = useState<AppSettings['currency']>(settings.currency)
+  const [eInitial, setEInitial]     = useState<number | ''>('')
+
+  function openEdit(a: typeof accounts[number]) {
+    setEditId(a.id); setEName(a.name); setEBroker(a.broker ?? '')
+    setECur(a.currency as AppSettings['currency']); setEInitial(a.initial_balance ?? 0)
+  }
+
+  function saveEdit(id: string) {
+    if (!eName.trim()) return
+    updateAccount(id, {
+      name: eName.trim(),
+      broker: eBroker || undefined,
+      currency: eCur,
+      initial_balance: eInitial !== '' ? Number(eInitial) : 0,
+    })
+    setEditId(null)
+  }
+
+  // Saldo berjalan sebuah akun — dipakai untuk memperlihatkan akibat perubahan
+  // saldo awal SEBELUM disimpan. Rumusnya harus sama persis dengan halaman
+  // Keuangan Broker, kalau tidak angkanya bertentangan antar-halaman.
+  function saldoAkun(id: string, initial: number) {
+    const tr = transfers.filter(t => t.account_id === id)
+    const dep = tr.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0)
+    const wd  = tr.filter(t => t.type === 'withdraw').reduce((s, t) => s + t.amount, 0)
+    const adj = tr.filter(t => t.type === 'adjust_cost' || t.type === 'adjust_other').reduce((s, t) => s + t.amount, 0)
+    const pnl = trades.filter(t => t.account_id === id).reduce((s, t) => s + t.pnl, 0)
+    return initial + dep - wd + pnl + adj
   }
 
   function exportJSON() {
@@ -243,30 +278,95 @@ export default function SettingsPage() {
             {accounts.length === 0 && (
               <p className="px-4 py-6 text-sm text-muted-foreground text-center">Belum ada akun. Tambah akun broker di bawah.</p>
             )}
-            {accounts.map(a => (
-              <div key={a.id} className="flex items-center justify-between px-4 py-3.5">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-emerald-500/10">
-                    <TrendingUp size={14} className="text-emerald-400" />
+            {accounts.map(a => {
+              if (editId === a.id) {
+                const lama = a.initial_balance ?? 0
+                const baru = eInitial !== '' ? Number(eInitial) : 0
+                const selisih = baru - lama
+                return (
+                  <div key={a.id} className="px-4 py-4 space-y-3 bg-muted/20">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Nama Akun</Label>
+                        <Input value={eName} onChange={e => setEName(e.target.value)} autoFocus />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">{t('Broker / Platform')}</Label>
+                        <BrokerSelect value={eBroker} onChange={setEBroker} customPlaceholder={t('Ketik nama broker…')} />
+                      </div>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Saldo Awal ({eCur})</Label>
+                        <CurrencyInput value={eInitial} onChange={setEInitial} placeholder="0" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Mata Uang</Label>
+                        <Select value={eCur} onValueChange={v => setECur((v ?? 'IDR') as AppSettings['currency'])}>
+                          <SelectTrigger><SelectValue>{eCur}</SelectValue></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="IDR">IDR</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                            <SelectItem value="USDT">USDT</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Akibatnya diperlihatkan SEBELUM disimpan. Mengubah saldo awal
+                        menggeser seluruh riwayat saldo akun ini secara surut — tanpa
+                        angka pembanding, mudah salah ketik satu nol tanpa sadar. */}
+                    {selisih !== 0 && (
+                      <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2.5">
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Saldo awal {fmtCur(lama)} → <b className="text-foreground">{fmtCur(baru)}</b>.
+                          Saldo berjalan akun ini ikut bergeser {selisih > 0 ? 'naik' : 'turun'} {fmtCur(Math.abs(selisih))}:
+                          {' '}{fmtCur(saldoAkun(a.id, lama))} → <b className="text-foreground">{fmtCur(saldoAkun(a.id, baru))}</b>.
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/70 leading-relaxed mt-1.5">
+                          Pakai ini hanya kalau angka saldo awalnya memang salah sejak awal. Kalau selisihnya
+                          karena swap, komisi, atau transaksi yang lupa dicatat, pakai <b>Samakan dengan Saldo
+                          Broker</b> di halaman Keuangan — supaya tercatat bertanggal dan tidak mengacaukan ROI.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => saveEdit(a.id)} className="gap-1.5"><Save size={13} /> Simpan</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditId(null)} className="gap-1.5"><X size={13} /> Batal</Button>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">{a.name}</p>
-                    <p className="text-xs text-muted-foreground">{a.broker ? `${a.broker} · ` : ''}{a.currency}</p>
+                )
+              }
+              return (
+                <div key={a.id} className="flex items-center justify-between px-4 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-500/10">
+                      <TrendingUp size={14} className="text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{a.name}</p>
+                      <p className="text-xs text-muted-foreground">{a.broker ? `${a.broker} · ` : ''}{a.currency}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted-foreground">Saldo Awal</p>
+                      <p className="text-xs font-semibold">{fmtCur(a.initial_balance ?? 0)}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      title="Edit akun" onClick={() => openEdit(a)}>
+                      <Pencil size={12} />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      disabled={!canDelete(a.id)} title={!canDelete(a.id) ? 'Masih dipakai trade/dana' : 'Hapus'}
+                      onClick={() => deleteAccount(a.id)}>
+                      <Trash2 size={12} />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-[10px] text-muted-foreground">Saldo Awal</p>
-                    <p className="text-xs font-semibold">{fmtCur(a.initial_balance ?? 0)}</p>
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    disabled={!canDelete(a.id)} title={!canDelete(a.id) ? 'Masih dipakai trade/dana' : 'Hapus'}
-                    onClick={() => deleteAccount(a.id)}>
-                    <Trash2 size={12} />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </CardContent>
       </Card>
