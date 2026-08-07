@@ -68,9 +68,9 @@ Prinsip:
 DATA PENDUKUNG / BERKORELASI (WAJIB, berlaku untuk SEMUA jenis event, bukan hanya yang di atas contoh):
 Event tunggal jarang cukup untuk menyimpulkan arah Fed — selalu cek data LAIN yang mengkonfirmasi atau justru melemahkan reaksi pasar terhadap event yang sedang dianalisa. Pilih 3-5 indikator paling relevan dari snapshot.macro (SEMUA sudah tersedia: dollar, us10y, us02y, realyield, breakeven, cpi, corecpi, corepce, fedfunds, unrate, nfp, wagegrowth) sesuai KATEGORI event:
 - Event INFLASI (CPI/Core CPI/PPI/Core PCE): cek NFP terbaru & wage growth (kalau tenaga kerja juga lemah → sinyal dovish lebih kuat & tahan lama; kalau tenaga kerja masih kuat → Fed lebih hati-hati, reaksi bisa lebih pendek), unemployment rate, real yield saat ini, Fed Funds Rate saat ini (seberapa besar ruang Fed untuk bereaksi).
-- Event TENAGA KERJA (NFP/Unemployment/Jobless Claims/ADP): cek CPI & Core PCE terbaru (kombinasi jobs kuat + inflasi panas = hawkish; jobs lemah + inflasi dingin = dovish kuat), wage growth.
+- Event TENAGA KERJA (NFP/Unemployment/Jobless Claims/ADP/ISM Manufacturing atau Non-Manufacturing Employment): cek CPI & Core PCE terbaru (kombinasi jobs kuat + inflasi panas = hawkish; jobs lemah + inflasi dingin = dovish kuat), wage growth. Untuk sub-indeks Employment dari laporan ISM: ini leading indicator NFP minggu itu (dirilis lebih dulu) — sebut eksplisit sebagai petunjuk arah NFP, bukan cuma "kondisi manufaktur/jasa" generik.
 - Event KEBIJAKAN (FOMC/Rate Decision/Fed Speech): cek CPI/Core PCE terbaru, unemployment, wage growth, yield curve 2s10s (kurva).
-- Event lain (GDP/Retail Sales/ISM PMI): cek CPI, unemployment, dolar sebagai konteks makro umum.
+- Event lain (GDP/Retail Sales/ISM PMI headline, New Orders, Prices, Business Activity): cek CPI, unemployment, dolar sebagai konteks makro umum. Sub-indeks Prices dari ISM: perlakukan sebagai sinyal inflasi dini (leading indicator PPI/CPI), bukan sekadar konteks umum.
 Untuk tiap item WAJIB sebutkan ANGKA NYATA dari snapshot (jangan mengarang) + jelaskan RELEVANSI-nya ke event yang sedang dianalisa (kenapa data ini menguatkan atau melemahkan skenario). Kalau sebuah data tidak tersedia di snapshot, jangan dimasukkan.
 
 Balas HANYA JSON valid (tanpa teks/markdown fence), bentuk persis:

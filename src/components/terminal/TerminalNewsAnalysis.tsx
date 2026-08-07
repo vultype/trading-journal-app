@@ -21,7 +21,14 @@ const PRESETS: Record<string, string[]> = {
   'Unemployment Rate': ['Unemployment Rate'],
   'Retail Sales': ['Retail Sales (MoM)', 'Core Retail Sales (MoM)'],
   'GDP': ['GDP (QoQ)'],
-  'ISM PMI': ['ISM Manufacturing PMI', 'ISM Services PMI'],
+  // Sengaja dipecah, bukan digabung jadi satu "ISM PMI": Manufacturing dan
+  // Non-Manufacturing (Services) adalah dua rilis terpisah dengan jadwal & sub-
+  // komponen sendiri-sendiri. Kalender ekonomi (mis. ForexFactory) mencatatnya
+  // sebagai baris terpisah — termasuk sub-indeks Employment, yang di sini dijadikan
+  // baris komponen (bukan preset sendiri) supaya dampaknya dianalisa BERSAMA
+  // headline PMI-nya, konsisten dengan cara CPI/NFP menggabungkan komponennya.
+  'ISM Manufacturing PMI': ['ISM Manufacturing PMI', 'ISM Manufacturing Employment', 'ISM Manufacturing New Orders', 'ISM Manufacturing Prices'],
+  'ISM Non-Manufacturing PMI': ['ISM Non-Manufacturing PMI', 'ISM Non-Manufacturing Employment', 'ISM Non-Manufacturing New Orders', 'ISM Non-Manufacturing Business Activity', 'ISM Non-Manufacturing Prices'],
   'Jobless Claims': ['Initial Jobless Claims'],
 }
 const EVENTS = Object.keys(PRESETS)
