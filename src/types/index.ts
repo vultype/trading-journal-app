@@ -14,7 +14,12 @@ export type Account = {
 //                  aktivitas trading — bukan setoran modal.
 //   adjust_other → koreksi netral (bonus, rebate, salah input). Menggeser
 //                  saldo tanpa menyentuh statistik performa.
-export type TransferType = 'deposit' | 'withdraw' | 'adjust_cost' | 'adjust_other'
+//   expense      → pengeluaran PRIBADI dari saldo broker (uang habis terpakai,
+//                  bukan dipindahkan). Menurunkan saldo saja: tidak masuk
+//                  statistik trading, tidak masuk modal, tidak menyentuh ROI.
+//                  Dipisah dari withdraw karena artinya berbeda — withdraw =
+//                  uangnya masih ada, cuma di bank.
+export type TransferType = 'deposit' | 'withdraw' | 'adjust_cost' | 'adjust_other' | 'expense'
 
 export const isAdjustment = (t: TransferType) => t === 'adjust_cost' || t === 'adjust_other'
 
@@ -98,6 +103,7 @@ export type DashboardStats = {
   adjust_cost: number       // biaya tak tercatat (swap/komisi) — biasanya negatif
   adjust_other: number      // koreksi netral (bonus/rebate/salah input)
   net_pnl: number           // total_pnl + adjust_cost = hasil trading SEBENARNYA
+  total_expense: number     // pengeluaran pribadi dari saldo broker (positif)
   win_streak: number
   loss_streak: number
   current_streak: number

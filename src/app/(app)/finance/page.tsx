@@ -79,9 +79,14 @@ export default function FinancePage() {
   // Penyesuaian rekonsiliasi — amount boleh negatif, dijumlahkan apa adanya.
   const adjCost    = scopedTransfers.filter(t => t.type === 'adjust_cost').reduce((s, t) => s + t.amount, 0)
   const adjOther   = scopedTransfers.filter(t => t.type === 'adjust_other').reduce((s, t) => s + t.amount, 0)
+  // Pengeluaran pribadi dari saldo broker — menurunkan saldo saja. Sengaja TIDAK
+  // masuk `invested` maupun `netPnl`: belanja bukan modal dan bukan hasil
+  // trading. Kalau ikut dihitung, performa terlihat buruk hanya karena pemiliknya
+  // memakai uangnya.
+  const expense    = scopedTransfers.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const pnl        = scopedTrades.reduce((s, t) => s + t.pnl, 0)
   const netPnl     = pnl + adjCost   // hasil trading SEBENARNYA, sudah termasuk swap/komisi
-  const balance    = starting + deposited - withdrawn + pnl + adjCost + adjOther
+  const balance    = starting + deposited - withdrawn + pnl + adjCost + adjOther - expense
   const invested   = starting + deposited
   // ROI memakai netPnl, bukan pnl mentah: biaya swap/komisi adalah ongkos nyata
   // untuk menghasilkan profit itu. ROI dari pnl mentah selalu lebih bagus dari
@@ -95,14 +100,15 @@ export default function FinancePage() {
     const wds  = ofAcc('withdraw')
     const aCost = ofAcc('adjust_cost')
     const aOther = ofAcc('adjust_other')
+    const exp  = ofAcc('expense')
     const p    = trades.filter(t => t.account_id === acc.id).reduce((s, t) => s + t.pnl, 0)
     const init = acc.initial_balance ?? 0
-    return { acc, init, deposited: deps, withdrawn: wds, pnl: p, adjCost: aCost, adjOther: aOther, balance: init + deps - wds + p + aCost + aOther }
+    return { acc, init, deposited: deps, withdrawn: wds, pnl: p, adjCost: aCost, adjOther: aOther, expense: exp, balance: init + deps - wds + p + aCost + aOther - exp }
   })
 
   // ── Data bulanan (sesuai scope) ──
   const byMonth = useMemo(() => {
-    const blank = () => ({ pnl: 0, deposit: 0, withdraw: 0, adjust: 0 })
+    const blank = () => ({ pnl: 0, deposit: 0, withdraw: 0, adjust: 0, expense: 0 })
     const map: Record<string, ReturnType<typeof blank>> = {}
     for (const t of scopedTrades) {
       const k = t.date.slice(0, 7)
@@ -118,6 +124,7 @@ export default function FinancePage() {
       // yang berbeda dari saldo di kartu atas — dua angka bertentangan di satu
       // halaman, dan tidak ada cara bagi pembaca menebak mana yang benar.
       if (t.type === 'adjust_cost' || t.type === 'adjust_other') map[k].adjust += t.amount
+      if (t.type === 'expense') map[k].expense += t.amount
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => ({ name: k.slice(5), full: k, ...v }))
@@ -126,7 +133,7 @@ export default function FinancePage() {
   const cumulativePnl = useMemo(() => {
     // mulai dari saldo awal, akumulasi deposit − withdraw + pnl + penyesuaian
     let base = starting
-    return byMonth.map(m => { base += m.deposit - m.withdraw + m.pnl + m.adjust; return { name: m.name, equity: base } })
+    return byMonth.map(m => { base += m.deposit - m.withdraw + m.pnl + m.adjust - m.expense; return { name: m.name, equity: base } })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [byMonth])
 
@@ -304,6 +311,15 @@ export default function FinancePage() {
                 <div className="rounded-lg bg-sky-500/10 px-3 py-2">
                   <p className="text-[10px] text-muted-foreground">Koreksi lain</p>
                   <p className="font-bold text-sky-400">{adjOther >= 0 ? '+' : ''}{fmt(adjOther)}</p>
+                </div>
+              </>
+            )}
+            {expense !== 0 && (
+              <>
+                <span className="text-muted-foreground font-bold">−</span>
+                <div className="rounded-lg bg-rose-500/10 px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground">Pengeluaran pribadi</p>
+                  <p className="font-bold text-rose-400">{fmt(expense)}</p>
                 </div>
               </>
             )}

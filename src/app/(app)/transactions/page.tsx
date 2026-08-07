@@ -12,13 +12,13 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CurrencyInput } from '@/components/ui/currency-input'
-import { ArrowDownLeft, ArrowUpRight, Trash2, Filter } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Trash2, Filter, ShoppingBag } from 'lucide-react'
 
 export default function TransactionsPage() {
   const { accounts, transfers, settings, addTransfer, deleteTransfer } = useStore()
   const fmt = useCurrency()
 
-  const [type, setType]     = useState<'deposit' | 'withdraw'>('deposit')
+  const [type, setType]     = useState<'deposit' | 'withdraw' | 'expense'>('deposit')
   const [amount, setAmount] = useState<number | ''>('')
   const [date, setDate]     = useState(new Date().toISOString().split('T')[0])
   const [note, setNote]     = useState('')
@@ -38,6 +38,7 @@ export default function TransactionsPage() {
 
   const totalDeposit  = transfers.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0)
   const totalWithdraw = transfers.filter(t => t.type === 'withdraw').reduce((s, t) => s + t.amount, 0)
+  const totalExpense  = transfers.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
 
   const list = useMemo(() => {
     return [...transfers]
@@ -58,7 +59,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* Ringkasan */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="border-indigo-500/20 bg-gradient-to-br from-indigo-500/8 to-transparent">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1.5 mb-1"><ArrowDownLeft size={13} className="text-indigo-400" /><p className="text-xs text-muted-foreground">Total Deposit</p></div>
@@ -69,6 +70,13 @@ export default function TransactionsPage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-1.5 mb-1"><ArrowUpRight size={13} className="text-violet-400" /><p className="text-xs text-muted-foreground">Total Withdraw</p></div>
             <p className="text-2xl font-black text-violet-400">{fmt(totalWithdraw)}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-rose-500/20 bg-gradient-to-br from-rose-500/8 to-transparent">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center gap-1.5 mb-1"><ShoppingBag size={13} className="text-rose-400" /><p className="text-xs text-muted-foreground">Pengeluaran Pribadi</p></div>
+            <p className="text-2xl font-black text-rose-400">{fmt(totalExpense)}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Tidak masuk statistik trading</p>
           </CardContent>
         </Card>
         <Card>
@@ -89,14 +97,25 @@ export default function TransactionsPage() {
                 <p className="text-sm text-muted-foreground py-6 text-center">Tambah akun broker dulu di Setting.</p>
               ) : (
                 <form onSubmit={submit} className="space-y-4">
-                  <div className="flex gap-2">
-                    <Button type="button" variant={type === 'deposit' ? 'default' : 'outline'} className="flex-1 gap-2" onClick={() => setType('deposit')}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button type="button" variant={type === 'deposit' ? 'default' : 'outline'} className="gap-1.5 px-2" onClick={() => setType('deposit')}>
                       <ArrowDownLeft size={14} /> Deposit
                     </Button>
-                    <Button type="button" variant={type === 'withdraw' ? 'default' : 'outline'} className="flex-1 gap-2" onClick={() => setType('withdraw')}>
+                    <Button type="button" variant={type === 'withdraw' ? 'default' : 'outline'} className="gap-1.5 px-2" onClick={() => setType('withdraw')}>
                       <ArrowUpRight size={14} /> Withdraw
                     </Button>
+                    <Button type="button" variant={type === 'expense' ? 'default' : 'outline'} className="gap-1.5 px-2" onClick={() => setType('expense')}>
+                      <ShoppingBag size={14} /> Pribadi
+                    </Button>
                   </div>
+                  {/* Bedanya halus tapi menentukan cara membaca laporan, jadi
+                      ditulis di tempat pilihannya dibuat — bukan di dokumentasi
+                      yang tidak akan dibaca saat sedang mencatat. */}
+                  <p className="text-[11px] text-muted-foreground leading-relaxed -mt-1">
+                    {type === 'deposit' ? 'Modal masuk ke akun broker.'
+                      : type === 'withdraw' ? 'Modal keluar ke rekening bank — uangnya masih ada, cuma pindah tempat.'
+                      : 'Uang pribadi terpakai dari saldo broker. Saldo turun, tapi statistik trading (win rate, P&L, ROI) tidak tersentuh.'}
+                  </p>
                   <div>
                     <Label className="text-xs">Akun Broker</Label>
                     <Select value={selectedFormAcc} onValueChange={v => setFormAcc(v ?? '')}>
@@ -114,10 +133,10 @@ export default function TransactionsPage() {
                   </div>
                   <div>
                     <Label className="text-xs">Catatan (opsional)</Label>
-                    <Textarea placeholder={type === 'deposit' ? 'Misal: top-up modal' : 'Misal: tarik profit'} value={note} onChange={e => setNote(e.target.value)} rows={2} />
+                    <Textarea placeholder={type === 'deposit' ? 'Misal: top-up modal' : type === 'withdraw' ? 'Misal: tarik profit' : 'Misal: bayar sekolah anak, servis motor'} value={note} onChange={e => setNote(e.target.value)} rows={2} />
                   </div>
                   <Button type="submit" className="w-full" disabled={!amount || Number(amount) <= 0}>
-                    {type === 'deposit' ? 'Catat Deposit' : 'Catat Withdraw'}
+                    {type === 'deposit' ? 'Catat Deposit' : type === 'withdraw' ? 'Catat Withdraw' : 'Catat Pengeluaran Pribadi'}
                   </Button>
                 </form>
               )}

@@ -48,16 +48,20 @@ export function calcStats(trades: Trade[], transfers: Transfer[], accounts: Acco
   // (tidak dibalik tandanya seperti withdraw).
   const adjust_cost  = transfers.filter(t => t.type === 'adjust_cost').reduce((s, t) => s + t.amount, 0)
   const adjust_other = transfers.filter(t => t.type === 'adjust_other').reduce((s, t) => s + t.amount, 0)
+  // Pengeluaran pribadi: menurunkan saldo, TIDAK menyentuh statistik trading,
+  // modal, maupun ROI. Kalau ikut mengubah ROI, performa trading akan terlihat
+  // buruk hanya karena pemiliknya belanja.
+  const total_expense = transfers.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
   const starting_balance = accounts.reduce((s, a) => s + (a.initial_balance ?? 0), 0)
 
   return {
     total_trades, win_rate, total_pnl, profit_factor, avg_win, avg_loss,
     max_drawdown, expectancy,
-    trading_capital: starting_balance + deposits - withdrawals + total_pnl + adjust_cost + adjust_other,
+    trading_capital: starting_balance + deposits - withdrawals + total_pnl + adjust_cost + adjust_other - total_expense,
     starting_balance,
     total_deposited: deposits,
     total_withdrawn: withdrawals,
-    adjust_cost, adjust_other,
+    adjust_cost, adjust_other, total_expense,
     // Biaya tak tercatat adalah kerugian NYATA dari trading, jadi hasil trading
     // sebenarnya = P&L dari jurnal + biaya itu. Dipisah dari total_pnl supaya
     // statistik per-trade (win rate, profit factor) tetap murni dari jurnal.
