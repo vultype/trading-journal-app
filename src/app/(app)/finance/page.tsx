@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useStore } from '@/lib/store'
+import type { TransferType } from '@/types'
+import { transferMeta, transferDelta } from '@/lib/transfer-label'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useT } from '@/lib/i18n'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,7 +18,7 @@ import { Progress } from '@/components/ui/progress'
 import { CurrencyInput } from '@/components/ui/currency-input'
 import {
   ArrowDownLeft, ArrowUpRight, Trash2, TrendingUp, TrendingDown,
-  BarChart2, Landmark, PiggyBank, Coins, Target, ArrowLeftRight,
+  BarChart2, Landmark, PiggyBank, Coins, Target, ArrowLeftRight, Scale,
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -46,6 +48,13 @@ export default function FinancePage() {
   const [note, setNote]     = useState('')
   const [formAcc, setFormAcc] = useState('')
 
+  // ── Rekonsiliasi: samakan saldo aplikasi dengan saldo asli di broker ──
+  const [recAcc, setRecAcc]   = useState('')
+  const [recReal, setRecReal] = useState<number | ''>('')
+  const [recWhy, setRecWhy]   = useState<TransferType>('adjust_cost')
+  const [recDate, setRecDate] = useState(new Date().toISOString().split('T')[0])
+  const [recNote, setRecNote] = useState('')
+
   const selectedFormAcc = formAcc || accounts[0]?.id || ''
 
   function submit(e: React.FormEvent) {
@@ -67,42 +76,57 @@ export default function FinancePage() {
   const starting   = scopedAccounts.reduce((s, a) => s + (a.initial_balance ?? 0), 0)
   const deposited  = scopedTransfers.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0)
   const withdrawn  = scopedTransfers.filter(t => t.type === 'withdraw').reduce((s, t) => s + t.amount, 0)
+  // Penyesuaian rekonsiliasi — amount boleh negatif, dijumlahkan apa adanya.
+  const adjCost    = scopedTransfers.filter(t => t.type === 'adjust_cost').reduce((s, t) => s + t.amount, 0)
+  const adjOther   = scopedTransfers.filter(t => t.type === 'adjust_other').reduce((s, t) => s + t.amount, 0)
   const pnl        = scopedTrades.reduce((s, t) => s + t.pnl, 0)
-  const balance    = starting + deposited - withdrawn + pnl
+  const netPnl     = pnl + adjCost   // hasil trading SEBENARNYA, sudah termasuk swap/komisi
+  const balance    = starting + deposited - withdrawn + pnl + adjCost + adjOther
   const invested   = starting + deposited
-  const roi        = invested > 0 ? (pnl / invested) * 100 : null
+  // ROI memakai netPnl, bukan pnl mentah: biaya swap/komisi adalah ongkos nyata
+  // untuk menghasilkan profit itu. ROI dari pnl mentah selalu lebih bagus dari
+  // kenyataan, dan itu jenis kesalahan yang paling mahal untuk dipercaya.
+  const roi        = invested > 0 ? (netPnl / invested) * 100 : null
 
   // ── Ringkasan per akun ──
   const perAccount = accounts.map(acc => {
-    const deps = transfers.filter(t => t.type === 'deposit'  && t.account_id === acc.id).reduce((s, t) => s + t.amount, 0)
-    const wds  = transfers.filter(t => t.type === 'withdraw' && t.account_id === acc.id).reduce((s, t) => s + t.amount, 0)
+    const ofAcc = (ty: string) => transfers.filter(t => t.type === ty && t.account_id === acc.id).reduce((s, t) => s + t.amount, 0)
+    const deps = ofAcc('deposit')
+    const wds  = ofAcc('withdraw')
+    const aCost = ofAcc('adjust_cost')
+    const aOther = ofAcc('adjust_other')
     const p    = trades.filter(t => t.account_id === acc.id).reduce((s, t) => s + t.pnl, 0)
     const init = acc.initial_balance ?? 0
-    return { acc, init, deposited: deps, withdrawn: wds, pnl: p, balance: init + deps - wds + p }
+    return { acc, init, deposited: deps, withdrawn: wds, pnl: p, adjCost: aCost, adjOther: aOther, balance: init + deps - wds + p + aCost + aOther }
   })
 
   // ── Data bulanan (sesuai scope) ──
   const byMonth = useMemo(() => {
-    const map: Record<string, { pnl: number; deposit: number; withdraw: number }> = {}
+    const blank = () => ({ pnl: 0, deposit: 0, withdraw: 0, adjust: 0 })
+    const map: Record<string, ReturnType<typeof blank>> = {}
     for (const t of scopedTrades) {
       const k = t.date.slice(0, 7)
-      if (!map[k]) map[k] = { pnl: 0, deposit: 0, withdraw: 0 }
+      if (!map[k]) map[k] = blank()
       map[k].pnl += t.pnl
     }
     for (const t of scopedTransfers) {
       const k = t.date.slice(0, 7)
-      if (!map[k]) map[k] = { pnl: 0, deposit: 0, withdraw: 0 }
+      if (!map[k]) map[k] = blank()
       if (t.type === 'deposit')  map[k].deposit  += t.amount
       if (t.type === 'withdraw') map[k].withdraw += t.amount
+      // Penyesuaian WAJIB ikut, kalau tidak kurva pertumbuhan berakhir di angka
+      // yang berbeda dari saldo di kartu atas — dua angka bertentangan di satu
+      // halaman, dan tidak ada cara bagi pembaca menebak mana yang benar.
+      if (t.type === 'adjust_cost' || t.type === 'adjust_other') map[k].adjust += t.amount
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => ({ name: k.slice(5), full: k, ...v }))
   }, [scopedTrades, scopedTransfers])
 
   const cumulativePnl = useMemo(() => {
-    // mulai dari saldo awal, akumulasi deposit − withdraw + pnl tiap bulan
+    // mulai dari saldo awal, akumulasi deposit − withdraw + pnl + penyesuaian
     let base = starting
-    return byMonth.map(m => { base += m.deposit - m.withdraw + m.pnl; return { name: m.name, equity: base } })
+    return byMonth.map(m => { base += m.deposit - m.withdraw + m.pnl + m.adjust; return { name: m.name, equity: base } })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [byMonth])
 
@@ -118,15 +142,48 @@ export default function FinancePage() {
       .map(t => ({
         id: t.id,
         date: t.date,
-        label: t.type === 'deposit' ? 'Deposit' : 'Withdraw',
+        label: transferMeta(t.type).label,
         acc: accounts.find(a => a.id === t.account_id)?.name ?? '',
         sub: t.note ?? '',
-        amount: t.type === 'deposit' ? t.amount : -t.amount,
+        amount: transferDelta(t),
         kind: t.type as string,
       }))
   }, [scopedTransfers, accounts])
 
   const scopeName = scope === 'all' ? 'Semua Akun' : (accounts.find(a => a.id === scope)?.name ?? 'Akun')
+
+  // ── Logika rekonsiliasi ──
+  // Selalu PER AKUN: tiap broker punya saldonya sendiri, jadi selisih hanya
+  // punya arti kalau dibandingkan ke satu akun. Default mengikuti akun yang
+  // sedang dipilih di filter atas supaya tidak perlu memilih dua kali.
+  const recTarget = recAcc || (scope !== 'all' ? scope : accounts[0]?.id ?? '')
+  const recRow = perAccount.find(p => p.acc.id === recTarget) ?? null
+  const recGap = recRow && recReal !== '' ? Number(recReal) - recRow.balance : null
+  // Arah sudah ditentukan oleh selisihnya, jadi pilihan yang tidak mungkin
+  // disembunyikan — mencegah "deposit terlewat" dipilih saat saldo justru kurang.
+  const recWhyOptions: { v: TransferType; label: string; efek: string }[] = [
+    { v: 'adjust_cost', label: 'Biaya trading tak tercatat', efek: 'Swap, komisi, slippage. Mengurangi hasil trading bersih & ROI — karena ini memang kerugian nyata dari trading.' },
+    ...(recGap !== null && recGap > 0 ? [{ v: 'deposit' as TransferType, label: 'Deposit yang lupa dicatat', efek: 'Dihitung sebagai tambahan modal. ROI ikut turun karena modal bertambah, tapi hasil trading tidak berubah.' }] : []),
+    ...(recGap !== null && recGap < 0 ? [{ v: 'withdraw' as TransferType, label: 'Withdraw yang lupa dicatat', efek: 'Dihitung sebagai penarikan modal. Hasil trading tidak berubah.' }] : []),
+    { v: 'adjust_other', label: 'Koreksi lain (bonus, rebate, salah input)', efek: 'Hanya menggeser saldo. Tidak menyentuh statistik performa sama sekali.' },
+  ]
+  const recWhyValid = recWhyOptions.some(o => o.v === recWhy) ? recWhy : 'adjust_cost'
+
+  function submitRekonsiliasi(e: React.FormEvent) {
+    e.preventDefault()
+    if (!recRow || recGap === null || Math.round(recGap * 100) === 0) return
+    // deposit/withdraw memakai amount POSITIF (arah dari jenisnya); adjust_*
+    // memakai amount bertanda supaya bisa menggeser saldo ke dua arah.
+    const amount = recWhyValid === 'deposit' ? recGap
+      : recWhyValid === 'withdraw' ? Math.abs(recGap)
+      : recGap
+    addTransfer({
+      account_id: recRow.acc.id, type: recWhyValid, amount,
+      note: recNote || `Rekonsiliasi ke saldo broker ${fmt(Number(recReal))}`,
+      date: recDate,
+    })
+    setRecReal(''); setRecNote('')
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -190,7 +247,18 @@ export default function FinancePage() {
             <p className={`text-2xl font-black tracking-tight ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {pnl >= 0 ? '+' : ''}{fmt(pnl)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{t('Murni dari hasil trade')}{roi !== null ? ` · ROI ${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : ''}</p>
+            {/* Kalau ada biaya tak tercatat, angka jurnal saja MENIPU — profit
+                terlihat lebih besar dari yang benar-benar masuk ke rekening.
+                Bersihnya ditampilkan tepat di bawahnya, bukan disembunyikan. */}
+            {adjCost !== 0 ? (
+              <p className="text-[11px] mt-0.5">
+                <span className="text-muted-foreground">Bersih setelah biaya: </span>
+                <b className={netPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}>{netPnl >= 0 ? '+' : ''}{fmt(netPnl)}</b>
+                {roi !== null ? ` · ROI ${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : ''}
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground mt-0.5">{t('Murni dari hasil trade')}{roi !== null ? ` · ROI ${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : ''}</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -219,6 +287,26 @@ export default function FinancePage() {
               <p className="text-[10px] text-muted-foreground">{t('Profit')}</p>
               <p className={`font-bold ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{pnl >= 0 ? '+' : ''}{fmt(pnl)}</p>
             </div>
+            {/* Hanya muncul kalau ada — supaya rumus tetap sederhana bagi yang
+                belum pernah melakukan rekonsiliasi. */}
+            {adjCost !== 0 && (
+              <>
+                <span className="text-muted-foreground font-bold">+</span>
+                <div className="rounded-lg bg-amber-500/10 px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground">Biaya tak tercatat</p>
+                  <p className="font-bold text-amber-400">{adjCost >= 0 ? '+' : ''}{fmt(adjCost)}</p>
+                </div>
+              </>
+            )}
+            {adjOther !== 0 && (
+              <>
+                <span className="text-muted-foreground font-bold">+</span>
+                <div className="rounded-lg bg-sky-500/10 px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground">Koreksi lain</p>
+                  <p className="font-bold text-sky-400">{adjOther >= 0 ? '+' : ''}{fmt(adjOther)}</p>
+                </div>
+              </>
+            )}
             <span className="text-muted-foreground font-bold">=</span>
             <div className="rounded-lg bg-foreground/5 border border-border/60 px-3 py-2">
               <p className="text-[10px] text-muted-foreground">{t('Saldo Sekarang')}</p>
@@ -227,6 +315,86 @@ export default function FinancePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Rekonsiliasi saldo ── */}
+      {accounts.length > 0 && (
+        <Card className="border-amber-500/25 bg-gradient-to-br from-amber-500/[0.06] to-transparent">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Scale size={15} className="text-amber-400" /> Samakan dengan Saldo Broker
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Saldo di sini dihitung dari jurnal. Saldo asli di broker biasanya sedikit berbeda karena swap, komisi, atau transaksi yang lupa dicatat.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={submitRekonsiliasi} className="space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Akun broker</Label>
+                  <Select value={recTarget} onValueChange={v => v && setRecAcc(v)}>
+                    <SelectTrigger className="mt-1"><SelectValue>{recRow?.acc.name ?? 'Pilih akun'}</SelectValue></SelectTrigger>
+                    <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {recRow && <p className="text-[11px] text-muted-foreground mt-1">Tercatat di sini: <b className="text-foreground">{fmt(recRow.balance)}</b></p>}
+                </div>
+                <div>
+                  <Label className="text-xs">Saldo asli di broker sekarang</Label>
+                  <CurrencyInput value={recReal} onChange={setRecReal} className="mt-1" placeholder="Lihat di MT4/MT5 atau dashboard broker" />
+                </div>
+              </div>
+
+              {recGap !== null && Math.round(recGap * 100) !== 0 && (
+                <>
+                  <div className={`rounded-lg border px-3 py-2.5 ${recGap < 0 ? 'border-red-500/25 bg-red-500/[0.07]' : 'border-emerald-500/25 bg-emerald-500/[0.07]'}`}>
+                    <p className="text-xs text-muted-foreground">Selisih yang perlu dijelaskan</p>
+                    <p className={`text-xl font-black ${recGap < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {recGap > 0 ? '+' : '−'}{fmt(Math.abs(recGap))}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {recGap < 0
+                        ? 'Saldo asli LEBIH KECIL — ada uang keluar yang belum tercatat.'
+                        : 'Saldo asli LEBIH BESAR — ada uang masuk yang belum tercatat.'}
+                    </p>
+                  </div>
+
+                  {/* Sebab menentukan angka mana yang ikut berubah — karena itu
+                      dampak tiap pilihan ditulis di sini, bukan disembunyikan. */}
+                  <div>
+                    <Label className="text-xs">Selisih ini karena apa?</Label>
+                    <div className="space-y-1.5 mt-1.5">
+                      {recWhyOptions.map(o => (
+                        <button key={o.v} type="button" onClick={() => setRecWhy(o.v)}
+                          className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${recWhyValid === o.v ? 'border-amber-500/50 bg-amber-500/10' : 'border-border/60 hover:border-border'}`}>
+                          <p className="text-xs font-semibold">{o.label}</p>
+                          <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{o.efek}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Tanggal</Label>
+                      <Input type="date" value={recDate} onChange={e => setRecDate(e.target.value)} className="mt-1" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Catatan (opsional)</Label>
+                      <Input value={recNote} onChange={e => setRecNote(e.target.value)} className="mt-1" placeholder="mis. swap 3 malam posisi XAU" />
+                    </div>
+                  </div>
+
+                  <Button type="submit" className="w-full gap-1.5"><Scale size={14} /> Catat Penyesuaian & Samakan Saldo</Button>
+                </>
+              )}
+
+              {recGap !== null && Math.round(recGap * 100) === 0 && (
+                <p className="text-xs text-emerald-400 text-center py-2">Sudah cocok — tidak ada selisih yang perlu dijelaskan.</p>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Bulan ini ── */}
       <div className="grid grid-cols-3 gap-3">

@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useStore } from '@/lib/store'
+import type { TransferType } from '@/types'
+import { transferMeta, transferDelta, TRANSFER_META } from '@/lib/transfer-label'
 import { useCurrency } from '@/hooks/useCurrency'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,7 +23,7 @@ export default function TransactionsPage() {
   const [date, setDate]     = useState(new Date().toISOString().split('T')[0])
   const [note, setNote]     = useState('')
   const [formAcc, setFormAcc] = useState('')
-  const [filterType, setFilterType] = useState<'all' | 'deposit' | 'withdraw'>('all')
+  const [filterType, setFilterType] = useState<'all' | TransferType>('all')
   const [filterAcc, setFilterAcc]   = useState('all')
 
   const selectedFormAcc = formAcc || accounts[0]?.id || ''
@@ -131,11 +133,12 @@ export default function TransactionsPage() {
                 <CardTitle className="text-sm">Riwayat Transaksi</CardTitle>
                 <div className="flex items-center gap-2">
                   <Select value={filterType} onValueChange={v => setFilterType((v ?? 'all') as any)}>
-                    <SelectTrigger className="h-8 text-xs w-28"><SelectValue>{filterType === 'all' ? 'Semua' : filterType === 'deposit' ? 'Deposit' : 'Withdraw'}</SelectValue></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs w-32"><SelectValue>{filterType === 'all' ? 'Semua' : transferMeta(filterType).short}</SelectValue></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Semua</SelectItem>
-                      <SelectItem value="deposit">Deposit</SelectItem>
-                      <SelectItem value="withdraw">Withdraw</SelectItem>
+                      {(Object.keys(TRANSFER_META) as TransferType[]).map(k => (
+                        <SelectItem key={k} value={k}>{TRANSFER_META[k].label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   {accounts.length > 1 && (
@@ -176,14 +179,14 @@ export default function TransactionsPage() {
                             {t.note && <div className="text-[10px] text-muted-foreground/60 max-w-[160px] truncate">{t.note}</div>}
                           </td>
                           <td className="px-3 py-3">
-                            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${t.type === 'deposit' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-violet-500/10 text-violet-400'}`}>
-                              {t.type === 'deposit' ? <ArrowDownLeft size={11} /> : <ArrowUpRight size={11} />}
-                              {t.type === 'deposit' ? 'Deposit' : 'Withdraw'}
+                            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${transferMeta(t.type).bg} ${transferMeta(t.type).color}`}>
+                              {transferDelta(t) >= 0 ? <ArrowDownLeft size={11} /> : <ArrowUpRight size={11} />}
+                              {transferMeta(t.type).label}
                             </span>
                           </td>
                           <td className="px-3 py-3 text-xs text-muted-foreground">{t.acc}</td>
-                          <td className={`px-3 py-3 text-right font-bold ${t.type === 'deposit' ? 'text-indigo-400' : 'text-violet-400'}`}>
-                            {t.type === 'deposit' ? '+' : '−'}{fmt(t.amount)}
+                          <td className={`px-3 py-3 text-right font-bold ${transferMeta(t.type).color}`}>
+                            {transferDelta(t) >= 0 ? '+' : '−'}{fmt(Math.abs(transferDelta(t)))}
                           </td>
                           <td className="px-3 py-3 text-right">
                             <button onClick={() => deleteTransfer(t.id)} className="text-muted-foreground/40 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all">

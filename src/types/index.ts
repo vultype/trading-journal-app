@@ -7,7 +7,16 @@ export type Account = {
   created_at: string
 }
 
-export type TransferType = 'deposit' | 'withdraw'
+// deposit/withdraw = arus modal (amount selalu positif, arah dari jenisnya).
+// adjust_* = rekonsiliasi dengan saldo asli broker (amount BOLEH negatif):
+//   adjust_cost  → biaya trading tak tercatat (swap/komisi). Ikut mengurangi
+//                  hasil trading bersih & ROI, karena ini kerugian nyata dari
+//                  aktivitas trading — bukan setoran modal.
+//   adjust_other → koreksi netral (bonus, rebate, salah input). Menggeser
+//                  saldo tanpa menyentuh statistik performa.
+export type TransferType = 'deposit' | 'withdraw' | 'adjust_cost' | 'adjust_other'
+
+export const isAdjustment = (t: TransferType) => t === 'adjust_cost' || t === 'adjust_other'
 
 // Log dana satu-akun (deposit masuk / withdraw keluar dari satu akun broker)
 export type Transfer = {
@@ -81,10 +90,14 @@ export type DashboardStats = {
   avg_loss: number
   max_drawdown: number
   expectancy: number
-  trading_capital: number   // saldo sekarang = starting_balance + deposit − withdraw + pnl
+  trading_capital: number   // saldo sekarang = starting_balance + deposit − withdraw + pnl + penyesuaian
   starting_balance: number  // total saldo awal semua akun
   total_deposited: number
   total_withdrawn: number
+  // Rekonsiliasi dengan saldo asli broker (lihat catatan di TransferType).
+  adjust_cost: number       // biaya tak tercatat (swap/komisi) — biasanya negatif
+  adjust_other: number      // koreksi netral (bonus/rebate/salah input)
+  net_pnl: number           // total_pnl + adjust_cost = hasil trading SEBENARNYA
   win_streak: number
   loss_streak: number
   current_streak: number
