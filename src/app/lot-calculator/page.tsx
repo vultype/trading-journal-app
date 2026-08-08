@@ -17,7 +17,13 @@ type Instrument = { sym: string; label: string; cat: string; contract: number; p
 // contract = unit per 1.00 lot · pip = perubahan harga 1 pip · price = perkiraan harga
 // (untuk notional & konversi pair non-USD). Konvensi umum MT4/MT5.
 const INSTRUMENTS: Instrument[] = [
-  { sym: 'XAU/USD', label: 'Emas (XAU/USD)', cat: 'Logam', contract: 100, pip: 0.01, quote: 'USD', price: 2400, dec: 2 },
+  // Emas: 1 pip = 0.10 harga (bukan 0.01). 0.01 adalah POINT — satuan terkecil
+  // kuotasi, bukan pip. Buktinya sederhana: spread emas biasanya $0.20–0.40,
+  // jadi "SL 10 pip" dengan pip 0.01 berarti stop $0.10 — lebih rapat dari
+  // spread, mustahil dieksekusi. Dengan pip 0.10, SL 10 pip = $1.00: rapat tapi
+  // wajar untuk scalping. Sejalan juga dengan cara trader bicara ("emas gerak
+  // 300 pip") — range harian ~$30.
+  { sym: 'XAU/USD', label: 'Emas (XAU/USD)', cat: 'Logam', contract: 100, pip: 0.1, quote: 'USD', price: 2400, dec: 2 },
   { sym: 'XAG/USD', label: 'Perak (XAG/USD)', cat: 'Logam', contract: 5000, pip: 0.001, quote: 'USD', price: 30, dec: 3 },
   { sym: 'EUR/USD', label: 'EUR/USD', cat: 'Forex', contract: 100000, pip: 0.0001, quote: 'USD', price: 1.08, dec: 5 },
   { sym: 'GBP/USD', label: 'GBP/USD', cat: 'Forex', contract: 100000, pip: 0.0001, quote: 'USD', price: 1.27, dec: 5 },
@@ -49,7 +55,10 @@ export default function LotCalculatorPage() {
   const [balance, setBalance] = useState('1000')
   const [riskMode, setRiskMode] = useState<'persen' | 'nominal'>('persen')
   const [risk, setRisk] = useState('1')
-  const [sl, setSl] = useState('300')
+  // 30 pip emas = jarak harga $3.00 — sama persis dengan default lama (300 × 0.01)
+  // sebelum satuan pip diperbaiki. Kalau dibiarkan 300, jarak SL bawaan jadi
+  // $30 dan lot hasilnya langsung di bawah minimum broker begitu halaman dibuka.
+  const [sl, setSl] = useState('30')
   const [slUnit, setSlUnit] = useState<'pips' | 'harga'>('pips')
   const [rr, setRr] = useState('2')
   const [lev, setLev] = useState('500')
@@ -75,17 +84,28 @@ export default function LotCalculatorPage() {
     const lossPerLot = priceDist * inst.contract * quoteFactor
     const riskAmtUSD = riskMode === 'nominal' ? toUsd(num(risk)) : balUSD * num(risk) / 100
     const effRiskPct = balUSD > 0 ? riskAmtUSD / balUSD * 100 : 0
-    const lotFor = (pct: number) => lossPerLot > 0 ? (balUSD * pct / 100) / lossPerLot : 0
-    const lot = lossPerLot > 0 ? riskAmtUSD / lossPerLot : 0
+    // Lot DIBULATKAN KE BAWAH ke kelipatan 0.01 (step broker), tidak dibulatkan
+    // normal. Membulatkan ke atas berarti rugi melebihi batas risiko yang baru
+    // saja ditetapkan sendiri — contoh: 0.17647 → 0.18 membuat rugi Rp306.000
+    // dari budget Rp300.000. Angka yang ditampilkan harus angka yang benar-benar
+    // aman dipakai, bukan yang perlu dikoreksi lagi di kepala.
+    const stepDown = (v: number) => Math.floor(v * 100) / 100
+    const lotFor = (pct: number) => lossPerLot > 0 ? stepDown((balUSD * pct / 100) / lossPerLot) : 0
+    const lotRaw = lossPerLot > 0 ? riskAmtUSD / lossPerLot : 0
+    const lot = stepDown(lotRaw)
     const notional = inst.quote === 'USD' ? lot * inst.contract * pr : lot * inst.contract
     const rrN = num(rr)
-    const profitUSD = riskAmtUSD * rrN
+    // Rugi & profit dihitung dari lot yang SUDAH dibulatkan ke bawah — itulah
+    // yang benar-benar terjadi kalau order dieksekusi. Memakai riskAmtUSD mentah
+    // akan menampilkan angka yang tidak pernah cocok dengan hasil sebenarnya.
+    const actualRiskUSD = lot * lossPerLot
+    const profitUSD = actualRiskUSD * rrN
     const levN = num(lev) || 1
     const marginUSD = notional / levN
     const marginPct = balUSD > 0 ? marginUSD / balUSD * 100 : 0
     const dd = (n: number) => (1 - Math.pow(1 - effRiskPct / 100, n)) * 100
     const valid = balUSD > 0 && riskAmtUSD > 0 && priceDist > 0 && lossPerLot > 0
-    return { balUSD, priceDist, pips, pipValuePerLot, lossPerLot, riskAmtUSD, effRiskPct, lot, notional, profitUSD, marginUSD, marginPct, dd, lotFor, valid, rrN }
+    return { balUSD, priceDist, pips, pipValuePerLot, lossPerLot, riskAmtUSD, effRiskPct, lot, lotRaw, actualRiskUSD, notional, profitUSD, marginUSD, marginPct, dd, lotFor, valid, rrN }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [balance, risk, riskMode, sl, slUnit, rr, lev, ccy, usdIdr, inst])
 
@@ -241,10 +261,19 @@ export default function LotCalculatorPage() {
                     </div>
                     {lotFloor && <p className="text-[11px] text-amber-400 mt-1 flex items-center gap-1"><AlertTriangle size={11} /> Di bawah lot minimum broker (0.01). Kecilkan SL atau tambah saldo.</p>}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px]">
-                      <span className="text-white/50">Rugi @ SL: <b className="text-red-400">{money(calc.riskAmtUSD)}</b></span>
+                      <span className="text-white/50">Rugi @ SL: <b className="text-red-400">{money(calc.actualRiskUSD)}</b></span>
                       <span className="text-white/50">Profit @ TP: <b className="text-emerald-400">{money(calc.profitUSD)}</b></span>
                       <span className="text-white/40">({calc.effRiskPct.toFixed(1)}% · R:R 1:{fmt(calc.rrN, calc.rrN % 1 ? 1 : 0)})</span>
                     </div>
+                    {/* Pembulatan ke bawah selalu menyisakan jatah risiko yang tak
+                        terpakai. Menyembunyikannya membuat "Rugi @ SL" terlihat
+                        tidak cocok dengan budget yang diketik, dan itu bikin ragu
+                        apakah kalkulatornya benar. */}
+                    {calc.riskAmtUSD - calc.actualRiskUSD > 0.005 && (
+                      <p className="text-[10px] text-white/35 mt-1">
+                        Dibulatkan ke bawah dari {fmt(calc.lotRaw, 3)} lot — sisa jatah risiko {money(calc.riskAmtUSD - calc.actualRiskUSD)} tidak dipakai.
+                      </p>
+                    )}
                   </>
                 ) : <p className="text-white/40 text-sm py-3">Lengkapi saldo, risiko & stop loss untuk melihat hasil.</p>}
               </div>
