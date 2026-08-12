@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   Newspaper, Loader2, RefreshCw, Wand2, Plus, X,
-  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks, Link2, Coins, Sparkles,
+  Target, ShieldAlert, Landmark, Activity, Layers, Gauge, ListChecks, Link2, Coins, Sparkles, Zap,
 } from 'lucide-react'
 import { BiasBar, DirIcon, Section, NewsSentimentColumns, FaktorRow, dirColor, dirBg, type Dir } from './aiViz'
 import { AiLoading } from './AiLoading'
 import { aiFetch } from '@/lib/ai-fetch'
+import { assessSpike, surpriseOf, type SpikeResult } from '@/lib/spike-risk'
 
 // Preset komponen umum tiap rilis (auto-isi label saat pilih event).
 const PRESETS: Record<string, string[]> = {
@@ -50,6 +51,33 @@ type Analysis = {
   risiko: string[]; fetchedAt: string
 }
 
+// Ambil bahan penilai spike dari snapshot terminal. Semua angkanya sudah ada di
+// sana — tidak ada yang dikarang, dan kalau satu field hilang penilaiannya
+// dilewati (mengembalikan null) alih-alih memakai nilai default yang menyesatkan.
+type Snap = {
+  atrM15?: number; volRatio?: number; bbSqueeze?: boolean; session?: string
+  candlesM5?: string[]
+}
+function spikeFrom(snapshot: unknown, event: string, rows: Row[]): SpikeResult | null {
+  const s = snapshot as Snap | null
+  if (!s || typeof s.atrM15 !== 'number' || s.atrM15 <= 0) return null
+  // Gerak terbesar yang BENAR-BENAR terjadi 30 bar M5 terakhir — pembanding
+  // terukur untuk perkiraan yang sifatnya heuristik.
+  const maxRangeM5 = (s.candlesM5 ?? []).reduce((mx, c) => {
+    const [, h, l] = c.split('/').map(Number)
+    return Number.isFinite(h) && Number.isFinite(l) ? Math.max(mx, h - l) : mx
+  }, 0)
+  return assessSpike({
+    event,
+    atrM15: s.atrM15,
+    volRatio: typeof s.volRatio === 'number' ? s.volRatio : 1,
+    bbSqueeze: !!s.bbSqueeze,
+    session: s.session ?? '',
+    maxRangeM5,
+    surprisePct: surpriseOf(rows),
+  })
+}
+
 export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
   const [event, setEvent] = useState('')
   const [rows, setRows] = useState<Row[]>([emptyRow()])
@@ -58,6 +86,11 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
   const [data, setData] = useState<Analysis | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [low, setLow] = useState(false)
+
+  // Dinilai LANGSUNG dari data terminal — tidak menunggu AI, dan tidak berubah
+  // kalau AI menjawab lain. Angka deterministik harus datang dari kode, bukan
+  // dari model bahasa yang bisa mengarang.
+  const spike = useMemo(() => event.trim() ? spikeFrom(snapshot, event, rows) : null, [snapshot, event, rows])
 
   function pickEvent(e: string) { setEvent(e); setRows((PRESETS[e] ?? ['']).map(l => emptyRow(l))) }
   const setRow = (i: number, key: keyof Row, val: string) => setRows(rs => rs.map((r, j) => j === i ? { ...r, [key]: val } : r))
@@ -68,7 +101,7 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
     if (!event.trim()) { setError('Pilih atau tulis nama berita/event dulu.'); return }
     setLoading(true); setError(null); setLow(false)
     try {
-      const { data: j, insufficient } = await aiFetch<{ error?: string } & Analysis>('/api/terminal/news-analysis', { snapshot, event, rows, notes })
+      const { data: j, insufficient } = await aiFetch<{ error?: string } & Analysis>('/api/terminal/news-analysis', { snapshot, event, rows, notes, spike })
       if (insufficient) { setLow(true); setError(j.error || 'Kredit AI tidak cukup.'); return }
       if (j.error) throw new Error(j.error)
       setData(j)
@@ -130,6 +163,8 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
             className="w-full mt-1 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-sm text-white resize-none outline-none focus:border-primary/40 placeholder:text-white/25" />
         </div>
 
+        {spike && <SpikePanel s={spike} />}
+
         <button onClick={run} disabled={loading || !event.trim()}
           className="mt-3 w-full flex items-center justify-center gap-1.5 text-sm font-bold bg-primary text-primary-foreground rounded-xl px-4 py-3 hover:opacity-90 disabled:opacity-50 transition-opacity">
           {loading ? <><Loader2 size={16} className="animate-spin" /> Menganalisa semua parameter…</> : <><Wand2 size={16} /> Analisa Dampak ke Emas</>}
@@ -143,6 +178,63 @@ export function TerminalNewsAnalysis({ snapshot }: { snapshot: unknown }) {
 
       {/* ── HASIL INTERAKTIF ── */}
       {data && !loading && <Result a={data} />}
+    </div>
+  )
+}
+
+// Panel risiko spike. Muncul begitu event dipilih — tidak menunggu AI, karena
+// seluruh angkanya deterministik dan bisa dihitung dari data terminal.
+function SpikePanel({ s }: { s: SpikeResult }) {
+  const warna = s.risiko === 'Ekstrem' ? { t: 'text-red-400', b: 'border-red-500/35', bg: 'bg-red-500/[0.08]', bar: 'bg-red-400' }
+    : s.risiko === 'Tinggi' ? { t: 'text-amber-400', b: 'border-amber-500/35', bg: 'bg-amber-500/[0.08]', bar: 'bg-amber-400' }
+    : s.risiko === 'Sedang' ? { t: 'text-yellow-300', b: 'border-yellow-500/25', bg: 'bg-yellow-500/[0.06]', bar: 'bg-yellow-300' }
+    : { t: 'text-emerald-400', b: 'border-emerald-500/25', bg: 'bg-emerald-500/[0.06]', bar: 'bg-emerald-400' }
+
+  return (
+    <div className={`mt-3 rounded-xl border ${warna.b} ${warna.bg} p-3`}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-white/60">
+          <Zap size={12} className={warna.t} /> Risiko Spike
+        </span>
+        <span className={`text-[11px] font-black ${warna.t}`}>{s.risiko} · {s.skor}/100</span>
+      </div>
+
+      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden mb-2.5">
+        <div className={`h-full rounded-full transition-all ${warna.bar}`} style={{ width: `${s.skor}%` }} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-2.5">
+        <div className="rounded-lg bg-black/25 px-2.5 py-2">
+          <p className="text-[9px] uppercase tracking-wider text-white/35">Perkiraan gerak 30 mnt</p>
+          <p className="text-sm font-black tabular-nums text-white/90">±{s.gerakMin}–{s.gerakMax}</p>
+          <p className="text-[9px] text-white/40 tabular-nums">{s.pipsMin}–{s.pipsMax} pips</p>
+        </div>
+        <div className="rounded-lg bg-black/25 px-2.5 py-2">
+          <p className="text-[9px] uppercase tracking-wider text-white/35">Gerak terbesar 30 bar M5</p>
+          <p className="text-sm font-black tabular-nums text-white/90">{s.maxRangeM5}</p>
+          <p className="text-[9px] text-white/40 tabular-nums">{Math.round(s.maxRangeM5 * 10)} pips · terukur</p>
+        </div>
+      </div>
+
+      {s.pemicu.length > 0 && (
+        <ul className="space-y-0.5 mb-1.5">
+          {s.pemicu.map((p, i) => <li key={i} className="text-[10px] text-white/60 leading-snug flex gap-1.5"><span className={warna.t}>▲</span>{p}</li>)}
+        </ul>
+      )}
+      {s.peredam.length > 0 && (
+        <ul className="space-y-0.5 mb-1.5">
+          {s.peredam.map((p, i) => <li key={i} className="text-[10px] text-white/45 leading-snug flex gap-1.5"><span className="text-sky-400">▼</span>{p}</li>)}
+        </ul>
+      )}
+
+      {/* Batas ini WAJIB terlihat. Tanpa itu angka di atas gampang dibaca sebagai
+          ramalan arah, dan justru di situlah trader paling banyak kehilangan uang. */}
+      <p className="text-[10px] text-white/40 leading-relaxed border-t border-white/10 pt-2 mt-1">
+        {s.sudahRilis
+          ? 'Angka aktual sudah terisi, jadi besaran kejutannya ikut dihitung.'
+          : 'Ini ukuran BESAR gerakan, bukan arahnya. Arah spike ditentukan oleh selisih angka aktual vs ekspektasi — dan itu belum ada sampai rilisnya terjadi.'}
+        {' '}Perkiraan gerak = ATR M15 × bobot jenis rilis; bersifat kasar, bukan hasil backtest kalender.
+      </p>
     </div>
   )
 }

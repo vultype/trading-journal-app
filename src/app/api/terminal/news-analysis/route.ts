@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   const gate = await beginAiCharge(req, 'news')
   if (!gate.ok) return gate.response
   try {
-    const { snapshot, event, rows, notes } = await req.json()
+    const { snapshot, event, rows, notes, spike } = await req.json()
     if (!snapshot || typeof snapshot !== 'object') return NextResponse.json({ error: 'snapshot kosong' }, { status: 400 })
     if (!event || !String(event).trim()) return NextResponse.json({ error: 'nama event kosong' }, { status: 400 })
 
@@ -49,6 +49,14 @@ Komponen data:
 ${rowsText}
 Catatan trader: ${notes || '-'}
 
+PENILAIAN RISIKO SPIKE (sudah dihitung di terminal — JANGAN dihitung ulang atau diubah angkanya):
+${spike ? `  risiko ${spike.risiko} (skor ${spike.skor}/100, tier ${spike.tier})
+  perkiraan gerak 30 menit pertama: ±${spike.gerakMin}-${spike.gerakMax} poin (${spike.pipsMin}-${spike.pipsMax} pips)
+  gerak terbesar 30 bar M5 terakhir (TERUKUR): ${spike.maxRangeM5} poin
+  pemicu: ${(spike.pemicu || []).join(' | ') || '-'}
+  peredam: ${(spike.peredam || []).join(' | ') || '-'}
+  angka aktual sudah terisi: ${spike.sudahRilis ? 'ya' : 'belum'}` : '  (tidak tersedia)'}
+
 HEADLINE BERITA (2 hari terakhir):
 ${news.length ? news.map((h, i) => `${i + 1}. ${h}`).join('\n') : '(tidak ada headline)'}`
 
@@ -64,6 +72,13 @@ Prinsip:
 - Klasifikasikan headline: mana yang MENDUKUNG emas naik vs MENEKAN emas.
 - Rujuk angka nyata dari snapshot (harga, VWAP, level major, RSI, ADX, yield, dolar, real yield, dsb). Jangan mengarang angka.
 - Bahasa Indonesia, ringkas, mudah dipahami pemula.
+
+RISIKO SPIKE — ATURAN KETAT:
+- Angka risiko spike di atas dihitung deterministik dari data terminal. PAKAI apa adanya; jangan mengarang angka lain, jangan menaikkan/menurunkannya.
+- Risiko spike mengukur BESAR gerakan, BUKAN arahnya. Jangan pernah menyimpulkan arah dari besarnya risiko spike.
+- Kalau risiko spike Tinggi/Ekstrem DAN angka aktual belum terisi, rekomendasiPreNews condong ke TUNGGU, kecuali ada konfluensi teknikal+makro yang benar-benar kuat. Sebutkan alasannya dengan ANGKA dari blok risiko spike di atas (mis. "stop bisa tersapu 12 poin dalam hitungan menit").
+- Kalau tetap merekomendasikan entry saat risiko spike tinggi, jarak stop di field 'sl' HARUS lebih lebar dari perkiraan gerak minimum, dan sebutkan itu di 'peringatan'.
+- Masukkan risiko spike sebagai salah satu item di array 'risiko' dengan angkanya.
 
 DATA PENDUKUNG / BERKORELASI (WAJIB, berlaku untuk SEMUA jenis event, bukan hanya yang di atas contoh):
 Event tunggal jarang cukup untuk menyimpulkan arah Fed — selalu cek data LAIN yang mengkonfirmasi atau justru melemahkan reaksi pasar terhadap event yang sedang dianalisa. Pilih 3-5 indikator paling relevan dari snapshot.macro (SEMUA sudah tersedia: dollar, us10y, us02y, realyield, breakeven, cpi, corecpi, corepce, fedfunds, unrate, nfp, wagegrowth) sesuai KATEGORI event:
