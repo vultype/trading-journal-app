@@ -21,6 +21,19 @@ const KEY = 'dtq_backtest_journal'
 const CFG_KEY = 'dtq_backtest_journal_cfg'
 const DEFCFG: Cfg = { initEquity: 10000000, riskPct: 1, compound: false, defaultRR: 2 }
 
+// Risk per trade dibatasi ke tiga pilihan, bukan ketikan bebas. Backtest ini
+// membandingkan PLAN, dan angka risk yang bisa diisi apa saja mengundang
+// pertanyaan yang salah ("berapa % yang bikin kurvanya paling bagus") — padahal
+// menaikkan risk selalu membuat kurva terlihat lebih baik sampai satu rentetan
+// rugi menghapusnya. Tiga angka ini rentang yang lazim dipakai & bertahan.
+const RISK_OPTIONS = [0.5, 1, 2] as const
+
+// Nilai lama dari localStorage bisa di luar daftar (mis. 1.5 atau 3). Dibulatkan
+// ke pilihan TERDEKAT, bukan dibiarkan — kalau dibiarkan, tidak ada tombol yang
+// menyala dan user tidak punya cara tahu risk mana yang sedang dipakai.
+const snapRisk = (v: number) =>
+  RISK_OPTIONS.reduce((best, o) => Math.abs(o - v) < Math.abs(best - v) ? o : best, RISK_OPTIONS[1])
+
 const pad = (n: number) => String(n).padStart(2, '0')
 const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 const todayKey = () => dateKey(new Date())
@@ -56,7 +69,10 @@ export default function BacktestJournalPage() {
 
   useEffect(() => {
     try { const raw = localStorage.getItem(KEY); if (raw) setEntries(JSON.parse(raw)) } catch { }
-    try { const c = localStorage.getItem(CFG_KEY); if (c) setCfg({ ...DEFCFG, ...JSON.parse(c) }) } catch { }
+    try {
+      const c = localStorage.getItem(CFG_KEY)
+      if (c) { const p = { ...DEFCFG, ...JSON.parse(c) } as Cfg; setCfg({ ...p, riskPct: snapRisk(p.riskPct) }) }
+    } catch { }
     setLoaded(true)
   }, [])
   useEffect(() => { if (loaded) try { localStorage.setItem(KEY, JSON.stringify(entries)) } catch { } }, [entries, loaded])
@@ -171,7 +187,15 @@ export default function BacktestJournalPage() {
           <p className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3 flex items-center gap-1.5"><Wallet size={12} /> Pengaturan Akun</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div><label className="text-[10px] text-white/40">Modal Awal (Rp)</label><input value={cfg.initEquity} onChange={e => setC({ initEquity: Number(e.target.value.replace(/[^\d]/g, '')) || 0 })} inputMode="numeric" className={`${numInput} mt-1`} /><p className="text-[9px] text-white/35 mt-0.5">{fmtRp(cfg.initEquity)}</p></div>
-            <div><label className="text-[10px] text-white/40">Risk / Trade (%)</label><input value={cfg.riskPct} onChange={e => setC({ riskPct: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} inputMode="decimal" className={`${numInput} mt-1`} /></div>
+            <div>
+              <label className="text-[10px] text-white/40">Risk / Trade</label>
+              <div className="mt-1 flex gap-0.5 rounded-lg bg-black/30 p-0.5 border border-white/10">
+                {RISK_OPTIONS.map(v => (
+                  <button key={v} onClick={() => setC({ riskPct: v })}
+                    className={`flex-1 rounded-md px-1 py-1.5 text-[11px] font-bold tabular-nums transition-colors ${cfg.riskPct === v ? 'bg-primary text-primary-foreground' : 'text-white/45 hover:text-white/70'}`}>{v}%</button>
+                ))}
+              </div>
+            </div>
             <div><label className="text-[10px] text-white/40">RR Default</label><input value={cfg.defaultRR} onChange={e => setC({ defaultRR: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} inputMode="decimal" className={`${numInput} mt-1`} /></div>
             <div>
               <label className="text-[10px] text-white/40">Mode Modal</label>
