@@ -88,6 +88,28 @@ type PlanStats = ReturnType<typeof calcPlanStats>
 // ─────────────────────────────────────────────
 type SimTrade = { id: number; result: 'win' | 'loss'; rr: number; pnl: number; balance: number }
 
+// Hitung ulang SELURUH riwayat dengan setelan baru.
+//
+// pnl & balance dibekukan saat trade dicatat, jadi mengubah equity/risk/mode di
+// tengah sesi membuat kurva jadi campuran beberapa setelan — grafik yang tidak
+// mewakili satu pun. Menghapus riwayatnya menyelesaikan itu tapi membuang kerja
+// user, padahal yang benar-benar dia masukkan adalah URUTAN menang-kalah dan RR
+// tiap trade. Itu strateginya; equity/risk/mode cuma setelan.
+//
+// Jadi urutannya dipertahankan dan disimulasikan ULANG. Hasilnya justru
+// pertanyaan yang memang ingin dijawab alat backtest: "kalau rentetan yang sama
+// ini dijalankan dengan risk 2%, jadinya bagaimana?"
+function resim(list: SimTrade[], eq: number, risk: number, mode: 'fixed' | 'compound'): SimTrade[] {
+  let bal = eq
+  return list.map(t => {
+    const base = mode === 'compound' ? bal : eq
+    const r = base * risk / 100
+    const pnl = t.result === 'win' ? r * t.rr : -r
+    bal += pnl
+    return { ...t, pnl, balance: bal }
+  })
+}
+
 type ManualProps = {
   fmt:      (n: number) => string
   plans:    Plan[]
@@ -222,7 +244,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
               <Label className="text-xs">Starting Equity</Label>
               <CurrencyInput
                 value={initEquity || ''}
-                onChange={v => { setInitEquity(Number(v) || 0); setTrades([]) }}
+                onChange={v => { const n = Number(v) || 0; setInitEquity(n); setTrades(t => resim(t, n, riskPct, compound)) }}
                 className="mt-1"
                 placeholder={ccyHint}
               />
@@ -235,7 +257,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                   <Button key={v} type="button" size="sm"
                     variant={riskPct === v ? 'default' : 'outline'}
                     className="h-9 text-xs font-bold tabular-nums"
-                    onClick={() => { setRiskPct(v); setTrades([]) }}>{v}%</Button>
+                    onClick={() => { setRiskPct(v); setTrades(t => resim(t, initEquity, v, compound)) }}>{v}%</Button>
                 ))}
               </div>
               <p className="text-xs text-red-400 mt-1 font-medium">Loss: −{fmt(lossAmt)}</p>
@@ -285,10 +307,10 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
               <div className="flex gap-2 mt-1">
                 <Button type="button" size="sm" className="flex-1 text-xs"
                   variant={compound === 'fixed' ? 'default' : 'outline'}
-                  onClick={() => setCompound('fixed')}>Fixed</Button>
+                  onClick={() => { setCompound('fixed'); setTrades(t => resim(t, initEquity, riskPct, 'fixed')) }}>Fixed</Button>
                 <Button type="button" size="sm" className="flex-1 text-xs"
                   variant={compound === 'compound' ? 'default' : 'outline'}
-                  onClick={() => setCompound('compound')}>Compound</Button>
+                  onClick={() => { setCompound('compound'); setTrades(t => resim(t, initEquity, riskPct, 'compound')) }}>Compound</Button>
               </div>
             </div>
           </CardContent>
