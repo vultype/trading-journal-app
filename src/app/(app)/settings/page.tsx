@@ -206,15 +206,15 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Target Harian ({currency})</Label>
-              <CurrencyInput value={targetD} onChange={setTargetD} placeholder="0" />
+              <CurrencyInput value={targetD} onChange={setTargetD} currency={currency} placeholder="0" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Target Mingguan ({currency})</Label>
-              <CurrencyInput value={targetW} onChange={setTargetW} placeholder="0" />
+              <CurrencyInput value={targetW} onChange={setTargetW} currency={currency} placeholder="0" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Target Bulanan ({currency})</Label>
-              <CurrencyInput value={targetM} onChange={setTargetM} placeholder="0" />
+              <CurrencyInput value={targetM} onChange={setTargetM} currency={currency} placeholder="0" />
             </div>
           </div>
 
@@ -298,7 +298,7 @@ export default function SettingsPage() {
                     <div className="grid sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Saldo Awal ({eCur})</Label>
-                        <CurrencyInput value={eInitial} onChange={setEInitial} placeholder="0" />
+                        <CurrencyInput value={eInitial} onChange={setEInitial} currency={eCur} placeholder="0" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Mata Uang</Label>
@@ -389,7 +389,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Saldo Awal ({accCur})</Label>
-                <CurrencyInput value={accInitial} onChange={setAccInitial} placeholder="0" />
+                <CurrencyInput value={accInitial} onChange={setAccInitial} currency={accCur} placeholder="0" />
                 <p className="text-[10px] text-muted-foreground">Saldo yang sudah ada di akun ini (real / prop firm / funded / demo). Kosongkan kalau mulai dari 0.</p>
               </div>
               <div className="space-y-1.5">

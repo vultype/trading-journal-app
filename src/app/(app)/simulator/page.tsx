@@ -2,6 +2,15 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useStore } from '@/lib/store'
+import type { AppSettings } from '@/types'
+
+// Risk per trade dibatasi tiga pilihan, bukan ketikan bebas. Alat ini
+// membandingkan RENCANA; kolom risk yang bisa diisi apa saja mengundang
+// pertanyaan yang salah — "berapa % yang bikin kurvanya paling bagus". Menaikkan
+// risk selalu membuat kurva terlihat lebih baik, sampai satu rentetan rugi
+// menghapusnya.
+const RISK_OPTIONS = [0.5, 1, 2] as const
 import { toast } from '@/lib/toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,6 +38,10 @@ const TooltipStyle = {
 // Shared: Plan type + computation (used by both tabs)
 // ─────────────────────────────────────────────
 const PLAN_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+
+// Contoh nominal yang masuk akal per mata uang. "10.000.000" di akun USD
+// membuat orang mengira harus mengetik sepuluh juta dolar.
+export const equityHint = (c: AppSettings['currency']) => c === 'IDR' ? '10.000.000' : '10,000'
 
 export type Plan = {
   id: string
@@ -83,6 +96,7 @@ type ManualProps = {
 }
 
 function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
+  const ccyHint = equityHint(useStore().settings.currency ?? 'IDR')
   const [initEquity, setInitEquity] = useState(10_000_000)
   const [riskPct,    setRiskPct]    = useState(1)
   const [rrFixed,    setRrFixed]    = useState(2)
@@ -210,14 +224,20 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                 value={initEquity || ''}
                 onChange={v => { setInitEquity(Number(v) || 0); setTrades([]) }}
                 className="mt-1"
-                placeholder="10.000.000"
+                placeholder={ccyHint}
               />
             </div>
 
             <div>
-              <Label className="text-xs">Risk / Trade (%)</Label>
-              <Input type="number" step="0.1" min="0.1" max="100" value={riskPct}
-                onChange={e => setRiskPct(+e.target.value || 1)} className="mt-1"/>
+              <Label className="text-xs">Risk / Trade</Label>
+              <div className="mt-1 grid grid-cols-3 gap-1.5">
+                {RISK_OPTIONS.map(v => (
+                  <Button key={v} type="button" size="sm"
+                    variant={riskPct === v ? 'default' : 'outline'}
+                    className="h-9 text-xs font-bold tabular-nums"
+                    onClick={() => { setRiskPct(v); setTrades([]) }}>{v}%</Button>
+                ))}
+              </div>
               <p className="text-xs text-red-400 mt-1 font-medium">Loss: −{fmt(lossAmt)}</p>
             </div>
 
@@ -530,6 +550,7 @@ type MonthRow = {
 }
 
 export function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
+  const ccyHint = equityHint(useStore().settings.currency ?? 'IDR')
   const [equity,   setEquity]   = useState(10_000_000)
   const [winRate,  setWinRate]  = useState(55)
   const [riskPct,  setRiskPct]  = useState(1)
@@ -582,7 +603,7 @@ export function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
                 value={equity || ''}
                 onChange={v => setEquity(Number(v) || 0)}
                 className="mt-1"
-                placeholder="10.000.000"
+                placeholder={ccyHint}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -592,9 +613,15 @@ export function KpiProjector({ fmt }: { fmt: (n: number) => string }) {
                   onChange={e => setWinRate(Math.min(99, Math.max(1, +e.target.value || 50)))} className="mt-1"/>
               </div>
               <div>
-                <Label className="text-xs">Risk / Trade (%)</Label>
-                <Input type="number" step="0.1" min="0.1" value={riskPct}
-                  onChange={e => setRiskPct(+e.target.value || 1)} className="mt-1"/>
+                <Label className="text-xs">Risk / Trade</Label>
+                <div className="mt-1 grid grid-cols-3 gap-1">
+                  {RISK_OPTIONS.map(v => (
+                    <Button key={v} type="button" size="sm"
+                      variant={riskPct === v ? 'default' : 'outline'}
+                      className="h-9 px-1 text-[11px] font-bold tabular-nums"
+                      onClick={() => setRiskPct(v)}>{v}%</Button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -927,9 +954,15 @@ function PlanComparison({ fmt, plans, setPlans }: CompareProps) {
                 onChange={e => setFrr(+e.target.value || 1)} className="mt-1"/>
             </div>
             <div>
-              <Label className="text-xs">Risk / Trade (%)</Label>
-              <Input type="number" step="0.1" min="0.1" value={frisk}
-                onChange={e => setFrisk(+e.target.value || 1)} className="mt-1"/>
+              <Label className="text-xs">Risk / Trade</Label>
+              <div className="mt-1 grid grid-cols-3 gap-1">
+                {RISK_OPTIONS.map(v => (
+                  <Button key={v} type="button" size="sm"
+                    variant={frisk === v ? 'default' : 'outline'}
+                    className="h-9 px-1 text-[11px] font-bold tabular-nums"
+                    onClick={() => setFrisk(v)}>{v}%</Button>
+                ))}
+              </div>
             </div>
             <div>
               <Label className="text-xs">Trades / Month</Label>
@@ -1118,6 +1151,11 @@ function PlanComparison({ fmt, plans, setPlans }: CompareProps) {
 export default function SimulatorPage() {
   const fmt = useCurrency()
   const [tab, setTab] = useState<'manual' | 'compare'>('manual')
+  // Mata uang menulis ke pengaturan akun, bukan state lokal halaman. Kalau lokal,
+  // angka yang sama akan tampil beda di halaman berbeda tanpa alasan yang bisa
+  // dijelaskan ke user.
+  const { settings, saveSettings } = useStore()
+  const ccy: AppSettings['currency'] = settings.currency ?? 'IDR'
 
   // Shared across Manual + Compare tabs
   const [plans, setPlans] = useState<Plan[]>(() => {
@@ -1139,7 +1177,13 @@ export default function SimulatorPage() {
             <p className="text-sm text-muted-foreground">Uji, simulasikan & bandingkan rencana strategi trading kamu</p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0 flex-wrap">
+        <div className="flex gap-2 shrink-0 flex-wrap items-center">
+          <div className="flex gap-0.5 rounded-lg border border-border/60 p-0.5">
+            {(['IDR', 'USD', 'USDT'] as const).map(c => (
+              <button key={c} onClick={() => saveSettings({ currency: c })}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${ccy === c ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{c}</button>
+            ))}
+          </div>
           <Button size="sm" variant={tab === 'manual'  ? 'default' : 'outline'} onClick={() => setTab('manual')}>
             Manual Session
           </Button>
