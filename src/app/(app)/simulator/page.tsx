@@ -11,6 +11,10 @@ import type { AppSettings } from '@/types'
 // risk selalu membuat kurva terlihat lebih baik, sampai satu rentetan rugi
 // menghapusnya.
 const RISK_OPTIONS = [0.5, 1, 2] as const
+
+// Skema bagi hasil prop firm yang umum. 80% standar di kebanyakan firm; 95%
+// biasanya tingkat tertinggi setelah scaling atau untuk akun premium.
+const PAYOUT_SHARES = [80, 95] as const
 import { toast } from '@/lib/toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,7 +28,7 @@ import {
 import {
   TrendingUp, TrendingDown, RotateCcw, Shuffle, FlaskConical,
   Activity, Target, Zap, BookMarked, Trophy, Plus, Trash2,
-  CheckCircle2, ArrowRight,
+  CheckCircle2, ArrowRight, Landmark,
 } from 'lucide-react'
 
 const TooltipStyle = {
@@ -219,6 +223,15 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
     { id: 0, balance: initEquity },
     ...trades.map(t => ({ id: t.id, balance: t.balance })),
   ], [trades, initEquity])
+
+  // ── Estimasi payout prop firm ──
+  //
+  // Payout dihitung dari PROFIT saja, bukan dari saldo akhir. Kalau akun masih
+  // di bawah modal awal, tidak ada yang dibagi — bukan payout negatif. Aturan itu
+  // universal di prop firm dan gampang salah dihitung kalau dipukul rata dengan
+  // net profit yang bisa minus.
+  const profitBagiHasil = Math.max(0, stats.netProfit)
+  const payout = (share: number) => profitBagiHasil * share / 100
 
   const statCards = [
     { label: 'Total Ekuitas', value: fmt(currentEq), sub: 'Saldo Akhir', color: isProfit ? 'text-emerald-400' : 'text-red-400' },
@@ -488,6 +501,45 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
             </Card>
           ))}
         </div>
+
+        {/* ── Estimasi payout (prop firm) ── */}
+        <Card className="border-border/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2"><Landmark size={13}/> Estimasi Payout</span>
+              <span className="text-[10px] font-normal text-muted-foreground">
+                dari profit {fmt(profitBagiHasil)}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stats.netProfit <= 0 ? (
+              <p className="text-xs text-muted-foreground py-2">
+                {trades.length === 0
+                  ? 'Jalankan simulasi dulu untuk melihat estimasi payout.'
+                  : 'Belum ada profit untuk dibagi — akun masih di bawah modal awal. Prop firm hanya membayar dari keuntungan di atas titik awal.'}
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {PAYOUT_SHARES.map(share => (
+                    <div key={share} className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit share {share}%</p>
+                      <p className="text-base font-black text-emerald-400 leading-tight mt-0.5">{fmt(payout(share))}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        sisa ke firm {fmt(profitBagiHasil - payout(share))}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-relaxed mt-2.5">
+                  Estimasi kotor dari profit simulasi. Belum memperhitungkan syarat khusus tiap firm —
+                  minimum hari trading, target profit, batas drawdown harian/total, atau potongan pajak &amp; biaya transfer.
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-2">
