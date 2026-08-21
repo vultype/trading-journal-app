@@ -86,28 +86,25 @@ type PlanStats = ReturnType<typeof calcPlanStats>
 // ─────────────────────────────────────────────
 // Manual Simulator
 // ─────────────────────────────────────────────
-type SimTrade = { id: number; result: 'win' | 'loss'; rr: number; pnl: number; balance: number }
+type SimTrade = {
+  id: number; result: 'win' | 'loss'; rr: number
+  // Risk yang DIPAKAI saat trade ini dicatat. Disimpan per trade, bukan diambil
+  // dari setelan saat ini, karena risk boleh berubah di tengah sesi — itulah
+  // yang membuat simulasinya menyerupai trading sungguhan.
+  riskPct: number
+  pnl: number; balance: number
+}
 
-// Hitung ulang SELURUH riwayat dengan setelan baru.
+// Hitung ulang SALDO BERJALAN saja; pnl tiap trade TIDAK disentuh.
 //
-// pnl & balance dibekukan saat trade dicatat, jadi mengubah equity/risk/mode di
-// tengah sesi membuat kurva jadi campuran beberapa setelan — grafik yang tidak
-// mewakili satu pun. Menghapus riwayatnya menyelesaikan itu tapi membuang kerja
-// user, padahal yang benar-benar dia masukkan adalah URUTAN menang-kalah dan RR
-// tiap trade. Itu strateginya; equity/risk/mode cuma setelan.
+// Riwayat adalah catatan apa yang sudah terjadi — mengubahnya surut saat setelan
+// diganti berarti menulis ulang masa lalu. Yang perlu menyesuaikan hanyalah
+// saldo, karena saldo bersifat kumulatif dari titik awal.
 //
-// Jadi urutannya dipertahankan dan disimulasikan ULANG. Hasilnya justru
-// pertanyaan yang memang ingin dijawab alat backtest: "kalau rentetan yang sama
-// ini dijalankan dengan risk 2%, jadinya bagaimana?"
-function resim(list: SimTrade[], eq: number, risk: number, mode: 'fixed' | 'compound'): SimTrade[] {
+// Dipakai saat modal awal diubah dan saat sebuah trade dihapus.
+function rebase(list: SimTrade[], eq: number): SimTrade[] {
   let bal = eq
-  return list.map(t => {
-    const base = mode === 'compound' ? bal : eq
-    const r = base * risk / 100
-    const pnl = t.result === 'win' ? r * t.rr : -r
-    bal += pnl
-    return { ...t, pnl, balance: bal }
-  })
+  return list.map((t, i) => { bal += t.pnl; return { ...t, id: i + 1, balance: bal } })
 }
 
 type ManualProps = {
@@ -143,6 +140,14 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
     ? +(trades.reduce((s, t) => s + t.rr, 0) / trades.length).toFixed(2)
     : rrMode === 'random' ? +((rrMin + rrMax) / 2).toFixed(1) : rrFixed
   const saveRR = avgRR
+  // Risk RATA-RATA yang benar-benar dipakai sesi ini, bukan setelan saat menekan
+  // Simpan. Dengan risk dinamis keduanya sering berbeda, dan menyimpan setelan
+  // terakhir membuat plan mengklaim risk yang tidak pernah dijalankan.
+  const avgRisk = trades.length > 0
+    ? +(trades.reduce((s, t) => s + t.riskPct, 0) / trades.length).toFixed(2)
+    : riskPct
+  // Sesi memakai lebih dari satu tingkat risk?
+  const riskCampur = trades.length > 0 && new Set(trades.map(t => t.riskPct)).size > 1
 
   const stats = useMemo(() => {
     if (trades.length === 0) return { wins: 0, losses: 0, winRate: 0, pf: 0, netProfit: 0, returnPct: 0, maxDD: 0, gProfit: 0, gLoss: 0 }
@@ -176,7 +181,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
     const rr   = getRR()
     const risk = (compound === 'compound' ? currentEq : initEquity) * riskPct / 100
     const pnl  = result === 'win' ? risk * rr : -risk
-    setTrades(prev => [...prev, { id: prev.length + 1, result, rr, pnl, balance: currentEq + pnl }])
+    setTrades(prev => [...prev, { id: prev.length + 1, result, rr, riskPct, pnl, balance: currentEq + pnl }])
     if (result === 'win') {
       toast.success(`WIN +${fmt(pnl)} · 1:${rr}`)
     } else {
@@ -189,10 +194,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
   // Hapus satu trade dari histori. Balance tiap baris kumulatif dari initEquity, jadi
   // setelah hapus, balance & nomor urut baris SETELAHNYA harus dihitung ulang berantai.
   function deleteTrade(id: number) {
-    setTrades(prev => {
-      let bal = initEquity
-      return prev.filter(t => t.id !== id).map((t, i) => { bal += t.pnl; return { ...t, id: i + 1, balance: bal } })
-    })
+    setTrades(prev => rebase(prev.filter(t => t.id !== id), initEquity))
   }
 
   function handleSavePlan() {
@@ -203,7 +205,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
       equity: initEquity,
       winRate: +stats.winRate.toFixed(1),   // from actual session
       rrRatio: saveRR,                        // actual avg RR from session trades
-      riskPct,
+      riskPct: avgRisk,                       // rata-rata risk NYATA sesi ini
       tradesPerMonth: saveTrades,
       compound: compound === 'compound',
     }
@@ -244,7 +246,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
               <Label className="text-xs">Starting Equity</Label>
               <CurrencyInput
                 value={initEquity || ''}
-                onChange={v => { const n = Number(v) || 0; setInitEquity(n); setTrades(t => resim(t, n, riskPct, compound)) }}
+                onChange={v => { const n = Number(v) || 0; setInitEquity(n); setTrades(t => rebase(t, n)) }}
                 className="mt-1"
                 placeholder={ccyHint}
               />
@@ -257,7 +259,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                   <Button key={v} type="button" size="sm"
                     variant={riskPct === v ? 'default' : 'outline'}
                     className="h-9 text-xs font-bold tabular-nums"
-                    onClick={() => { setRiskPct(v); setTrades(t => resim(t, initEquity, v, compound)) }}>{v}%</Button>
+                    onClick={() => setRiskPct(v)}>{v}%</Button>
                 ))}
               </div>
               <p className="text-xs text-red-400 mt-1 font-medium">Loss: −{fmt(lossAmt)}</p>
@@ -307,10 +309,10 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
               <div className="flex gap-2 mt-1">
                 <Button type="button" size="sm" className="flex-1 text-xs"
                   variant={compound === 'fixed' ? 'default' : 'outline'}
-                  onClick={() => { setCompound('fixed'); setTrades(t => resim(t, initEquity, riskPct, 'fixed')) }}>Fixed</Button>
+                  onClick={() => setCompound('fixed')}>Fixed</Button>
                 <Button type="button" size="sm" className="flex-1 text-xs"
                   variant={compound === 'compound' ? 'default' : 'outline'}
-                  onClick={() => { setCompound('compound'); setTrades(t => resim(t, initEquity, riskPct, 'compound')) }}>Compound</Button>
+                  onClick={() => setCompound('compound')}>Compound</Button>
               </div>
             </div>
           </CardContent>
@@ -440,6 +442,16 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
               </>
             )}
 
+            {/* Dengan risk dinamis, satu angka risk pada plan adalah RATA-RATA —
+                bukan setelan tetap. Tanpa catatan ini, membandingkan plan yang
+                risknya campur dengan plan yang risknya tetap terlihat setara
+                padahal tidak. */}
+            {riskCampur && !savedMsg && (
+              <p className="text-[11px] text-amber-400 leading-relaxed mb-2">
+                Sesi ini memakai beberapa tingkat risk. Plan akan disimpan dengan rata-ratanya: <b>{avgRisk}%</b>.
+              </p>
+            )}
+
             {savedMsg ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium py-0.5">
@@ -524,6 +536,7 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                     <tr>
                       <th className="text-left px-3 py-2 text-muted-foreground font-medium">#</th>
                       <th className="text-left px-3 py-2 text-muted-foreground font-medium">Result</th>
+                      <th className="text-right px-3 py-2 text-muted-foreground font-medium">Risk</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">RR</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">P&L</th>
                       <th className="text-right px-3 py-2 text-muted-foreground font-medium">Balance</th>
@@ -539,6 +552,10 @@ function ManualSimulator({ fmt, plans, setPlans, onGoToCompare }: ManualProps) {
                             {t.result === 'win' ? 'WIN' : 'LOSE'}
                           </span>
                         </td>
+                        {/* Risk per trade ditampilkan karena boleh berbeda-beda.
+                            Tanpa kolom ini, dua trade dengan hasil sama tapi P&L
+                            berbeda tampak seperti salah hitung. */}
+                        <td className={`px-3 py-2 text-right tabular-nums ${t.riskPct === riskPct ? 'text-muted-foreground' : 'text-amber-400 font-semibold'}`}>{t.riskPct}%</td>
                         <td className="px-3 py-2 text-right text-muted-foreground">1:{t.rr}</td>
                         <td className={`px-3 py-2 text-right font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                           {t.pnl >= 0 ? '+' : ''}{fmt(t.pnl)}
