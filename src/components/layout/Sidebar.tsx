@@ -7,7 +7,7 @@ import { useTheme } from 'next-themes'
 import {
   LayoutDashboard, TrendingUp, Wallet, BookOpen, Settings, BarChart3,
   LogOut, Sun, Moon, Grid2x2, HelpCircle, UserCog,
-  Lock, ChevronDown, ArrowLeftRight, PieChart, Crown,
+  Lock, ChevronDown, ArrowLeftRight, PieChart, Crown, Landmark,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -27,6 +27,7 @@ const finance: NavItem    = { href: '/finance', label: 'Keuangan', icon: Wallet,
   { href: '/finance',      label: 'Ringkasan',          icon: PieChart },
   { href: '/transactions', label: 'Deposit & Withdraw', icon: ArrowLeftRight },
 ] }
+const propfirm: NavItem   = { href: '/propfirm',     label: 'Prop Firm', icon: Landmark }
 const analisis: NavItem    = { href: '/analisis',    label: 'Analisis',  icon: BarChart3 }
 const journal: NavItem    = { href: '/journal',      label: 'Jurnal',    icon: BookOpen }
 const accountLink: NavItem = { href: '/account',     label: 'Akun & Langganan', icon: UserCog }
@@ -41,7 +42,7 @@ function useGroups(): NavGroup[] {
   return [
     { label: 'Menu',            items: [hubItem] },
     { label: 'Ringkasan',       items: [dashboard] },
-    { label: 'Trading',         items: [trades, finance] },
+    { label: 'Trading',         items: [trades, finance, propfirm] },
     { label: 'Jurnal & Analisa', items: [analisis, journal] },
     { label: 'Akun',            items: [accountLink, settings] },
     { label: 'Bantuan',         items: [panduan] },
