@@ -18,11 +18,24 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   ShieldAlert, Target, Landmark, Plus, Trash2, Settings2, TrendingUp, TrendingDown,
   Loader2, X as XIcon, CalendarDays, Scale, CheckCircle2, Archive,
+  LayoutDashboard, BarChart3, BookOpen, Image as ImageIcon, Save,
 } from 'lucide-react'
 import {
-  hitungStatus, usd, idr, PHASE_LABEL,
-  type PfAccount, type PfTrade,
+  hitungStatus, usd, idr, PHASE_LABEL, asTrades, resultOf,
+  type PfAccount, type PfTrade, type PfNote,
 } from '@/lib/propfirm'
+import { TradeAnalytics } from '@/components/trade/TradeAnalytics'
+
+type TabId = 'ringkasan' | 'trade' | 'analisis' | 'jurnal'
+const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
+  { id: 'ringkasan', label: 'Ringkasan', icon: LayoutDashboard },
+  { id: 'trade', label: 'Trade', icon: TrendingUp },
+  { id: 'analisis', label: 'Analisis', icon: BarChart3 },
+  { id: 'jurnal', label: 'Jurnal', icon: BookOpen },
+]
+
+const STRUKTUR = ['bullish', 'bearish', 'ranging'] as const
+const MOOD_ICON: Record<number, string> = { 1: '😤', 2: '😕', 3: '😐', 4: '🙂', 5: '😄' }
 
 const DEF_ACC = {
   name: '', firm: '', phase: 'challenge' as const, initial_balance: 100000,
@@ -65,6 +78,8 @@ export default function PropFirmPage() {
   const [loading, setLoading] = useState(true)
   const [needsMigration, setNeedsMigration] = useState(false)
   const [showAcc, setShowAcc] = useState<null | 'new' | PfAccount>(null)
+  const [tab, setTab] = useState<TabId>('ringkasan')
+  const [notes, setNotes] = useState<PfNote[]>([])
 
   // form trade
   const [tDate, setTDate] = useState(todayISO())
@@ -73,6 +88,13 @@ export default function PropFirmPage() {
   const [tDir, setTDir] = useState<'long' | 'short'>('long')
   const [tRr, setTRr] = useState('')
   const [tNote, setTNote] = useState('')
+  const [tTime, setTTime] = useState('')
+  const [tStrat, setTStrat] = useState('')
+  const [tPlan, setTPlan] = useState<boolean | null>(null)
+  const [tKnow, setTKnow] = useState<boolean | null>(null)
+  const [tStruct, setTStruct] = useState<string>('')
+  const [tShot, setTShot] = useState('')
+  const [tOver, setTOver] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function load() {
@@ -86,6 +108,8 @@ export default function PropFirmPage() {
       if (/relation|does not exist|schema cache/i.test(msg)) { setNeedsMigration(true); setLoading(false); return }
       toast.error('Gagal memuat: ' + msg); setLoading(false); return
     }
+    const n = await sb.from('pf_notes').select('*').order('date', { ascending: false }).limit(500)
+    if (!n.error) setNotes((n.data ?? []) as PfNote[])
     const accs = (a.data ?? []) as PfAccount[]
     setAccounts(accs)
     setTrades((t.data ?? []) as PfTrade[])
@@ -117,6 +141,10 @@ export default function PropFirmPage() {
       a, st: hitungStatus(a, trades.filter(t => t.account_id === a.id)),
     })), [accounts, trades])
   const accTrades = useMemo(() => trades.filter(t => t.account_id === sel), [trades, sel])
+  const strategiTerpakai = useMemo(
+    () => [...new Set(accTrades.map(t => t.strategy).filter((x): x is string => !!x))].sort(),
+    [accTrades])
+
   const st = useMemo(() => acc ? hitungStatus(acc, accTrades) : null, [acc, accTrades])
 
   async function addTrade(e: React.FormEvent) {
@@ -129,11 +157,21 @@ export default function PropFirmPage() {
       user_id: userId, account_id: acc.id, date: tDate, pair: tPair.trim() || null,
       direction: tDir, pnl: n, rr: tRr.trim() ? parseFloat(tRr.replace(',', '.')) : null,
       note: tNote.trim() || null,
+      // result dihitung dari tanda P&L, bukan diminta terpisah: dua sumber untuk
+      // fakta yang sama pasti akan bertentangan suatu saat.
+      result: resultOf(n),
+      entry_time: tTime.trim() || null,
+      strategy: tStrat.trim() || null,
+      followed_plan: tPlan,
+      know_direction: tKnow,
+      market_structure: tStruct || null,
+      screenshot_url: /^https?:\/\//i.test(tShot.trim()) ? tShot.trim() : null,
+      is_overtrade: tOver,
     }).select('*').single()
     setBusy(false)
     if (error || !data) { toast.error(error?.message ?? 'Gagal menyimpan'); return }
     setTrades(p => [data as PfTrade, ...p])
-    setTPnl(''); setTRr(''); setTNote('')
+    setTPnl(''); setTRr(''); setTNote(''); setTShot(''); setTOver(false)
     toast.success(n >= 0 ? `Profit ${usd(n)} dicatat` : `Rugi ${usd(n)} dicatat`)
   }
 
@@ -188,6 +226,17 @@ export default function PropFirmPage() {
           </Button>
         </div>
       </div>
+
+      {acc && !isAll && (
+        <nav className="flex gap-1.5 p-1 rounded-xl bg-muted/40 w-fit overflow-x-auto max-w-full">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`shrink-0 flex items-center gap-1.5 px-3.5 h-9 rounded-lg text-xs font-bold transition-colors ${tab === t.id ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+              <t.icon size={13} /> {t.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {isAll ? (
         <SemuaAkun rows={semua} onPick={id => setSel(id)} onNew={() => setShowAcc('new')} />
@@ -271,9 +320,13 @@ export default function PropFirmPage() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* ── Kiri: input trade ── */}
-            <div className="space-y-4">
+          {/* Kartu batas di atas sengaja TIDAK ikut berpindah tab: informasi
+              sisa batas harian dan jarak ke lantai harus terlihat kapan pun,
+              termasuk saat sedang mengisi form trade. */}
+
+          {tab === 'trade' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="space-y-4">
               <Card>
                 <CardHeader className="pb-3"><CardTitle className="text-sm flex items-center gap-2"><Plus size={13} /> Catat Trade</CardTitle></CardHeader>
                 <CardContent>
@@ -304,10 +357,49 @@ export default function PropFirmPage() {
                         </div>
                       </div>
                     </div>
-                    <div>
-                      <Label className="text-xs">RR (opsional)</Label>
-                      <Input value={tRr} onChange={e => setTRr(e.target.value)} inputMode="decimal" placeholder="2" className="mt-1" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">RR</Label>
+                        <Input value={tRr} onChange={e => setTRr(e.target.value)} inputMode="decimal" placeholder="2" className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Jam entry</Label>
+                        <Input type="time" value={tTime} onChange={e => setTTime(e.target.value)} className="mt-1" />
+                      </div>
                     </div>
+                    <div>
+                      <Label className="text-xs">Strategi</Label>
+                      <Input value={tStrat} onChange={e => setTStrat(e.target.value)} className="mt-1"
+                        placeholder="mis. breakout London" list="pf-strategi" />
+                      <datalist id="pf-strategi">
+                        {strategiTerpakai.map(x => <option key={x} value={x} />)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Struktur market</Label>
+                      <div className="mt-1 grid grid-cols-3 gap-1">
+                        {STRUKTUR.map(x => (
+                          <Button key={x} type="button" size="sm" variant={tStruct === x ? 'default' : 'outline'}
+                            className="h-8 text-[11px] capitalize"
+                            onClick={() => setTStruct(tStruct === x ? '' : x)}>{x}</Button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Tiga keadaan, bukan dua: BELUM DIJAWAB berbeda dari TIDAK.
+                        Kalau kosong dipaksa jadi "tidak", statistik disiplin akan
+                        menghukum trade yang sebenarnya tidak pernah dinilai. */}
+                    <TriToggle label="Ikut rencana?" value={tPlan} onChange={setTPlan} />
+                    <TriToggle label="Tahu arah market?" value={tKnow} onChange={setTKnow} />
+                    <div>
+                      <Label className="text-xs flex items-center gap-1"><ImageIcon size={11} /> Link screenshot</Label>
+                      <Input value={tShot} onChange={e => setTShot(e.target.value)} className="mt-1"
+                        placeholder="https://…" inputMode="url" />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input type="checkbox" checked={tOver} onChange={e => setTOver(e.target.checked)}
+                        className="accent-amber-500 size-3.5" />
+                      Trade ini overtrade
+                    </label>
                     <div>
                       <Label className="text-xs">Catatan (opsional)</Label>
                       <Textarea value={tNote} onChange={e => setTNote(e.target.value)} rows={2} className="mt-1" placeholder="setup, alasan entry…" />
@@ -318,7 +410,64 @@ export default function PropFirmPage() {
                   </form>
                 </CardContent>
               </Card>
+              </div>
+              <div className="lg:col-span-2 space-y-4">
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Riwayat Trade</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  {accTrades.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-10">Belum ada trade di akun ini.</p>
+                  ) : (
+                    <div className="max-h-72 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-card border-b border-border/50 z-10">
+                          <tr className="text-muted-foreground">
+                            <th className="text-left px-4 py-2 font-medium">Tanggal</th>
+                            <th className="text-left px-3 py-2 font-medium">Pair</th>
+                            <th className="text-left px-3 py-2 font-medium">Arah</th>
+                            <th className="text-right px-3 py-2 font-medium">RR</th>
+                            <th className="text-right px-3 py-2 font-medium">P&amp;L</th>
+                            <th className="w-8 px-2 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/30">
+                          {accTrades.map(t => (
+                            <tr key={t.id} className="hover:bg-muted/20 group">
+                              <td className="px-4 py-2">
+                                <div>{fmtTgl(t.date)}</div>
+                                {t.note && <div className="text-[10px] text-muted-foreground/60 max-w-[180px] truncate">{t.note}</div>}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">{t.pair ?? '—'}</td>
+                              <td className="px-3 py-2">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${t.direction === 'short' ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                                  {t.direction === 'short' ? 'SHORT' : 'LONG'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">{t.rr ? `1:${t.rr}` : '—'}</td>
+                              <td className={`px-3 py-2 text-right font-bold tabular-nums ${Number(t.pnl) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {Number(t.pnl) >= 0 ? '+' : ''}{usd(Number(t.pnl))}
+                              </td>
+                              <td className="px-2 py-2 text-right">
+                                <button onClick={() => delTrade(t.id)} aria-label="Hapus trade"
+                                  className="text-muted-foreground/40 hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all">
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              </div>
+            </div>
+          )}
 
+          {tab === 'ringkasan' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="space-y-4">
               {/* ── Payout ── */}
               <Card>
                 <CardHeader className="pb-2">
@@ -384,10 +533,8 @@ export default function PropFirmPage() {
                   </CardContent>
                 </Card>
               )}
-            </div>
-
-            {/* ── Kanan: harian + riwayat ── */}
-            <div className="lg:col-span-2 space-y-4">
+              </div>
+              <div className="lg:col-span-2 space-y-4">
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><CalendarDays size={13} /> Ringkasan Harian</CardTitle></CardHeader>
                 <CardContent className="p-0">
@@ -430,58 +577,24 @@ export default function PropFirmPage() {
                   )}
                 </CardContent>
               </Card>
-
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Riwayat Trade</CardTitle></CardHeader>
-                <CardContent className="p-0">
-                  {accTrades.length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center py-10">Belum ada trade di akun ini.</p>
-                  ) : (
-                    <div className="max-h-72 overflow-y-auto">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-card border-b border-border/50 z-10">
-                          <tr className="text-muted-foreground">
-                            <th className="text-left px-4 py-2 font-medium">Tanggal</th>
-                            <th className="text-left px-3 py-2 font-medium">Pair</th>
-                            <th className="text-left px-3 py-2 font-medium">Arah</th>
-                            <th className="text-right px-3 py-2 font-medium">RR</th>
-                            <th className="text-right px-3 py-2 font-medium">P&amp;L</th>
-                            <th className="w-8 px-2 py-2" />
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/30">
-                          {accTrades.map(t => (
-                            <tr key={t.id} className="hover:bg-muted/20 group">
-                              <td className="px-4 py-2">
-                                <div>{fmtTgl(t.date)}</div>
-                                {t.note && <div className="text-[10px] text-muted-foreground/60 max-w-[180px] truncate">{t.note}</div>}
-                              </td>
-                              <td className="px-3 py-2 text-muted-foreground">{t.pair ?? '—'}</td>
-                              <td className="px-3 py-2">
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${t.direction === 'short' ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                                  {t.direction === 'short' ? 'SHORT' : 'LONG'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-right text-muted-foreground tabular-nums">{t.rr ? `1:${t.rr}` : '—'}</td>
-                              <td className={`px-3 py-2 text-right font-bold tabular-nums ${Number(t.pnl) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {Number(t.pnl) >= 0 ? '+' : ''}{usd(Number(t.pnl))}
-                              </td>
-                              <td className="px-2 py-2 text-right">
-                                <button onClick={() => delTrade(t.id)} aria-label="Hapus trade"
-                                  className="text-muted-foreground/40 hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all">
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              </div>
             </div>
-          </div>
+          )}
+
+          {tab === 'analisis' && (
+            <TradeAnalytics
+              trades={asTrades(accTrades)}
+              fmt={usd}
+              startBalance={Number(acc.initial_balance)} />
+          )}
+
+          {tab === 'jurnal' && (
+            <JurnalTab
+              accId={acc.id}
+              userId={userId!}
+              notes={notes.filter(n => n.account_id === acc.id)}
+              onChanged={load} />
+          )}
         </>
       )}
 
@@ -492,6 +605,150 @@ export default function PropFirmPage() {
           onClose={() => setShowAcc(null)}
           onSaved={() => { setShowAcc(null); load() }} />
       )}
+    </div>
+  )
+}
+
+// Ya / Tidak / belum dijawab.
+//
+// Didefinisikan di level modul, BUKAN di dalam komponen halaman: komponen yang
+// dibuat saat render adalah tipe baru setiap render, sehingga React membongkar
+// dan memasang ulang isinya — fokus input hilang setiap satu karakter diketik.
+function TriToggle({ label, value, onChange }: {
+  label: string
+  value: boolean | null
+  onChange: (v: boolean | null) => void
+}) {
+  const opsi: { v: boolean | null; t: string }[] = [
+    { v: true, t: 'Ya' }, { v: false, t: 'Tidak' }, { v: null, t: '—' },
+  ]
+  return (
+    <div>
+      <Label className="text-xs">{label}</Label>
+      <div className="mt-1 grid grid-cols-3 gap-1">
+        {opsi.map(o => (
+          <Button key={String(o.v)} type="button" size="sm"
+            variant={value === o.v ? 'default' : 'outline'} className="h-8 text-[11px]"
+            onClick={() => onChange(o.v)}>{o.t}</Button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Jurnal harian per akun ──
+//
+// Catatan disimpan per AKUN, bukan per user: memegang beberapa akun prop firm
+// sekaligus berarti hari yang sama bisa punya cerita yang berbeda di tiap akun.
+function JurnalTab({ accId, userId, notes, onChanged }: {
+  accId: string
+  userId: string
+  notes: PfNote[]
+  onChanged: () => void
+}) {
+  const [tgl, setTgl] = useState(todayISO())
+  const [busy, setBusy] = useState(false)
+
+  const adaHariIni = useMemo(() => notes.find(n => n.date === tgl) ?? null, [notes, tgl])
+
+  // Isian TIDAK disalin ke state lewat useEffect. Draft dipegang bersama
+  // tanggalnya, lalu nilai yang tampil diturunkan: begitu tanggal pindah, draft
+  // lama otomatis tidak cocok lagi dan isian jatuh kembali ke catatan hari itu.
+  // Menyalin lewat efek berarti ada dua sumber untuk isi yang sama — dan yang
+  // satu selalu terlambat satu render dari yang lain.
+  const [draft, setDraft] = useState<{ date: string; isi: string; mood: number | null } | null>(null)
+  const aktif = draft && draft.date === tgl
+  const isi = aktif ? draft.isi : (adaHariIni?.content ?? '')
+  const mood = aktif ? draft.mood : (adaHariIni?.mood ?? null)
+  const setIsi = (v: string) => setDraft({ date: tgl, isi: v, mood })
+  const setMood = (v: number | null) => setDraft({ date: tgl, isi, mood: v })
+
+  const simpan = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isi.trim()) return
+    setBusy(true)
+    const sb = createClient()
+    const { error } = await sb.from('pf_notes').upsert({
+      user_id: userId, account_id: accId, date: tgl,
+      content: isi.trim(), mood,
+    }, { onConflict: 'account_id,date' })
+    setBusy(false)
+    if (error) { alert(error.message); return }
+    setDraft(null)
+    onChanged()
+  }
+
+  const hapus = async (id: string) => {
+    if (!confirm('Hapus catatan ini?')) return
+    const sb = createClient()
+    await sb.from('pf_notes').delete().eq('id', id)
+    onChanged()
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <Card className="lg:col-span-1 h-fit">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BookOpen size={13} /> {adaHariIni ? 'Ubah Catatan' : 'Catatan Hari Ini'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={simpan} className="space-y-3">
+            <div>
+              <Label className="text-xs">Tanggal</Label>
+              <Input type="date" value={tgl} onChange={e => setTgl(e.target.value)} className="mt-1" required />
+            </div>
+            <div>
+              <Label className="text-xs">Kondisi mental</Label>
+              <div className="mt-1 flex gap-1">
+                {[1, 2, 3, 4, 5].map(m => (
+                  <Button key={m} type="button" size="sm" variant={mood === m ? 'default' : 'outline'}
+                    className="h-9 flex-1 text-base"
+                    onClick={() => setMood(mood === m ? null : m)}>{MOOD_ICON[m]}</Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Catatan</Label>
+              <Textarea value={isi} onChange={e => setIsi(e.target.value)} rows={7} className="mt-1"
+                placeholder="Apa yang berjalan baik? Apa yang mau diperbaiki besok?" />
+            </div>
+            <Button type="submit" disabled={busy || !isi.trim()} className="w-full gap-1.5">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {adaHariIni ? 'Simpan Perubahan' : 'Simpan'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="lg:col-span-2">
+        <CardHeader className="pb-2"><CardTitle className="text-sm">Riwayat Catatan</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          {notes.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-10">Belum ada catatan untuk akun ini.</p>
+          ) : notes.map(n => (
+            <div key={n.id} className="group rounded-lg border border-border/40 p-3">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-xs font-bold flex items-center gap-1.5">
+                  {n.mood ? <span className="text-sm">{MOOD_ICON[n.mood]}</span> : null}
+                  {fmtTgl(n.date)}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTgl(n.date)} className="text-[10px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted">
+                    ubah
+                  </button>
+                  <button onClick={() => hapus(n.id)} aria-label="Hapus catatan"
+                    className="text-muted-foreground/40 hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{n.content}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
     </div>
   )
 }

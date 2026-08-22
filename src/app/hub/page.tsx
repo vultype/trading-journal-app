@@ -54,6 +54,7 @@ export default function HubPage() {
   // Kartu tool bonus (Pro-only): jurnal, backtesting, KPI
   const BONUS_TOOLS = [
     { href: '/jurnal', icon: BookOpen, t: 'Jurnal Trading', d: 'Catat & evaluasi performa — Datalitiq Score, equity curve, insight AI.', tags: [{ i: LineChart, t: 'Statistik' }, { i: Gauge, t: 'Score' }] },
+    { href: '/propfirm', icon: Landmark, t: 'Jurnal Prop Firm', d: 'Jurnal khusus akun prop firm (USD) — batas rugi harian, lantai drawdown, target, konsistensi & payout.', tags: [{ i: ShieldCheck, t: 'Batas rugi' }, { i: Gauge, t: 'Multi-akun' }] },
     { href: '/simulator', icon: FlaskConical, t: 'Strategy Backtesting', d: 'Uji & bandingkan rencana strategi tanpa risiko sebelum eksekusi nyata.', tags: [{ i: TrendingUp, t: 'Risk-reward' }, { i: Calculator, t: 'Sizing' }] },
     { href: '/kpi', icon: LineChart, t: 'KPI Projection', d: 'Proyeksikan pertumbuhan equity dari target & KPI trading kamu.', tags: [{ i: TrendingUp, t: 'Proyeksi' }, { i: Calculator, t: 'Compound' }] },
     { href: '/lot-calculator', icon: Calculator, t: 'Kalkulator Lot', d: 'Hitung ukuran lot ideal dari risiko & stop loss + saran lot aman. Multi-pair: emas, forex, kripto, indeks.', tags: [{ i: ShieldCheck, t: 'Lot aman' }, { i: Gauge, t: 'Multi-pair' }] },

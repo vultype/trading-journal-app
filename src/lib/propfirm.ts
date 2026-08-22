@@ -1,3 +1,5 @@
+import type { Trade } from '@/types'
+
 // Perhitungan aturan prop firm. Semua nominal dalam USD.
 //
 // Angka di file ini menjawab satu pertanyaan: "apakah saya sudah melanggar
@@ -67,15 +69,34 @@ export const resultOf = (pnl: number): 'win' | 'loss' | 'breakeven' =>
 // yang benar-benar dibacanya hanya date, pnl, result, dan is_overtrade — semua
 // sudah ada di PfTrade. Konversi dilakukan di satu tempat ini supaya `as`
 // tidak tersebar ke seluruh halaman.
-export function asTrades(list: PfTrade[]) {
+export function asTrades(list: PfTrade[]): Trade[] {
+  // null → undefined, bukan sekadar `as`: Trade memakai optional (undefined)
+  // sedangkan Postgres mengembalikan null. Dibiarkan lewat begitu saja, `null`
+  // akan lolos ke perbandingan seperti `t.followed_plan === false` dan
+  // memasukkan trade yang belum dinilai ke statistik disiplin.
+  const u = <T,>(v: T | null | undefined): T | undefined => (v == null ? undefined : v)
   return list.map(t => ({
-    ...t,
+    id: t.id,
+    account_id: t.account_id,
+    date: t.date,
+    entry_time: u(t.entry_time),
     pair: t.pair ?? '',
-    direction: (t.direction === 'short' ? 'short' : 'long') as 'long' | 'short',
-    result: t.result ?? resultOf(Number(t.pnl)),
+    direction: (t.direction === 'short' ? 'short' : 'long') as Trade['direction'],
+    result: (t.result ?? resultOf(Number(t.pnl))) as Trade['result'],
     pnl: Number(t.pnl),
+    strategy: u(t.strategy),
+    followed_plan: u(t.followed_plan),
+    know_direction: u(t.know_direction),
+    screenshot_url: u(t.screenshot_url),
+    note: u(t.note),
+    market_structure: u(t.market_structure) as Trade['market_structure'],
     is_overtrade: !!t.is_overtrade,
     created_at: t.created_at ?? '',
+    entry_price: u(t.entry_price),
+    exit_price: u(t.exit_price),
+    lot_size: u(t.lot_size),
+    rr_ratio: u(t.rr),
+    emotion: u(t.emotion),
   }))
 }
 
