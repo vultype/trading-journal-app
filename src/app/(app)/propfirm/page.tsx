@@ -98,7 +98,11 @@ export default function PropFirmPage() {
       : aktif.length > 1 ? 'ALL' : (aktif[0]?.id ?? accs[0]?.id ?? ''))
     setLoading(false)
   }
-  useEffect(() => { if (userId) load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [userId])
+  // load() async, jadi setState-nya terjadi SETELAH await — bukan sinkron di
+  // dalam effect. Dibungkus void agar itu terbaca jelas oleh linter & pembaca.
+  useEffect(() => {
+    if (userId) void load()
+  }, [userId])
 
   // 'ALL' = ringkasan seluruh akun. Dibutuhkan begitu akun lebih dari satu:
   // tanpa ini, satu-satunya cara tahu ada akun yang mendekati batas adalah
@@ -623,6 +627,22 @@ function BarRow({ label, pct, sisa, baik }: { label: string; pct: number; sisa: 
   )
 }
 
+// Pembungkus label + input.
+//
+// WAJIB di level modul, bukan di dalam AccSheet. Komponen yang didefinisikan di
+// dalam badan komponen lain adalah TIPE BARU tiap render — React membongkar dan
+// memasang ulang seluruh subtree-nya, dan input di dalamnya kehilangan fokus
+// setiap satu karakter diketik. Akibatnya form terasa mustahil diisi.
+function F({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <Label className="text-xs">{label}</Label>
+      {children}
+      {hint && <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{hint}</p>}
+    </div>
+  )
+}
+
 // ── Form akun ──
 function AccSheet({ edit, userId, onClose, onSaved }: {
   edit: PfAccount | null; userId: string; onClose: () => void; onSaved: () => void
@@ -668,14 +688,6 @@ function AccSheet({ edit, userId, onClose, onSaved }: {
     if (error) { toast.error(error.message); return }
     toast.success('Akun dihapus'); onSaved()
   }
-
-  const F = ({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) => (
-    <div>
-      <Label className="text-xs">{label}</Label>
-      {children}
-      {hint && <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{hint}</p>}
-    </div>
-  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm p-0 md:p-6" onClick={onClose}>
