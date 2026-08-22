@@ -23,15 +23,60 @@ export type PfAccount = {
   archived: boolean
 }
 
+// Sengaja dibentuk sama persis dengan Trade jurnal utama, supaya calcStats,
+// pnlByGroup, dan kurva equity bisa dipakai ULANG apa adanya — bukan disalin
+// lalu perlahan berbeda. Satu perbaikan rumus berlaku untuk kedua jurnal.
 export type PfTrade = {
   id: string
   account_id: string
-  date: string          // YYYY-MM-DD
+  date: string                    // YYYY-MM-DD
+  entry_time?: string | null
   pair: string | null
-  direction: string | null
-  pnl: number           // USD, boleh negatif
+  direction: 'long' | 'short' | string | null
+  result?: 'win' | 'loss' | 'breakeven' | null
+  pnl: number                     // USD, boleh negatif
   rr: number | null
+  strategy?: string | null
+  followed_plan?: boolean | null
+  know_direction?: boolean | null
+  screenshot_url?: string | null
+  market_structure?: 'bullish' | 'bearish' | 'ranging' | string | null
+  is_overtrade?: boolean | null
+  entry_price?: number | null
+  exit_price?: number | null
+  lot_size?: number | null
+  emotion?: string | null
   note: string | null
+  created_at?: string
+}
+
+export type PfNote = {
+  id: string
+  account_id: string
+  date: string
+  content: string
+  mood: number | null
+}
+
+// Hasil trade dari tanda P&L, dipakai saat baris lama belum punya `result`.
+// Dihitung, bukan ditebak: nol adalah breakeven, bukan loss.
+export const resultOf = (pnl: number): 'win' | 'loss' | 'breakeven' =>
+  pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven'
+
+// Jembatan ke fungsi statistik jurnal utama. calcStats() menuntut bentuk Trade;
+// yang benar-benar dibacanya hanya date, pnl, result, dan is_overtrade — semua
+// sudah ada di PfTrade. Konversi dilakukan di satu tempat ini supaya `as`
+// tidak tersebar ke seluruh halaman.
+export function asTrades(list: PfTrade[]) {
+  return list.map(t => ({
+    ...t,
+    pair: t.pair ?? '',
+    direction: (t.direction === 'short' ? 'short' : 'long') as 'long' | 'short',
+    result: t.result ?? resultOf(Number(t.pnl)),
+    pnl: Number(t.pnl),
+    is_overtrade: !!t.is_overtrade,
+    created_at: t.created_at ?? '',
+  }))
 }
 
 export type HariRow = { date: string; pnl: number; saldoAwal: number; saldoAkhir: number; trades: number }
