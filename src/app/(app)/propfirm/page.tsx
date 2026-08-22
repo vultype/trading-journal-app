@@ -15,7 +15,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Progress } from '@/components/ui/progress'
 import {
   ShieldAlert, Target, Landmark, Plus, Trash2, Settings2, TrendingUp, TrendingDown,
   Loader2, X as XIcon, CalendarDays, Scale, CheckCircle2, Archive,
@@ -36,6 +35,26 @@ const todayISO = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+// Batang progres yang warnanya ikut MAKNA, bukan selalu warna primer.
+//
+// Komponen Progress bawaan mengunci indikatornya ke bg-primary (hijau). Untuk
+// batang RISIKO itu menyesatkan: batas yang sudah terlampaui tampil hijau penuh
+// dan terbaca sebagai kabar baik — persis kebalikan dari yang terjadi.
+//
+// mode 'risiko' : makin penuh makin buruk (abu → amber → merah)
+// mode 'capaian': makin penuh makin baik (hijau)
+function Bar({ pct, mode = 'risiko' }: { pct: number; mode?: 'risiko' | 'capaian' }) {
+  const v = Math.min(100, Math.max(0, pct))
+  const warna = mode === 'capaian'
+    ? (v >= 100 ? 'bg-emerald-400' : 'bg-primary')
+    : v >= 100 ? 'bg-red-400' : v >= 70 ? 'bg-amber-400' : 'bg-muted-foreground/50'
+  return (
+    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+      <div className={`h-full rounded-full transition-all ${warna}`} style={{ width: `${v}%` }} />
+    </div>
+  )
+}
+
 const fmtTgl = (s: string) => new Date(s + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 
 export default function PropFirmPage() {
@@ -70,12 +89,29 @@ export default function PropFirmPage() {
     const accs = (a.data ?? []) as PfAccount[]
     setAccounts(accs)
     setTrades((t.data ?? []) as PfTrade[])
-    setSel(s => s && accs.some(x => x.id === s) ? s : (accs.find(x => !x.archived)?.id ?? accs[0]?.id ?? ''))
+    // Punya lebih dari satu akun → buka ringkasan semua akun. Membuka satu akun
+    // tertentu saat ada beberapa membuat akun lain tak terlihat, padahal justru
+    // itu yang perlu dipantau.
+    const aktif = accs.filter(x => !x.archived)
+    setSel(s => (s === 'ALL' || (s && accs.some(x => x.id === s)))
+      ? s
+      : aktif.length > 1 ? 'ALL' : (aktif[0]?.id ?? accs[0]?.id ?? ''))
     setLoading(false)
   }
   useEffect(() => { if (userId) load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [userId])
 
+  // 'ALL' = ringkasan seluruh akun. Dibutuhkan begitu akun lebih dari satu:
+  // tanpa ini, satu-satunya cara tahu ada akun yang mendekati batas adalah
+  // membukanya satu per satu — dan yang paling perlu diketahui justru yang
+  // sedang tidak dibuka.
+  const isAll = sel === 'ALL'
   const acc = accounts.find(a => a.id === sel) ?? null
+
+  // Status tiap akun aktif, untuk kartu ringkasan.
+  const semua = useMemo(() =>
+    accounts.filter(a => !a.archived).map(a => ({
+      a, st: hitungStatus(a, trades.filter(t => t.account_id === a.id)),
+    })), [accounts, trades])
   const accTrades = useMemo(() => trades.filter(t => t.account_id === sel), [trades, sel])
   const st = useMemo(() => acc ? hitungStatus(acc, accTrades) : null, [acc, accTrades])
 
@@ -127,8 +163,9 @@ export default function PropFirmPage() {
         <div className="flex gap-2 items-center flex-wrap">
           {accounts.length > 0 && (
             <Select value={sel} onValueChange={v => v && setSel(v)}>
-              <SelectTrigger className="w-56"><SelectValue>{acc ? `${acc.name}${acc.archived ? ' (arsip)' : ''}` : 'Pilih akun'}</SelectValue></SelectTrigger>
+              <SelectTrigger className="w-56"><SelectValue>{isAll ? `Semua Akun (${semua.length})` : acc ? `${acc.name}${acc.archived ? ' (arsip)' : ''}` : 'Pilih akun'}</SelectValue></SelectTrigger>
               <SelectContent>
+                <SelectItem value="ALL">Semua Akun ({semua.length})</SelectItem>
                 {accounts.map(a => (
                   <SelectItem key={a.id} value={a.id}>
                     {a.name} · {PHASE_LABEL[a.phase]}{a.archived ? ' (arsip)' : ''}
@@ -137,7 +174,7 @@ export default function PropFirmPage() {
               </SelectContent>
             </Select>
           )}
-          {acc && (
+          {acc && !isAll && (
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowAcc(acc)}>
               <Settings2 size={13} /> Setting Akun
             </Button>
@@ -148,7 +185,9 @@ export default function PropFirmPage() {
         </div>
       </div>
 
-      {!acc ? (
+      {isAll ? (
+        <SemuaAkun rows={semua} onPick={id => setSel(id)} onNew={() => setShowAcc('new')} />
+      ) : !acc ? (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center">
             <Landmark size={28} className="mx-auto text-muted-foreground/40 mb-3" />
@@ -196,7 +235,7 @@ export default function PropFirmPage() {
                 <p className={`text-xl font-black tabular-nums ${st.harianBreach ? 'text-red-400' : st.harianTerpakaiPct >= 70 ? 'text-amber-400' : 'text-emerald-400'}`}>
                   {usd(st.sisaHarianUsd)}
                 </p>
-                <Progress value={Math.min(100, st.harianTerpakaiPct)} className="h-1.5 mt-1.5" />
+                <div className="mt-1.5"><Bar pct={st.harianTerpakaiPct} /></div>
                 <p className="text-[11px] text-muted-foreground mt-1">dari {usd(st.batasHarianUsd)} · {acc.daily_loss_pct}%</p>
               </CardContent>
             </Card>
@@ -207,7 +246,7 @@ export default function PropFirmPage() {
                 <p className={`text-xl font-black tabular-nums ${st.totalBreach ? 'text-red-400' : st.totalTerpakaiPct >= 70 ? 'text-amber-400' : 'text-emerald-400'}`}>
                   {usd(st.jarakLantaiUsd)}
                 </p>
-                <Progress value={Math.min(100, st.totalTerpakaiPct)} className="h-1.5 mt-1.5" />
+                <div className="mt-1.5"><Bar pct={st.totalTerpakaiPct} /></div>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   lantai {usd(st.lantaiUsd)} · {acc.drawdown_type === 'trailing' ? 'trailing' : 'static'}
                 </p>
@@ -220,7 +259,7 @@ export default function PropFirmPage() {
                 <p className={`text-xl font-black tabular-nums ${st.targetTercapai ? 'text-emerald-400' : ''}`}>
                   {st.targetProgressPct.toFixed(0)}%
                 </p>
-                <Progress value={st.targetProgressPct} className="h-1.5 mt-1.5" />
+                <div className="mt-1.5"><Bar pct={st.targetProgressPct} mode="capaian" /></div>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {st.targetTercapai ? 'tercapai 🎉' : `perlu ${usd(Math.max(0, st.targetUsd - st.saldo))} lagi`}
                 </p>
@@ -323,7 +362,7 @@ export default function PropFirmPage() {
                             {st.konsistensi.porsiPct.toFixed(1)}%
                           </span>
                         </div>
-                        <Progress value={Math.min(100, st.konsistensi.porsiPct)} className="h-1.5" />
+                        <Bar pct={st.konsistensi.porsiPct} />
                         <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
                           {fmtTgl(st.konsistensi.hariTerbesar)} menyumbang {usd(st.konsistensi.profitHariTerbesar)} dari
                           total {usd(st.profitBagiHasil)}. Batas firm {st.konsistensi.batasPct}%.
@@ -449,6 +488,137 @@ export default function PropFirmPage() {
           onClose={() => setShowAcc(null)}
           onSaved={() => { setShowAcc(null); load() }} />
       )}
+    </div>
+  )
+}
+
+// ── Ringkasan semua akun ──
+//
+// Yang paling perlu diketahui adalah akun yang TIDAK sedang dibuka: satu akun
+// bisa mendekati batas tanpa disadari selama perhatian tertuju ke akun lain.
+// Karena itu daftar diurutkan dari yang paling berisiko, bukan dari yang
+// terbaru.
+function SemuaAkun({ rows, onPick, onNew }: {
+  rows: { a: PfAccount; st: ReturnType<typeof hitungStatus> }[]
+  onPick: (id: string) => void
+  onNew: () => void
+}) {
+  if (rows.length === 0) return (
+    <Card className="border-dashed">
+      <CardContent className="py-16 text-center">
+        <Landmark size={28} className="mx-auto text-muted-foreground/40 mb-3" />
+        <p className="font-bold text-sm mb-1">Belum ada akun aktif</p>
+        <p className="text-xs text-muted-foreground mb-4">Tiap akun punya modal, batas risiko, target, dan aturan sendiri.</p>
+        <Button size="sm" className="gap-1.5" onClick={onNew}><Plus size={14} /> Buat Akun Pertama</Button>
+      </CardContent>
+    </Card>
+  )
+
+  // Skor risiko = yang paling dekat kena batas, harian atau total.
+  const risiko = (r: typeof rows[number]) =>
+    r.st.totalBreach || r.st.harianBreach ? 1000 : Math.max(r.st.harianTerpakaiPct, r.st.totalTerpakaiPct)
+  const urut = [...rows].sort((x, y) => risiko(y) - risiko(x))
+
+  const totModal = rows.reduce((s, r) => s + Number(r.a.initial_balance), 0)
+  const totSaldo = rows.reduce((s, r) => s + r.st.saldo, 0)
+  const totPnl = totSaldo - totModal
+  const totPayout = rows.reduce((s, r) => s + r.st.payoutUsd, 0)
+  const totPayoutIdr = rows.reduce((s, r) => s + r.st.payoutIdr, 0)
+  const bermasalah = rows.filter(r => r.st.harianBreach || r.st.totalBreach).length
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card><CardContent className="pt-4 pb-4">
+          <p className="text-xs text-muted-foreground mb-1">Total Modal Dikelola</p>
+          <p className="text-xl font-black tabular-nums">{usd(totModal)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{rows.length} akun aktif</p>
+        </CardContent></Card>
+        <Card className={totPnl >= 0 ? 'border-emerald-500/20' : 'border-red-500/20'}><CardContent className="pt-4 pb-4">
+          <p className="text-xs text-muted-foreground mb-1">Total Saldo</p>
+          <p className="text-xl font-black tabular-nums">{usd(totSaldo)}</p>
+          <p className={`text-[11px] mt-0.5 font-medium ${totPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{totPnl >= 0 ? '+' : ''}{usd(totPnl)}</p>
+        </CardContent></Card>
+        <Card className="border-emerald-500/20"><CardContent className="pt-4 pb-4">
+          <p className="text-xs text-muted-foreground mb-1">Total Payout</p>
+          <p className="text-xl font-black tabular-nums text-emerald-400">{usd(totPayout)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">≈ {idr(totPayoutIdr)}</p>
+        </CardContent></Card>
+        <Card className={bermasalah > 0 ? 'border-red-500/40 bg-red-500/[0.05]' : 'border-border/40'}><CardContent className="pt-4 pb-4">
+          <p className="text-xs text-muted-foreground mb-1">Akun Kena Batas</p>
+          <p className={`text-xl font-black tabular-nums ${bermasalah > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{bermasalah}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{bermasalah > 0 ? 'perlu diperiksa' : 'semua aman'}</p>
+        </CardContent></Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {urut.map(({ a, st }) => {
+          const kena = st.harianBreach || st.totalBreach
+          const waspada = !kena && Math.max(st.harianTerpakaiPct, st.totalTerpakaiPct) >= 70
+          return (
+            <button key={a.id} onClick={() => onPick(a.id)} className="text-left">
+              <Card className={`h-full transition-colors hover:border-primary/40 ${kena ? 'border-red-500/40 bg-red-500/[0.05]' : waspada ? 'border-amber-500/30' : 'border-border/40'}`}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start justify-between gap-2 mb-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold truncate">{a.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {a.firm ? `${a.firm} · ` : ''}{PHASE_LABEL[a.phase]} · {usd(Number(a.initial_balance))}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-black tabular-nums">{usd(st.saldo)}</p>
+                      <p className={`text-[11px] font-medium tabular-nums ${st.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {st.totalPnl >= 0 ? '+' : ''}{usd(st.totalPnl)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {kena && (
+                    <p className="flex items-center gap-1.5 text-[11px] font-bold text-red-400 mb-2">
+                      <ShieldAlert size={12} /> {st.totalBreach ? 'Batas total terlampaui' : 'Batas harian terlampaui'}
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    <BarRow label="Batas harian" pct={st.harianTerpakaiPct} sisa={`sisa ${usd(st.sisaHarianUsd)}`} />
+                    <BarRow label={`Batas total (${a.drawdown_type === 'trailing' ? 'trailing' : 'static'})`} pct={st.totalTerpakaiPct} sisa={`jarak ${usd(st.jarakLantaiUsd)}`} />
+                    <BarRow label="Target profit" pct={st.targetProgressPct} sisa={st.targetTercapai ? 'tercapai' : `perlu ${usd(Math.max(0, st.targetUsd - st.saldo))}`} baik />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-border/40 text-[11px]">
+                    <span className="text-muted-foreground">Payout {a.payout_share_pct}%</span>
+                    <span className="font-bold tabular-nums text-emerald-400">
+                      {usd(st.payoutUsd)} <span className="text-muted-foreground font-normal">· {idr(st.payoutIdr)}</span>
+                    </span>
+                  </div>
+                  {a.consistency_on && st.konsistensi && !st.konsistensi.lolos && (
+                    <p className="text-[10px] text-amber-400 mt-1.5 flex items-center gap-1">
+                      <Scale size={10} /> Konsistensi belum memenuhi ({st.konsistensi.porsiPct.toFixed(0)}% dari batas {st.konsistensi.batasPct}%)
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Baris progres kecil. `baik` membalik warna: untuk target, penuh itu bagus.
+function BarRow({ label, pct, sisa, baik }: { label: string; pct: number; sisa: string; baik?: boolean }) {
+  const warna = baik
+    ? (pct >= 100 ? 'text-emerald-400' : 'text-muted-foreground')
+    : (pct >= 100 ? 'text-red-400' : pct >= 70 ? 'text-amber-400' : 'text-muted-foreground')
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 text-[11px] mb-0.5">
+        <span className="text-muted-foreground">{label}</span>
+        <span className={`tabular-nums font-medium ${warna}`}>{sisa}</span>
+      </div>
+      <Bar pct={pct} mode={baik ? 'capaian' : 'risiko'} />
     </div>
   )
 }
