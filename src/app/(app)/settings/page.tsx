@@ -183,7 +183,10 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">{t('Mata Uang')}</Label>
-            <Select value={currency} onValueChange={(v) => setCurrency((v ?? 'USD') as AppSettings['currency'])}>
+            {/* Kalau Select mengirim nilai kosong, mata uang DIPERTAHANKAN.
+                Sebelumnya jatuh ke 'USD' — artinya sebuah interaksi yang gagal
+                bisa diam-diam mengubah seluruh angka P&L di aplikasi jadi dolar. */}
+            <Select value={currency} onValueChange={(v) => { if (v) setCurrency(v as AppSettings['currency']) }}>
               <SelectTrigger className="w-52"><SelectValue>
                 {currency === 'IDR' ? '🇮🇩 IDR — Indonesian Rupiah' : currency === 'USD' ? '🇺🇸 USD — US Dollar' : currency === 'EUR' ? '🇪🇺 EUR — Euro' : '💵 USDT — Tether'}
               </SelectValue></SelectTrigger>
